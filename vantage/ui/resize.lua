@@ -180,6 +180,9 @@ end;
 -- of the screen.
 -- The tag's points, refilled for each tag, as ImGui copies them.
 local ORIGIN, screen_far, tag_at, tag_far, text_at = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 };
+-- The SAMPLE tags drawn outside their displays this Present, x1, y1, x2, y2 each in one reused table, so edit mode puts
+-- a display's name clear of them. A Present holds far fewer than the 32 kept.
+local outside_tags, outside_count, outside_present = {}, 0, -1;
 function resize.sample(list, rect, look, outside)
     if rect.width < 40 or rect.height < 12 then return; end;
     local imgui, fonts = require('imgui'), require('ui.fonts');
@@ -189,6 +192,12 @@ function resize.sample(list, rect, look, outside)
     if outside then
         y = math.floor(rect.y - size - 5);
         if y < 0 then y = math.floor(rect.y + rect.height + 2); end;
+        if outside_present ~= present then outside_present, outside_count = present, 0; end;
+        if outside_count < 32 then
+            local at = outside_count * 4;
+            outside_tags[at + 1], outside_tags[at + 2], outside_tags[at + 3], outside_tags[at + 4] = x, y, x + width, y + size + 3;
+            outside_count = outside_count + 1;
+        end;
         local screen = imgui.GetIO().DisplaySize;
         screen_far[1], screen_far[2] = screen.x, screen.y;
         list:PushClipRect(ORIGIN, screen_far, false);
@@ -202,6 +211,19 @@ function resize.sample(list, rect, look, outside)
     end;
     fonts.pop();
     if outside then list:PopClipRect(); end;
+end;
+
+-- The top and bottom of a SAMPLE tag drawn outside its display this Present that a box at x, y, width wide and height
+-- high would touch, or nil.
+function resize.sample_tag(x, y, width, height)
+    if outside_present ~= present then return nil; end;
+    for index = 0, outside_count - 1 do
+        local at = index * 4;
+        if x < outside_tags[at + 3] and x + width > outside_tags[at + 1] and y < outside_tags[at + 4] and y + height > outside_tags[at + 2] then
+            return outside_tags[at + 2], outside_tags[at + 4];
+        end;
+    end;
+    return nil;
 end;
 
 -- The tooltips and lists the settings window drew this Present, which no sample may cover: up to four, x1, y1, x2, y2

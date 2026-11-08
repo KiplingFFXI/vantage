@@ -106,7 +106,7 @@ client.accept(MOCK.packet(0x063,ready),4,snapshot);
 assert(client.visibility(snapshot)==nil,'A pending new character cannot reuse the old character snapshot.');
 client.reset(); assert(client.visibility(snapshot));
 -- Inside a Present the flags are read once: the overhead takes what the check between refreshes read, and the next
--- Present reads them again. Outside one, as for a buff cancel, every read is fresh.
+-- Present reads them again. Outside one, every read is fresh.
 local before=native_reads;
 client.frame_begin();
 assert(client.visibility(snapshot));

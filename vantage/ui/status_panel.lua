@@ -411,7 +411,7 @@ local part_rows = {
         'As the row follows Line up rows, but Countdown stays on the right until you pick here.', { tag = '_part', find = 'Part line up', alias = 'Field alignment',
         of = panel_table('field_alignments'), key_of = part, read = function(c) return c.p.field_alignments[chosen_part] or ''; end,
         write = part_write('field_alignments') }),
-    frame.text('Divider before it', nil, 'Blank uses Between parts. The first part on a line has none.', { tag = '_part', alias = 'Divider before this field', of = panel_table('field_dividers'), key_of = part,
+    frame.text('Divider before it', nil, 'Blank uses Between parts. The first part on a line has none.', { tag = '_part', length = 20, alias = 'Divider before this field', of = panel_table('field_dividers'), key_of = part,
         write = part_write('field_dividers'), only = parts_meet, shown_by = 'Parts of a row' }),
     frame.tick('Start a new line', nil, 'Puts this part on a line of its own, where the layout can wrap.', { tag = '_part', alias = 'Start on a new line', of = panel_table('field_newlines'), key_of = part }),
     frame.number('Priority when space is short', nil, 0, 100, 'Higher stays longer when the row runs out of room.', { tag = '_part', alias = 'Field priority', of = panel_table('field_priority'), key_of = part,
@@ -735,7 +735,7 @@ function page.filter_rows(recast)
     add(frame.text('Rename it', nil, 'Blank uses the game\'s name. The ' .. noun .. ' itself does not change.', { alias = 'Custom label', only = picked, shown_by = find, of = panel_table('labels'),
         key_of = function(c) return finder(c).effect; end,
         write = function(c, value) c.p.labels[finder(c).effect] = value ~= '' and value or nil; end }));
-    add(frame.color('Color', nil, nil, { tag = '_effect', find = (recast and 'Recast' or 'Effect') .. ' color', alias = 'Effect fill color Use normal effect color', only = function(c) return picked(c) and tinted(c); end, shown_by = find, of = panel_table('effect_colors'),
+    add(frame.color('Color', nil, nil, { tag = '_effect', find = (recast and 'Recast' or 'Effect') .. ' color', alias = 'Effect fill color', only = function(c) return picked(c) and tinted(c); end, shown_by = find, of = panel_table('effect_colors'),
         key_of = function(c) return finder(c).effect; end, fallback = function(c) return c.s.style.buff_color; end }));
     add(frame.note('A color shows on a bar, or on a countdown while Color each countdown by how sure Vantage is of its time is on under More look.', {
         only = function(c) return picked(c) and not tinted(c); end }));

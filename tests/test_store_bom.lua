@@ -15,6 +15,12 @@ local first = store.read(path, cache);
 assert(store.read(path, cache) == first and (cache.text or ''):sub(1, 1) == '{', 'The cache keeps the text after the mark.');
 assert(store.write(path, { style = { font_size = 22 } }), 'A file with a mark can be saved over.');
 assert(text():sub(1, 1) == '{' and (store.read(path) or { style = {} }).style.font_size == 22, 'The save writes it back without the mark.');
+-- An empty file holds no settings, as a missing one does: it loads as none, and the next save writes over it.
+put('');
+value, why = store.read(path);
+assert(type(value) == 'table' and next(value) == nil, 'An empty file loads as no settings: ' .. tostring(why));
+assert(store.write(path, { style = { font_size = 24 } }) and (store.read(path) or { style = {} }).style.font_size == 24,
+    'An empty file is saved over.');
 -- UTF-16, as PowerShell 5.1's Out-File writes, still doesn't load, and is never saved over.
 put('\255\254{\0}\0');
 value, why = store.read(path);

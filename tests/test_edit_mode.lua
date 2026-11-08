@@ -1,5 +1,6 @@
 -- Edit mode (ui/edit_mode.lua) through vantage.lua: /vg edit and the Home and bar buttons turn it on and off, and
--- ending it leaves every display where it is. Each display on the screen gets an outline that a click picks. A Shift
+-- ending it leaves every display where it is. Each display on the screen gets an outline that a click picks, drawn
+-- over the display on its own window. A Shift
 -- drag moves an unlocked display, snapping as chosen; without Shift nothing moves, and Shift never moves a locked one.
 -- A locked display is unlocked in the bar. While the bar or an outline has focus, the arrow keys move the picked
 -- display 1 px, 10 with Shift, and Escape ends edit mode; the keys are captured only then, through ImGui's own flag,
@@ -40,6 +41,28 @@ end);
 rawset(imgui, 'IsItemActive', function() return typed[last_box] ~= nil and not left[last_box]; end);
 rawset(imgui, 'IsItemDeactivatedAfterEdit', function() return left[last_box] == true; end);
 rawset(imgui, 'GetIO', function() local value = io(); value.WantTextInput = typing; return value; end);
+-- Each window hands out a draw list of its own, which marks each call with its window and how many windows were open,
+-- so the test sees where an outline went and that no window's clip cuts it.
+local stack, lists = {}, {};
+local begin_window, end_window = imgui.Begin, imgui.End;
+rawset(imgui, 'Begin', function(name, ...) stack[#stack + 1] = name; return begin_window(name, ...); end);
+rawset(imgui, 'End', function(...) stack[#stack] = nil; return end_window(...); end);
+rawset(imgui, 'GetWindowDrawList', function()
+    local name = stack[#stack] or '';
+    local list = lists[name];
+    if not list then
+        list = setmetatable({}, { __index = function(_, method)
+            return function(_, ...)
+                local call = { 'draw:' .. method, ... };
+                call.window, call.open = name, #stack;
+                MOCK.imgui_calls[#MOCK.imgui_calls + 1] = call;
+                MOCK.drawn[call] = MOCK.copy_arguments('draw:' .. method, ...);
+            end;
+        end });
+        lists[name] = list;
+    end;
+    return list;
+end);
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 MOCK.fire('load'); app.refresh(0);
 local s = app.state.settings;
@@ -75,8 +98,9 @@ for _, id in ipairs({ 'rolls', 'pet', 'self_buffs', 'self_debuffs', 'target' }) 
     assert(began('##vantage_edit_' .. id), 'Each display on the screen gets an outline: ' .. id);
 end;
 assert(not began('##vantage_edit_overhead'), 'Overhead icons sit over heads, so edit mode has no outline for them.');
--- Each outline's name is drawn at 14 px, and its box is as wide as the name at that size, whatever size the window's
--- font is: here 28 px, where the name measures twice as wide.
+-- Each outline's name sits just above it, clear of the display's own heading and icons, or just below it near the top
+-- of the screen, as Alerts is at its first spot. It is drawn at 14 px in a box
+-- as wide as the name at that size, whatever size the window's font is: here 28 px, where the name measures twice as wide.
 rawset(imgui, 'GetFontSize', function() return 28; end);
 frame();
 rawset(imgui, 'GetFontSize', nil);
@@ -90,12 +114,67 @@ for index, call in ipairs(MOCK.imgui_calls) do
             if not box and earlier[1] == 'draw:AddRectFilled' then box = MOCK.drawn[earlier];
             elseif box and earlier[1] == 'draw:AddRect' then edge = MOCK.drawn[earlier]; break; end;
         end;
-        local width = edge[3][1] - edge[2][1];
-        assert(box[3][1] - edge[2][1] == math.min(width - 1, #text[6] * 8 * 14 / 28 + 7), 'The tag fits its name: ' .. text[6]);
+        local above = math.floor(edge[2][2] - 20);
+        local y = above >= 0 and above or math.floor(edge[3][2] + 2);
+        assert(box[2][1] == math.floor(edge[2][1]) and box[3][1] - box[2][1] == #text[6] * 8 * 14 / 28 + 7
+            and box[2][2] == y and box[3][2] == y + 18, 'The name sits just above its display, in a box that fits it: ' .. text[6]);
         tags = tags + 1;
     end;
 end;
 assert(tags >= 5, 'Fixture: every outline has its tag.');
+-- Each outline and name go on the display's own window once every window has ended: edit mode's windows sit behind
+-- the displays, and a window cuts what is drawn in it at its edge. A display with no window up, as Alerts with no
+-- alert to show, has them on edit mode's window under it.
+frame();
+local placed = {};
+for index, call in ipairs(MOCK.imgui_calls) do
+    if call[1] == 'draw:AddText' and MOCK.drawn[call][3] == 14 then
+        -- The name, its box and the outline's two lines.
+        local name, parts = MOCK.drawn[call][6], { call };
+        for back = index - 1, 1, -1 do
+            if #parts == 4 then break; end;
+            if MOCK.imgui_calls[back][1]:find('^draw:') then parts[#parts + 1] = MOCK.imgui_calls[back]; end;
+        end;
+        assert(#parts == 4 and parts[2][1] == 'draw:AddRectFilled' and parts[3][1] == 'draw:AddRect' and parts[4][1] == 'draw:AddRect',
+            'Fixture: the name comes after its box and the outline: ' .. name);
+        for _, part in ipairs(parts) do
+            assert(part.window == call.window and part.open == 0, 'The outline and name are drawn on one window with no window open: ' .. name);
+        end;
+        placed[name:match('^(.-)  %(') or name] = call.window;
+    end;
+end;
+assert(placed['Phantom Roll'] == '##vantage_rolls' and placed['Pet'] == '##vantage_pet' and placed['Self buffs'] == '##vantage_self_buffs',
+    'An outline and name go on the display\'s own window, over the display.');
+assert(placed['Alerts'] == '##vantage_edit_notices', 'Alerts with no alert up has its outline on edit mode\'s window.');
+-- Near the top of the screen the name sits just below its display instead. And it steps above a SAMPLE tag it would
+-- touch: here Phantom Roll's at its top right, with Phantom Roll at its narrowest and the name measuring wide in a 9 px font.
+local function tag_box(label)
+    for index, call in ipairs(MOCK.imgui_calls) do
+        if call[1] == 'draw:AddText' and MOCK.drawn[call][3] == 14 and MOCK.drawn[call][6]:find(label, 1, true) == 1 then
+            for back = index - 1, 1, -1 do
+                if MOCK.imgui_calls[back][1] == 'draw:AddRectFilled' then return MOCK.drawn[MOCK.imgui_calls[back]]; end;
+            end;
+        end;
+    end;
+end;
+local rolls_y, rolls_width = s.rolls.y, s.rolls.width;
+s.rolls.y = 4; frame();
+local rolls = elements.drawn('rolls');
+assert(rolls.y == 4 and tag_box('Phantom Roll')[2][2] == math.floor(rolls.y + rolls.height + 2), 'Near the top of the screen the name sits just below its display.');
+s.rolls.y, s.rolls.width = rolls_y, 200;
+rawset(imgui, 'GetFontSize', function() return 9; end);
+frame();
+rawset(imgui, 'GetFontSize', nil);
+rolls = elements.drawn('rolls');
+local sample;
+for _, call in ipairs(MOCK.imgui_calls) do
+    local drawn = MOCK.drawn[call];
+    if call[1] == 'draw:AddRectFilled' and drawn[4] == 0xD8171717 and drawn[2][1] >= rolls.x and drawn[3][1] <= rolls.x + rolls.width then sample = drawn; end;
+end;
+local stepped = tag_box('Phantom Roll');
+assert(sample and stepped[3][1] > sample[2][1] and stepped[3][2] <= sample[2][2] and stepped[2][2] >= 0,
+    'The name steps above the SAMPLE tag it would touch.');
+s.rolls.width = rolls_width;
 assert(app.callbacks.editing, 'The displays are told edit mode is on.');
 local start_x, start_y = s.rolls.x, s.rolls.y;
 
@@ -474,7 +553,9 @@ assert(edit.active(), 'The main page\'s Edit mode button turns it on.');
 assert(#MOCK.commands == 0, 'Nothing is sent to the game.');
 MOCK.key_shift, focused = false, false;
 for _, name in ipairs({ 'GetBackgroundDrawList', 'GetForegroundDrawList', 'InvisibleButton', 'IsItemActivated', 'IsWindowFocused', 'IsKeyPressed',
-    'SetNextFrameWantCaptureKeyboard', 'InputInt', 'IsItemActive', 'IsItemDeactivatedAfterEdit' }) do rawset(imgui, name, nil); end;
+    'SetNextFrameWantCaptureKeyboard', 'InputInt', 'IsItemActive', 'IsItemDeactivatedAfterEdit', 'Begin', 'End', 'GetWindowDrawList' }) do
+    rawset(imgui, name, nil);
+end;
 rawset(imgui, 'GetIO', io);
 MOCK.fire('unload');
 return true;

@@ -129,6 +129,7 @@ function cooldown_list.draw(view, settings, now, callbacks, moving)
     fonts.push(s.font, font_size);
     local hovered;
     if imgui.Begin('##vantage_cooldowns', true, flags) then
+        elements.opened('cooldown_list', imgui.GetWindowDrawList());
         -- Its samples go over an open settings window.
         local list, on_top = resize.sample_list(imgui, config.preview and settings.window.open and not moving.editing, rect, moving.mx, moving.my, true);
         local x, y = rect.x, rect.y;

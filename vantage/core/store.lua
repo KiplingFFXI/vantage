@@ -87,8 +87,10 @@ function store.read(path, cache)
         if (checked and not exists and (code == nil or code == 2)) then return {}; end
         return nil, 'The saved file could not be opened. It was kept unchanged.';
     end
-    local read_ok, text = pcall(file.read, file, MAX_BYTES + 1);
+    local read_ok, text, read_error = pcall(file.read, file, MAX_BYTES + 1);
     local close_ok, closed = pcall(file.close, file);
+    -- An empty file reads as nothing, with no error, and holds no settings, as a missing one.
+    if (read_ok and text == nil and read_error == nil and close_ok and closed) then return {}; end
     if (not read_ok or type(text) ~= 'string' or not close_ok or not closed or #text > MAX_BYTES) then
         return nil, 'The saved file could not be read. It was kept unchanged.';
     end

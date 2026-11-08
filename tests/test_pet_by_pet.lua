@@ -63,6 +63,22 @@ local function alert(by_pet)
     return #notices:drain(1);
 end
 assert(alert(true) == 1 and alert(nil) == 0, 'An alert on watched enemies counts your pet\'s debuffs, and not a stranger\'s.');
+-- So does one for its removal, which is given once the row is gone: the notice itself says your pet cast it.
+local function removal(by_pet)
+    local notices = require('core.alerts').new();
+    local rule = { id = 'slow_off', enabled = true, event = 'removed', effect = SLOW, scope = 'watch', cooldown = 0, visual = true, duration = 4 };
+    local debuff = { key = 'slow', instance = 1, effect = SLOW, name = 'Slow', scope = 'enemy', entity_id = mob, kind = 'debuff', by_pet = by_pet,
+        status = 'estimated', remaining = 40, total = 180, present = true };
+    local view = { valid = true, rows = { debuff }, subjects = {}, context = { id = self_id, zone = 102, job = 15 } };
+    notices:update(view, {}, { rule }, 0, { list_debuffed = true, watch_ids = {} });
+    local event = {};
+    for key, value in pairs(debuff) do event[key] = value; end
+    event.kind, event.category, event.time = 'removed', 'debuff', 1;
+    view.rows = {};
+    notices:update(view, { event }, { rule }, 1, { list_debuffed = true, watch_ids = {} });
+    return #notices:drain(1);
+end
+assert(removal(true) == 1 and removal(nil) == 0, 'A removal alert on watched enemies counts your pet\'s debuffs too, and not a stranger\'s.');
 
 -- Learned times come from your own casts alone: with learning on, your pet's effect wearing off teaches nothing.
 settings.durations.learn = true;

@@ -76,6 +76,16 @@ assert(said('Reset alerts.') == 2 and said('Reset alerts. /vg undo steps back on
 local lines = #MOCK.printed;
 command('/vg reset typo');
 assert(#MOCK.printed == lines + 1 and said('Reset typo') == 0, 'A section that does not exist says why, not that it was done.');
+-- Its words go in any case, as every other /vg word does: a section to reset, and /vg copy's panel and details.
+app.state.settings.alerts.volume = 0.25;
+command('/vg reset ALERTS');
+assert(app.state.settings.alerts.volume ~= 0.25 and said('Reset alerts. /vg undo steps back one change.') == 2,
+    'A section reset takes its name in any case.');
+local copied, copy_shown = nil, app.callbacks.copy_shown;
+app.callbacks.copy_shown = function(panel, details) copied = { panel, details }; return true; end;
+command('/vg copy Target DETAILS');
+app.callbacks.copy_shown = copy_shown;
+assert(copied and copied[1] == 'target' and copied[2] == true, '/vg copy takes its panel and details in any case.');
 
 -- An observation that can't be read goes with its frame, so the refreshes after it work.
 local durations, prepare = require('core.durations'), require('core.durations').prepare;

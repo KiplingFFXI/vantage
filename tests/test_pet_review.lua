@@ -46,6 +46,38 @@ game.level = 75;
 fx.step();
 assert(fx.row(wyvern, 4), 'The two far apart aren\'t one event.');
 
+-- Half a restriction seen with one pet isn't matched with a level change the next pet sees, nor one seen before a zone
+-- change with one after it.
+game.pet, game.buffs, game.level = nil, {}, 75;
+fx.step(10);
+game.pet = { index = called, id = wyvern, name = 'Wyvern', flags = 0x01, hpp = 100 };
+fx.step(10);
+game.buffs = { { effect = RESTRICTED } };
+fx.step();
+game.pet = nil;
+fx.step();
+local next_pet = wyvern + 1;
+game.pet = { index = called + 1, id = next_pet, name = 'Wyvern', flags = 0x01, hpp = 100 };
+fx.step();
+fx.action(mob, 4, PARALYZE, { { next_pet, 236, 4 } });
+fx.step();
+assert(fx.row(next_pet, 4), 'Fixture: the next pet has an effect.');
+game.level = 74;
+fx.step();
+assert(fx.row(next_pet, 4), 'A restriction seen with the last pet isn\'t matched with the next one\'s level change.');
+fx.step(10);
+game.buffs = {};
+fx.step();
+game.zone = 103;
+fx.step();
+fx.action(mob, 4, PARALYZE, { { next_pet, 236, 4 } });
+fx.step();
+assert(fx.row(next_pet, 4), 'Fixture: the pet has an effect after the zone change.');
+game.level = 75;
+fx.step();
+assert(fx.row(next_pet, 4), 'Nor is one seen before a zone change matched with a level change after it.');
+game.zone = 102;
+
 -- A charmed mob keeps what it has.
 game.buffs, game.level = {}, 75;
 game.pet = { index = charmed, id = crab, name = 'Crab', flags = 0x10, hpp = 76 };

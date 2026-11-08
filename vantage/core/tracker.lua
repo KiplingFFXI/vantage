@@ -163,6 +163,7 @@ function methods:clear(reason, now)
     -- A wear-off still waiting may have lost the hit that came behind it.
     self.entities, self.pending, self.events, self.held_samples = {}, {}, {}, {};
     self.valid, self.session, self.pet_id, self.pet_index = false, nil, nil, nil;
+    self.pet_restricted, self.restricted_at, self.level_at = nil, nil, nil;
     self.version = self.version + 1;
     self.events[1] = { kind = 'reset', quiet = true, reason = reason, time = now };
 end
@@ -1373,7 +1374,10 @@ end
 
 local function follow_restriction(self, snapshot, now)
     local index = self.pet_index;
-    if not self.pet_id or not finite(index) or index < CALLED then self.pet_restricted = nil; return; end
+    if not self.pet_id or not finite(index) or index < CALLED then
+        self.pet_restricted, self.restricted_at, self.level_at = nil, nil, nil;
+        return;
+    end
     local on, level = restricted(snapshot), snapshot.level;
     if self.pet_restricted == nil then self.pet_restricted, self.pet_level = on, level; return; end
     if on ~= self.pet_restricted then self.pet_restricted, self.restricted_at = on, now; end

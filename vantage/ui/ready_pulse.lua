@@ -133,6 +133,7 @@ function ready_pulse.draw(pulses, settings, now, callbacks, moving, spots, frame
     if not movable then flags = bit.bor(flags, ImGuiWindowFlags_NoInputs or 0); end
     if imgui.Begin('##vantage_pulse', true, flags) then
         local list = imgui.GetWindowDrawList();
+        if on_screen then elements.opened('pulse', list); end
         local art, status_art, color = s.recast_icon_art, recast_icons.status_art(s), config.color;
         local thickness = math.max(2, floor(3 * scale + 0.5));
         for index = 1, count do

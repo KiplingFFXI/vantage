@@ -1775,6 +1775,7 @@ function hud.draw_notices(view, settings, now, callbacks)
     if not movable then window_flags = require('bit').bor(window_flags, ImGuiWindowFlags_NoInputs or 0) end
     if imgui.Begin('##vantage_notices', true, window_flags) then
         local list, box = imgui.GetWindowDrawList(), notice_layout.box
+        elements.opened('notices', list)
         for index = first, count do
             local entry = entries[index]
             local fade = math.min(1, math.max(0, entry.notice.ends - now) / 0.35)
@@ -2059,6 +2060,7 @@ function hud.draw(view, settings, now, callbacks)
             imgui.SetNextWindowPos(window.at, ImGuiCond_Always)
             imgui.SetNextWindowSize(window.size, ImGuiCond_Always)
             if imgui.Begin(window.name, true, window_flags) then
+                elements.opened(key, imgui.GetWindowDrawList())
                 local list, on_top = resize.sample_list(imgui, samples_over, rect, mx, my, drawing.panels[key].mode == 'icons')
                 local mouse
                 if hover then

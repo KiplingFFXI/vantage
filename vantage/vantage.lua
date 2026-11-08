@@ -959,6 +959,8 @@ function callbacks.export_report(quiet)
     state.report_started=nil;
     report.performance=performance and performance.snapshot() or {available=false,reason=performance_problem or 'Timings are unavailable.'};
     local path=folder..'reports/latest.json';
+    -- A report replaces the last one, even one that is no longer JSON, which a save would keep.
+    if not store.read(path) then os.remove(path); end
     local ok,why=store.write(path,report);
     if ok and not quiet then say('Report saved to '..identity.relative('reports/latest.json')..'.'); end
     return ok,why;
@@ -1387,8 +1389,7 @@ local function retry_unsaved(t,force)
     end
 end;
 
--- What Present hands the party list strips and the buff controls. Present refills the values each frame, so the
--- callbacks are made once.
+-- What Present hands the party list strips. Present refills the values each frame, so the callbacks are made once.
 local party_options={
     begin_edit=function() callbacks.changed('before','Party layout'); end,
     end_edit=function() end,
@@ -1625,7 +1626,8 @@ ashita.events.register('load','vantage_load',function()
     -- Only what must happen in the load event: ImGui takes new fonts only now (ui/fonts.lua), the menu fonts from their
     -- cache, and the sound list.
     prepare('load.fonts','the fonts',fonts.load);
-    prepare('load.sound','the sound list',sound.refresh);
+    -- sound.refresh returns why it couldn't read the sounds folder rather than throwing.
+    prepare('load.sound','the sound list',function() local _,why=sound.refresh(); if why then error(why,0); end end);
     say('Ready. /vantage opens the settings.');
     -- The rest runs as warmup steps from the second Present on, and the displays draw once they have run and a refresh
     -- has read the settings, the first with a character in the game.
@@ -1986,9 +1988,9 @@ local function run_command(e)
     elseif command=='starter' then
         local ok,why=callbacks.starter(table.concat(args,' ',3),false); if not ok then say(why); end
     elseif command=='copy' then
-        local panel=args[3] or 'self_buffs';
+        local panel=(args[3] or 'self_buffs'):lower();
         if state.settings.panels[panel] then
-            local ok,why=callbacks.copy_shown(panel,args[4]=='details'); if not ok then say(why); end
+            local ok,why=callbacks.copy_shown(panel,(args[4] or ''):lower()=='details'); if not ok then say(why); end
         else say('Choose self_buffs, self_debuffs, target, party or watch.'); end
     elseif command=='report' then
         local ok,why=callbacks.export_report(); if not ok then say(why); end
@@ -2031,10 +2033,10 @@ local function run_command(e)
         end
         if not ok then say(why or '/vantage profile save|overwrite|load|delete|rename|recover|list|link [job] "Name"'); end
     elseif command=='reset' then
-        local last=state.history[#state.history];
-        local ok,why=callbacks.reset(args[3]);
+        local last,section=state.history[#state.history],args[3] and args[3]:lower();
+        local ok,why=callbacks.reset(section);
         -- A reset with nothing to change makes no step, and Undo would take back something else.
-        say(ok and 'Reset '..(args[3] or 'all settings')..'.'..(state.history[#state.history]~=last and ' /vg undo steps back one change.' or '') or why);
+        say(ok and 'Reset '..(section or 'all settings')..'.'..(state.history[#state.history]~=last and ' /vg undo steps back one change.' or '') or why);
     else
         say('/vantage: settings, sort [longest|oldest|remaining|name], filters, party, alliance, recasts, show, hide, preview, minimal [on|off], mute, lock, unlock, edit [on|off], watch, unwatch, undo, redo, profile, reset, get, set, skin, font, starter, copy, report, overhead [on|off|preview|calibrate], chatsample.');
     end

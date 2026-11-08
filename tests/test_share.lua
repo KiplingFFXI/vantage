@@ -242,6 +242,15 @@ got = round('element', 'target');
 assert(got.panels.target.width == 333 and got.panels.target.mode == 'bars' and got.panels.target.include[33], 'A panel brings its own filters.');
 got = round('element', 'notices');
 assert(got.alerts.notice_x == 500 and got.alerts.notice_width == 600 and #got.alerts.rules == 0, 'The notices bring only their place.');
+-- Replace puts what the string holds in place of yours: a map such as When to show's zones or the part labels comes
+-- whole, never mixed with yours.
+local theirs, own = fresh(), fresh();
+theirs.panels.target.conditions.zones, theirs.panels.target.field_labels = { dungeon = true }, { name = 'Mob' };
+own.panels.target.conditions.zones, own.panels.target.field_labels = { town = true }, { name = 'Foe', target = 'On' };
+theirs, own = defaults.tidy(theirs), defaults.tidy(own);
+got = share.candidate(own, assert(share.read(assert(share.export(theirs, 'element', 'target', NAME)))), 'replace').panels.target;
+assert(equal(got.conditions.zones, { dungeon = true }) and equal(got.field_labels, { name = 'Mob' }),
+    'Replace brings a display\'s zones and part labels as the string has them, never mixed with yours.');
 got = round('layout');
 assert(got.rolls.x == 222 and got.alerts.notice_x == 500 and got.party_cooldowns.list.x == 900 and got.edit_mode.grid == 24
     and got.panels.target.width == 333 and got.rolls.show_odds == true and got.panels.target.mode ~= 'bars', 'A layout brings places, not looks.');
@@ -280,6 +289,12 @@ lines = share.changes(yours, share.candidate(yours, assert(share.read(share.expo
 assert(#lines == 1 and lines[1] == 'Nothing changes.', 'A string of what you have changes nothing.');
 lines = share.changes(yours, share.candidate(yours, assert(share.read(share.export(mine, 'alerts', nil, NAME))), 'add'));
 assert(table.concat(lines, ' '):find('Alert rules: 1 rule now, 2 after.', 1, true), 'Rules are counted: ' .. table.concat(lines, ' | '));
+-- A key that is a number, as /vg set can leave in the settings, is counted as any other.
+local odd = fresh();
+odd.alerts[1], odd[1] = 1, 1;
+local counted, said = pcall(share.changes, odd, fresh());
+assert(counted and table.concat(said, ' '):find('Alerts: 1 setting change.', 1, true),
+    'A number key is counted: ' .. tostring(counted and table.concat(said, ' | ') or said));
 
 -- Through the app and Profiles and sharing: copy to the clipboard, read it back, Import and add as one Undo step.
 local snapshot = { valid = true, id = 1001, name = NAME, zone = 102, job = 17, level = 75, self_known = true, self_effects = {}, party = {}, entities = {} };

@@ -249,15 +249,15 @@ end
 -- Blanks each string that would tell who you are or where your files are, and drops each such key; with find, only
 -- says whether there is one. A path is looked for everywhere. Your names are looked for in text you typed (MARK in
 -- typed, the same data from typed_of), in sound and font names, which tidy reads as choices though each can be a
--- file you named, and in the entries of lists and maps, never in the settings' own keys or in a choice from a list,
--- which a character can share a name with.
+-- file you named, and in the entries of lists and maps, never in the settings' own keys, a key that reads as a number,
+-- which is an id, or a choice from a list, which a character can share a name with.
 local function scrub(value, typed, names, find)
     if type(value) ~= 'table' then return false; end
     local fields = record(typed);
     local item = not fields and type(typed) == 'table' and typed[1] or nil;
     for key, child in pairs(value) do
         local shape = fields and typed[key] or item;
-        if path_like(key) or not (fields and typed[key] ~= nil) and named(key, names) then
+        if path_like(key) or not (fields and typed[key] ~= nil) and not tonumber(key) and named(key, names) then
             if find then return true; end
             value[key] = nil;
         elseif type(child) == 'string' then
@@ -467,10 +467,14 @@ local function fill_unchanged(target, data, fresh, first)
     end
 end
 
--- Puts data's values in target; a record goes in key by key, so what the string doesn't hold stays.
-local function merge_into(target, data)
+-- Puts data's values in target; a record goes in key by key, so what the string doesn't hold stays. Given fresh, the
+-- defaults target has, only a record fresh holds too goes in key by key: any other table, a list or a map such as When
+-- to show's zones, goes in whole.
+local function merge_into(target, data, fresh)
     for key, value in pairs(data) do
-        if record(value) and record(target[key]) then merge_into(target[key], value); else target[key] = copy(value); end
+        local default = fresh and fresh[key];
+        if record(value) and record(target[key]) and (not fresh or record(default)) then merge_into(target[key], value, default);
+        else target[key] = copy(value); end
     end
 end
 
@@ -522,11 +526,9 @@ local function element_apply(candidate, payload, mode, fresh, first)
     local data = without_own(copy(payload.data), id);
     local root = element_root(candidate, id);
     if id == 'notices' then root = candidate.alerts; end
-    if mode == 'replace' then merge_into(root, data);
-    else
-        fill_unchanged(root, data, id == 'notices' and fresh.alerts or element_root(fresh, id),
-            first and (id == 'notices' and first.alerts or element_root(first, id)));
-    end
+    local fresh_root = id == 'notices' and fresh.alerts or element_root(fresh, id);
+    if mode == 'replace' then merge_into(root, data, fresh_root);
+    else fill_unchanged(root, data, fresh_root, first and (id == 'notices' and first.alerts or element_root(first, id))); end
 end
 
 -- Whether every one of keys still has fresh's value in target, or every one first's, the first frame's, when given.
@@ -660,7 +662,7 @@ function share.changes(settings, candidate)
     line('Alerts size and place', notices, 'setting');
     local other = 0;
     for key, value in pairs(settings.alerts) do
-        if key ~= 'rules' and not key:find('^notice_') and key ~= 'max_notices' then other = other + leaves(value, candidate.alerts[key]); end
+        if key ~= 'rules' and not tostring(key):find('^notice_') and key ~= 'max_notices' then other = other + leaves(value, candidate.alerts[key]); end
     end
     line('Alerts', other, 'setting');
     rules('Alert rules', settings.alerts.rules, candidate.alerts.rules);
@@ -674,7 +676,7 @@ function share.changes(settings, candidate)
     local keys = {};
     for key in pairs(candidate) do if not seen[key] then keys[#keys + 1] = key; end end
     for key in pairs(settings) do if not seen[key] and candidate[key] == nil then keys[#keys + 1] = key; end end
-    table.sort(keys);
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b); end);
     for _, key in ipairs(keys) do line(names[key] or key, leaves(settings[key], candidate[key]), 'setting'); end
     if #lines == 0 then lines[1] = 'Nothing changes.'; end
     return lines;

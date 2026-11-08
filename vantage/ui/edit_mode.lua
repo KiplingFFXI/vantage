@@ -19,6 +19,7 @@ local theme = require('ui.theme');
 local controls = require('ui.controls');
 local fonts = require('ui.fonts');
 local snap = require('ui.snap');
+local resize = require('ui.resize');
 local bit = require('bit');
 local floor = math.floor;
 
@@ -156,11 +157,21 @@ local function outline(list, rect, ink, thickness)
     list:AddRect(from, to, ink, 0, 0, thickness);
 end
 
--- The name is drawn at 14 px in the window's font, so its box is measured at that size, not the font's own.
-local function tag(imgui, list, rect, text, ink)
-    local width = imgui.CalcTextSize(text) * 14 / imgui.GetFontSize();
-    label_at[1], label_at[2] = rect.x + 3, rect.y + 2;
-    from[1], from[2], to[1], to[2] = rect.x + 1, rect.y + 1, rect.x + math.min(rect.width - 1, width + 7), rect.y + 18;
+-- The name sits just above the display, so it covers none of the display's own heading or icons, and above a SAMPLE
+-- tag it would touch there. Near the top of the screen it sits just below instead. It is drawn at 14 px in the
+-- window's font, so its box is measured at that size, not the font's own.
+local function tag(imgui, list, rect, text, ink, screen)
+    local width = imgui.CalcTextSize(text) * 14 / imgui.GetFontSize() + 7;
+    local x, y = floor(math.max(0, math.min(rect.x, screen.x - width))), floor(rect.y - 20);
+    local top = resize.sample_tag(x, y, width, 18);
+    if top then y = floor(top - 20); end
+    if y < 0 then
+        y = floor(rect.y + rect.height + 2);
+        local _, bottom = resize.sample_tag(x, y, width, 18);
+        if bottom then y = floor(bottom + 2); end
+    end
+    from[1], from[2], to[1], to[2] = x, y, x + width, y + 18;
+    label_at[1], label_at[2] = x + 3, y + 2;
     list:AddRectFilled(from, to, 0xD0171717, 2);
     list:AddText(imgui.GetFont(), 14, label_at, ink, text);
 end
@@ -176,8 +187,10 @@ local function hit_flags(inputs)
     return inputs and HIT_FLAGS or bit.bor(HIT_FLAGS, ImGuiWindowFlags_NoInputs or 0);
 end
 
--- Each display's outline and name in a window of its own, which takes the click that picks it and the Shift drag
--- that moves it. Returns whether one of them has focus.
+-- Each display gets a window of edit mode's own, which takes the click that picks it and the Shift drag that moves it,
+-- and an outline with its name. Those go on the display's own window when it opened one, as edit mode's windows sit
+-- behind the displays, and after every window has ended, so no window cuts the outline at its edge. Returns whether
+-- one of edit mode's windows has focus.
 local function outlines(imgui, settings, callbacks, mx, my, shift, blocked, accent, screen)
     local focused = false;
     for _, element in ipairs(elements.movable) do
@@ -189,14 +202,9 @@ local function outlines(imgui, settings, callbacks, mx, my, shift, blocked, acce
             imgui.PushStyleVar(ImGuiStyleVar_WindowMinSize, ZERO);
             imgui.SetNextWindowPos(at, ImGuiCond_Always);
             imgui.SetNextWindowSize(size, ImGuiCond_Always);
+            local locked, list = elements.locked(settings, id), nil;
             if imgui.Begin('##vantage_edit_' .. id, true, hit_flags(not blocked)) then
-                local list = imgui.GetWindowDrawList();
-                local picked = selected == id;
-                local locked = elements.locked(settings, id);
-                outline(list, rect, picked and accent or (locked and 0xFF8C8C8C or 0xFFE6D5A8), picked and 2 or 1);
-                local name = element.label .. (locked and '  (locked)' or '');
-                if not conditions.shown(element.strip and 'party_ui' or id) then name = name .. '  (hidden here now)'; end
-                tag(imgui, list, rect, name, picked and accent or 0xFFFFFFFF);
+                list = imgui.GetWindowDrawList();
                 if not blocked then
                     imgui.SetCursorPos(ZERO);
                     imgui.InvisibleButton('##edit_hit_' .. id, size);
@@ -217,6 +225,14 @@ local function outlines(imgui, settings, callbacks, mx, my, shift, blocked, acce
             end
             imgui.End();
             imgui.PopStyleVar(2);
+            list = elements.window_list(id) or list;
+            if list then
+                local picked = selected == id;
+                outline(list, rect, picked and accent or (locked and 0xFF8C8C8C or 0xFFE6D5A8), picked and 2 or 1);
+                local name = element.label .. (locked and '  (locked)' or '');
+                if not conditions.shown(element.strip and 'party_ui' or id) then name = name .. '  (hidden here now)'; end
+                tag(imgui, list, rect, name, picked and accent or 0xFFFFFFFF, screen);
+            end
         end
     end
     return focused;

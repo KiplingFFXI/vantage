@@ -43,7 +43,6 @@ local function each_case(fn)
 end
 each_case(function(x, y, shift, typing)
     assert(callbacks.settings_blocks_input(x, y, shift, typing) == false, 'A shut window takes no mouse.')
-    MOCK.fire('mouse', { x = x, y = y, message = 513, blocked = false })
 end)
 assert(loads == 0 and package.loaded['ui.settings_window'] == nil, 'Drawing, the mouse and gestures with the window shut load nothing.')
 

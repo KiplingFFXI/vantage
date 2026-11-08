@@ -82,5 +82,14 @@ assert(#failed==1 and failed[1].name=='load.fonts' and failed[1].problem=='Measu
     'The report keeps the part and why.');
 MOCK.frame(.02);MOCK.frame(.02);
 assert(timing.stages['clock.game_time']==1 and timing.stages['warmup.total']==2,'The warmup still runs after it.');
+-- A sounds folder that can't be read is said the same way, though sound.refresh returns why rather than throwing.
+fonts.load=function()end;
+sound.refresh=function()return {},'The local sounds folder could not be opened.';end;
+MOCK.fire('load');
+assert(said('Part of Vantage could not load (the sound list), so it goes on without it. /vg report has the reason.')==1,
+    'A sounds folder that can\'t be read is said once.');
+failed=require('core.warmup').report().failed;
+assert(#failed==1 and failed[1].name=='load.sound' and failed[1].problem=='The local sounds folder could not be opened.',
+    'The report keeps why.');
 fonts.load,sound.refresh=font_load,sound_refresh;
 assert(#MOCK.commands==0);

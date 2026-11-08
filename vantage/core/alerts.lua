@@ -152,7 +152,7 @@ function methods:enqueue(rule,row,event,now,threshold,state,crossed)
     state.last[key], state.since[key] = now, now;
     local notice = { rule_id=rule.id, token=key, key=row.key, instance=row.instance,
         entity_id=row.entity_id,effect=row.effect,event=event,time=now,
-        scope=row.scope,mine=row.mine,category=row.category or row.kind,name=row.name,status=row.status,domain=row.domain,
+        scope=row.scope,mine=row.mine,by_pet=row.by_pet,category=row.category or row.kind,name=row.name,status=row.status,domain=row.domain,
         ends=now+math.max(1,math.min(30,tonumber(rule.duration) or 4)),
         message=wording(rule,row,event,threshold),visual=rule.visual==true,
         chat=rule.chat==true,sound=rule.sound or '',emphasis=rule.emphasis==true,

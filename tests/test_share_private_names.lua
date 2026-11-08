@@ -41,6 +41,16 @@ do -- Section: a Windows user name that ends in an accented letter.
     os.getenv = getenv;
 end; -- end of section
 
+do -- Section: a Windows user name of digits only.
+    -- An id is a number, never a name, so a list of effects by id exports though the user name is those digits.
+    as_user('1234');
+    local settings = defaults.tidy(defaults.make());
+    settings.panels.self_buffs.include = { [1234] = true };
+    local text, why = share.export(settings, 'element', 'self_buffs', NAME);
+    assert(text and json.decode(text:match('^VG:1:%x+:(.+)$')).data.include['1234'], 'A user name of digits leaves the ids alone: ' .. tostring(why));
+    os.getenv = getenv;
+end; -- end of section
+
 do -- Section: the file name.
     for _, case in ipairs({ { 'Tester raid', { NAME }, 'raid' }, { 'TESTER raid', { NAME }, 'raid' }, { 'Tester2 raid', { NAME }, '2 raid' },
         { 'raid Tester Tester', { NAME }, 'raid' }, { 'TesterTester', { NAME }, 'TesterTester' }, { 'Raid', { 'Rai' }, 'Raid' },

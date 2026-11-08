@@ -103,6 +103,7 @@ function methods:open(rect, movable, s, sample)
     if not movable then flags = bit.bor(flags, ImGuiWindowFlags_NoInputs or 0); end
     self.opened = imgui.Begin(self.id, true, flags);
     if not self.opened then return nil; end
+    if self.element then elements.opened(self.element, imgui.GetWindowDrawList()); end
     local moving, list = self.moving, nil;
     list, self.on_top = resize.sample_list(imgui, sample and self.settings.window.open and not moving.editing, rect, moving.mx, moving.my, true);
     if not skin.panel(list, rect, s, nil, nil, s.background, s.border) and not s.minimal then

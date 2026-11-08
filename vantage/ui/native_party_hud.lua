@@ -502,6 +502,7 @@ function overlay.draw(roster, subjects, config, now, callbacks)
         -- Edit mode finds each strip where it was drawn.
         elements.record('strip_' .. plan.group, plan);
         local visible = imgui.Begin('##vantage_native_' .. plan.group, true, panel_flags);
+        if visible then elements.opened('strip_' .. plan.group, imgui.GetWindowDrawList()); end
         fonts.push(look.font, look.font_size);
         -- The clip a sample over the settings window pushes comes off after the paint, even one that failed.
         local list, on_top;

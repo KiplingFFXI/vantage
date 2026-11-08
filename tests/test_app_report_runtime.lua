@@ -40,3 +40,13 @@ report=assert(store.read(path));
 assert(report.jit.applied==false and report.jit.problem:find('Fixture refuses trace limits.',1,true),
     'A refused limit is reported with its reason.');
 assert(app.state.problem==nil,'Vantage draws on without the limits.');
+
+-- An old report that is no longer JSON is replaced, as any old report is.
+local old=assert(io.open(path,'wb'),'Fixture: the report opens.');
+old:write('{"version":');old:close();
+assert(store.read(path)==nil,'Fixture: the old report is not JSON.');
+local said=#MOCK.printed;
+MOCK.fire('command',{command='/vg report'});
+report=store.read(path);
+local message=MOCK.printed[said+1] or '';
+assert(report and report.version=='1.0.0' and message:find('Report saved to',1,true),'A broken old report is replaced: '..message);

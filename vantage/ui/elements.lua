@@ -1,6 +1,7 @@
 -- Every Vantage display, by one id each, for edit mode, anchors, When to show and exports: where its settings
 -- are, the keys of its place, lock, anchor and When to show, and where it was drawn. Each display gives its
--- place here as it draws (record), and an anchored one asks place for where its anchor puts it. The party list strips
+-- place here as it draws (record), with the draw list of the window it opens (opened), and an anchored one asks
+-- place for where its anchor puts it. The party list strips
 -- move in edit mode as three strips but share one When to show; the overhead icons sit over heads in the world,
 -- so they have When to show only. The records are kept and refilled, so a frame makes nothing here.
 local elements = {};
@@ -109,6 +110,16 @@ end
 function elements.drawn(id)
     local entry = drawn[id];
     return entry and entry.frame >= frame - 1 and entry or nil;
+end
+
+-- The draw list of the window each display opened, with the Present it opened in. Edit mode draws each outline and
+-- name on it, so they sit over the display. A list lasts one Present.
+local lists, opened = {}, {};
+function elements.opened(id, list) lists[id], opened[id] = list, frame; end
+
+-- The draw list of id's window from this Present, or nil.
+function elements.window_list(id)
+    return opened[id] == frame and lists[id] or nil;
 end
 
 -- The game's party list (your party's window) and the chat log, where Vantage knows them. The host gives the party
