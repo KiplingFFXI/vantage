@@ -1,0 +1,17 @@
+[
+  {"frame":5,"target":"Size and place##frame_tab","down":true},
+  {"frame":6,"down":false},
+  {"frame":8,"lua":"PREVIEW.verify_editor('place')"},
+  {"frame":9,"target":"Look##frame_tab","down":true},
+  {"frame":10,"down":false},
+  {"frame":12,"lua":"PREVIEW.verify_editor('look')"},
+  {"frame":13,"target":"Filters##frame_tab","down":true},
+  {"frame":14,"down":false},
+  {"frame":16,"lua":"PREVIEW.verify_editor('filters')"},
+  {"frame":21,"target":"When to show##frame_tab","down":true},
+  {"frame":22,"down":false},
+  {"frame":24,"lua":"PREVIEW.verify_editor('when')"},
+  {"frame":25,"target":"Show##frame_tab","down":true},
+  {"frame":26,"down":false},
+  {"frame":28,"lua":"PREVIEW.verify_editor('show')","mouse":[-100,-100]}
+]

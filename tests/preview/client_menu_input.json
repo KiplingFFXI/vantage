@@ -1,0 +1,142 @@
+[
+  {
+    "frame": 4,
+    "target": "< Back##frame",
+    "down": true
+  },
+  {
+    "frame": 5,
+    "down": false
+  },
+  {
+    "frame": 7,
+    "lua": "assert(settings.window.tab=='Home'); settings.window.sections['Home/More look']=true"
+  },
+  {
+    "frame": 8,
+    "mouse": [
+      420,
+      500
+    ],
+    "wheel": -3
+  },
+  {
+    "frame": 10,
+    "lua": "local r=PREVIEW_PY.item_bounds('##main_font'); assert(r[2] and r[2]>100 and r[4]<1000,'Font is visible: '..table.concat(r,','))"
+  },
+  {
+    "frame": 11,
+    "target": "##main_skin",
+    "down": true
+  },
+  {
+    "frame": 12,
+    "down": false
+  },
+  {
+    "frame": 14,
+    "target": "Original FFXI##Original FFXI",
+    "down": true
+  },
+  {
+    "frame": 15,
+    "down": false
+  },
+  {
+    "frame": 18,
+    "lua": "local look=require('ui.theme').window(settings); assert(settings.style.theme=='Original FFXI' and look.theme=='Original FFXI','Native menu theme not applied'); assert(look.font=='Original FFXI' and not require('ui.fonts').window_failed('Original FFXI'),'Generated menu font not loaded')"
+  },
+  {
+    "frame": 19,
+    "target": "##main_window_type",
+    "down": true
+  },
+  {
+    "frame": 20,
+    "down": false
+  },
+  {
+    "frame": 22,
+    "lua": "local drawn=false; for _,run in ipairs(PREVIEW_PY.all_runs()) do if run.kind=='image' and run.native_window and run.native_window:find('##Combo',1,true) then drawn=true end end; assert(drawn,'Native popup texture was not drawn')"
+  },
+  {
+    "frame": 23,
+    "target": "Window Type 8##8",
+    "down": true
+  },
+  {
+    "frame": 24,
+    "down": false
+  },
+  {
+    "frame": 26,
+    "lua": "assert(settings.style.window_type==8,'Window Type 8 was not selected'); local texture=require('ui.client_assets').texture('window','newtex',8); local drawn=false; for _,run in ipairs(PREVIEW_PY.all_runs()) do if run.texture==texture.id then drawn=true end end; assert(drawn,'Selected skin pixels are missing')"
+  },
+  {
+    "frame": 27,
+    "target": "##find_settings",
+    "down": true
+  },
+  {
+    "frame": 28,
+    "down": false
+  },
+  {
+    "frame": 29,
+    "text": "Panel title"
+  },
+  {
+    "frame": 31,
+    "target": "Heading  /  Self buffs, Look",
+    "down": true
+  },
+  {
+    "frame": 32,
+    "down": false
+  },
+  {
+    "frame": 34,
+    "lua": "assert(settings.window.tab=='Display' and require('ui.panel_frame').context()=='self_buffs/look','Search did not open the Look tab')"
+  },
+  {
+    "frame": 36,
+    "target": "##frame_Heading",
+    "down": true
+  },
+  {
+    "frame": 37,
+    "down": false
+  },
+  {
+    "frame": 38,
+    "ctrl": true,
+    "key": "a"
+  },
+  {
+    "frame": 39,
+    "key": "a",
+    "key_down": false,
+    "ctrl": false
+  },
+  {
+    "frame": 40,
+    "text": "Native menu edit"
+  },
+  {
+    "frame": 42,
+    "lua": "assert(settings.panels.self_buffs.title=='Native menu edit','Native menu text input did not edit the setting')"
+  },
+  {
+    "frame": 43,
+    "target": "Undo",
+    "down": true
+  },
+  {
+    "frame": 44,
+    "down": false
+  },
+  {
+    "frame": 46,
+    "lua": "assert(settings.panels.self_buffs.title=='Self buffs','Undo did not restore typed text'); assert(settings.style.window_type==8 and require('ui.theme').window(settings).font=='Original FFXI','Text Undo changed menu appearance')"
+  }
+]

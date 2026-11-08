@@ -1,0 +1,53 @@
+local defaults, profiles, custom = require('ui.defaults'), require('core.profiles'), require('core.customization');
+local s = defaults.make();
+assert(s.alerts.notice_height == 0 and s.alerts.notice_locked == true);
+for _, panel in pairs(s.panels) do assert(panel.auto_height, 'Existing panels keep content-fitting height by default.'); end;
+for _, entry in ipairs({ { -1, 0 }, { 1, 80 }, { 79, 80 }, { 120, 120 }, { 17000, 16000 }, { 0 / 0, 0 } }) do
+    s.alerts.notice_height = entry[1];
+    s = defaults.tidy(s);
+    assert(s.alerts.notice_height == entry[2]);
+end;
+s.alerts.notice_locked, s.panels.self_buffs.auto_height = 'bad', 'bad';
+s = defaults.tidy(s);
+assert(s.alerts.notice_locked and s.panels.self_buffs.auto_height, 'Invalid lock values use the locked default.');
+s.alerts.notice_height, s.alerts.notice_locked, s.panels.self_buffs.auto_height = 390, true, false;
+local captured = profiles.capture(s);
+assert(captured.alerts.notice_height == 390 and captured.alerts.notice_locked and not captured.panels.self_buffs.auto_height);
+local shared = profiles.capture_layout(s, 'presentation');
+assert(shared.presentation.alerts.notice_height == 390 and shared.presentation.alerts.notice_locked == nil, 'Sharing includes height but leaves the notice lock local.');
+assert(profiles.capture_layout(s, 'placement').self_buffs.auto_height == false);
+assert(profiles.capture_layout(s, 'placement').alerts == nil, 'Placement sharing keeps the existing notice scope.');
+assert(custom.reset(s, 'layouts').panels.self_buffs.auto_height, 'Layout reset restores fitting height.');
+local moved = defaults.copy(s);
+moved.window.width, moved.window.tab, moved.window.open = 600, 'Help', true;
+assert(custom.equal(custom.history_value(s), custom.history_value(moved)), 'Ordinary window changes stay out of display Undo.');
+assert(not custom.equal(custom.history_value(s, true), custom.history_value(moved, true)), 'A resize transaction includes window geometry.');
+moved.window.width = s.window.width;
+assert(custom.equal(custom.history_value(s, true), custom.history_value(moved, true)), 'Geometry history excludes navigation and open state.');
+
+local imgui, window = require('imgui'), require('ui.settings_window');
+s.window.open, s.window.tab = true, 'Display';
+require('ui.panel_frame').open('notices', 'place');
+local sliders = {};
+imgui.SliderFloat = function(label, value)
+    if sliders[label] ~= nil then value[1], sliders[label] = sliders[label], nil; return true; end;
+    return false;
+end;
+local cb = { changed = function() end, save = function() return true; end };
+MOCK.clicks['Locked##frame'] = true;
+window.draw(s, require('ui.hud').sample(100), cb);
+assert(not s.alerts.notice_locked, 'Unlocking comes first.');
+sliders['##frame_Tallest'] = 3;
+window.draw(s, require('ui.hud').sample(100), cb);
+assert(s.alerts.notice_height == 80, 'Typed height input is clamped immediately.');
+sliders['##frame_Tallest'] = 0;
+window.draw(s, require('ui.hud').sample(100), cb);
+assert(s.alerts.notice_height == 0);
+require('ui.panel_frame').open('self_buffs', 'place');
+MOCK.clicks['Fit the height to what it shows##frame'] = true;
+window.draw(s, require('ui.hud').sample(100), cb);
+assert(not s.panels.self_buffs.auto_height);
+for _, query in ipairs({ 'Maximum notice height', 'Lock notice position and size', 'Fit panel height to contents', 'settings resize corners', 'notice shift resize' }) do
+    assert(#window.search(query) > 0, 'Resize controls are searchable: ' .. query);
+end;
+assert(#MOCK.commands == 0);

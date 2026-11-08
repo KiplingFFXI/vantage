@@ -1,0 +1,48 @@
+local countdown,metrics=require('ui.countdown_text'),require('ui.text_metrics');
+local fonts,imgui,assets=require('ui.fonts'),require('imgui'),require('ui.client_assets');
+local generation,face,bitmap_reads,fallback_reads,available=1,1,0,0,true;
+assets.generation=function() return generation;end;
+fonts.face=function() return face;end;
+fonts.is_bitmap=function(name) return name=='Original FFXI' or name=='XI View';end;
+fonts.measure_countdown=function(_,text,size,compact)
+    bitmap_reads=bitmap_reads+1;
+    if available then return #text*size*(compact and .4 or .5),size*(compact and .7 or 1);end;
+end;
+imgui.CalcTextSize=function(text) fallback_reads=fallback_reads+1;return #text*imgui.GetFontSize()*.6,imgui.GetFontSize();end;
+local function measure(name,text,size,options,compact) return countdown.measure(name,text,size,options or {},compact);end;
+local width,height=measure('Agave','12m',16,{},true);
+for _=1,100 do
+    local w,h=measure('Agave','12m',16,{},true);
+    assert(w==width and h==height);
+end;
+assert(fallback_reads==1 and bitmap_reads==0,'Identical custom countdowns reuse both measured dimensions');
+local w,h=measure('Agave','12m',16,{outline=true,bold=true,shadow=true},true);
+assert(w==width+3 and h==height+2 and fallback_reads==1,'Styling adds current padding without measuring again');
+measure('Agave','12m',16,{},false);
+measure('Tahoma','12m',16,{},true);
+measure('Agave','12m',24,{},true);
+measure('Agave','13m',16,{},true);
+assert(fallback_reads==5,'Compactness, family, size and countdown changes stay independent');
+generation=generation+1;measure('Agave','12m',16,{},true);
+face=2;measure('Agave','12m',16,{},true);
+assert(fallback_reads==7,'Asset and face changes invalidate cached measurements immediately');
+local calc=imgui.CalcTextSize;
+imgui.CalcTextSize=function(...) return calc(...);end;
+measure('Agave','12m',16,{},true);
+assert(fallback_reads==8,'Measurement replacement cannot retain old countdown metrics');
+available=false;
+w,h=measure('Original FFXI','12m',16,{},true);
+assert(fallback_reads==9 and math.abs(w-28.8)<.00001 and h==16);
+available=true;
+w,h=measure('Original FFXI','12m',16,{},true);
+assert(math.abs(w-19.2)<.00001 and h==11.2 and bitmap_reads==2,
+    'A recovered bitmap upload is retried without an asset generation change');
+width,height=measure('Agave','cold countdown',13);
+w,h=measure('Agave','cold countdown',13);
+assert(w==width and h==height and fallback_reads==10,'Normal drawing primes exact custom-font countdowns');
+for index=1,2200 do measure('Agave','bounded '..index,16);end;
+local before=fallback_reads;
+measure('Agave','cold countdown',13);
+assert(fallback_reads==before+1,'Changing timers cannot grow the metric cache without bound');
+assert(#MOCK.font_stack==0);
+return 'Countdown caching retains exact dimensions and recovers missing bitmap uploads';

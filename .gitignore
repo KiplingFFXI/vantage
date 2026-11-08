@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+tests/out/
+tests/fixtures/clients/
+tests/luajit-x86/
+dist/
+*.zip
+tests/preview/fonts/
+tools/private_markers.txt

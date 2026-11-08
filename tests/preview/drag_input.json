@@ -1,0 +1,18 @@
+[
+  {"frame": 2, "mouse": [80,150], "down": true, "shift": true},
+  {"frame": 3, "delta": [25,25]},
+  {"frame": 4, "down": false},
+  {"frame": 5, "lua": "assert(settings.panels.self_buffs.x==40 and settings.panels.self_buffs.y==120); settings.panels.self_buffs.locked=false"},
+  {"frame": 6, "target": "##move_self_buffs", "down": true},
+  {"frame": 7, "delta": [50,25]},
+  {"frame": 8, "down": false},
+  {"frame": 9, "lua": "assert(settings.panels.self_buffs.x==90 and settings.panels.self_buffs.y==145); assert(PREVIEW.saves>=1); PREVIEW.view.context.chat_open=true"},
+  {"frame": 10, "mouse": [120,180], "down": true},
+  {"frame": 11, "delta": [30,30]},
+  {"frame": 12, "down": false},
+  {"frame": 13, "lua": "assert(settings.panels.self_buffs.x==90 and settings.panels.self_buffs.y==145); PREVIEW.view.context.chat_open=false"},
+  {"frame": 14, "target": "##move_self_buffs", "point": [0.99,0.99], "down": true},
+  {"frame": 15, "delta": [80,40]},
+  {"frame": 16, "down": false},
+  {"frame": 17, "shift": false, "lua": "assert(settings.panels.self_buffs.width==380); assert(settings.panels.self_buffs.height_limit<700); assert(settings.panels.self_buffs.height_limit>=240)"}
+]

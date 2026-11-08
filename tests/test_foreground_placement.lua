@@ -1,0 +1,73 @@
+local copy=require('core.store').copy;
+local actual_native=require('ui.native_party_hud');
+local snapshot={valid=true,id=1001,name='Tester',zone=102,job=1,self_known=true,self_effects={},party={},entities={}};
+package.loaded['core.client']={load=function()end,read=function()return copy(snapshot);end};
+local seen={};
+package.loaded['ui.hud']={draw=function(_,_,_,c)seen.timers={shift=c.shift,focused=c.focused};end,
+    draw_notices=function(_,_,_,c)seen.notices={shift=c.shift,focused=c.focused};end};
+package.loaded['ui.native_party_hud']={draw=function(_,_,_,_,c)seen.native={shift=c.shift,blocked=c.input_blocked};return false,{},{};end,cancel_layout_gesture=function()end};
+package.loaded['ui.settings_window']={draw=function(_,_,c)seen.settings={shift=c.shift,focused=c.focused};end};
+local app=dofile(ADDON_DIR..'/vantage.lua');app.refresh(1);
+local settings=app.state.settings;
+settings.party_ui.enabled=true;
+MOCK.key_shift=true;
+local before=copy(settings);
+local function frame(focused)
+    MOCK.frame(.11);
+    for _,key in ipairs({'timers','settings'}) do assert(seen[key].focused==focused and seen[key].shift==focused,key);end;
+    assert(seen.native.shift==focused and seen.native.blocked==not focused,'party list strips');
+end;
+frame(true);
+MOCK.foreground_pid=9876;frame(false);
+assert(MOCK.key_shift,'Shift remains physically held outside the game.');
+MOCK.foreground_pid=1234;frame(true);
+MOCK.foreground_absent=true;frame(false);MOCK.foreground_absent=false;
+MOCK.foreground_unreadable=true;frame(false);MOCK.foreground_unreadable=false;
+local c=require('ffi').C;local original=c.GetForegroundWindow;c.GetForegroundWindow=function()error('Unreadable foreground');end;
+frame(false);c.GetForegroundWindow=original;
+MOCK.foreground_pid=9876;MOCK.frame(.11);
+assert(not seen.native.shift and seen.native.blocked,'Native and detached buff strips also refuse background editing.');
+MOCK.foreground_pid=1234;MOCK.key_shift=false;MOCK.frame(.11);
+assert(not seen.timers.shift and seen.timers.focused,'Foreground alone never enables placement.');
+for id,p in pairs(settings.panels)do assert(p.locked==before.panels[id].locked);end;
+assert(settings.party_ui.locked==before.party_ui.locked);
+
+local imgui=require('imgui');
+local mx,my,down,pressed,item,active,cursor=-1,-1,false,false,nil,nil,{};
+local position,size,rectangle;
+imgui.GetMousePos=function()return mx,my;end;
+imgui.IsMouseDown=function()return down;end;
+imgui.SetCursorScreenPos=function(value)cursor=value;end;
+imgui.InvisibleButton=function(id,dimensions)
+    item=id;
+    if pressed and mx>=cursor[1] and mx<cursor[1]+dimensions[1] and my>=cursor[2] and my<cursor[2]+dimensions[2] then active=id;end;
+end;
+imgui.IsItemActivated=function()return pressed and item==active;end;
+imgui.IsItemActive=function()return down and item==active;end;
+imgui.SetNextWindowPos=function(value)position=value;end;
+imgui.SetNextWindowSize=function(value)size=value;end;
+imgui.Begin=function()rectangle={x=position[1],y=position[2],width=size[1],height=size[2]};return true;end;
+imgui.GetScrollY=function()return 0;end;
+-- A detached party strip, with the real strip renderer, takes the Shift and focus the app hands it.
+local p=require('ui.party_defaults').make();
+p.enabled,p.locked=true,false;
+local strip=p.groups[1];
+strip.native_detached,strip.detached_x,strip.detached_y,strip.detached_width,strip.detached_height=true,400,200,300,200;
+local roster,subject=require('ui.party_hud').sample(18,100);
+local saves=0;local strip_callbacks={changed=function()saves=saves+1;end,native_geometry={available=false,groups={}}};
+local function focus(pid)
+    MOCK.foreground_pid,MOCK.key_shift=pid,true;MOCK.frame(.11);
+    strip_callbacks.shift,strip_callbacks.input_blocked=seen.native.shift,seen.native.blocked;
+end;
+local function draw()actual_native.draw(roster,subject,p,100,strip_callbacks);end;
+focus(1234);draw();mx,my=rectangle.x+rectangle.width/2,rectangle.y+rectangle.height/2;
+down,pressed=true,true;draw();pressed=false;mx,my=mx+30,my+20;draw();
+assert(strip.detached_x==430 and strip.detached_y==220,'The actual unlocked strip starts a foreground Shift drag');
+local last=copy(p);
+focus(9876);mx,my=mx+80,my+60;draw();
+assert(require('core.store').equal(p,last) and saves==1,'Alt-Tab cancels and saves the active drag once before applying background pointer movement');
+focus(1234);mx,my=mx+30,my+20;draw();
+assert(require('core.store').equal(p,last) and saves==1,'Returning while the mouse is still held cannot resume a cancelled drag');
+down=false;draw();p.locked=true;last=copy(p);
+mx,my=strip.detached_x+strip.detached_width/2,strip.detached_y+strip.detached_height/2;down,pressed=true,true;draw();pressed=false;mx=mx+50;draw();down=false;draw();
+assert(require('core.store').equal(p,last) and saves==1,'Foreground Shift never bypasses the explicit placement lock');

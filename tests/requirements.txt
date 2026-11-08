@@ -1,0 +1,6 @@
+lupa>=2.2
+imgui-bundle==1.92.3
+numpy
+pillow
+pefile
+capstone==5.0.9

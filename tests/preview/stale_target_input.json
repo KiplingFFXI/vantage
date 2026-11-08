@@ -1,0 +1,5 @@
+[
+  {"frame": 5, "target": "##gone", "down": true},
+  {"frame": 6, "down": false},
+  {"frame": 7, "lua": "assert(PREVIEW.other_clicks == 0, 'A stale target clicked the control drawn in its place')"}
+]

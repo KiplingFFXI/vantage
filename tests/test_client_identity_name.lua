@@ -1,0 +1,24 @@
+local client=require('core.client');
+local memory=AshitaCore:GetMemoryManager();
+local party=memory:GetParty();
+local party_name='';
+local entity={Name='Tester',ServerId=1001,ZoneId=102,StatusServer=0};
+party.GetMemberName=function()return party_name;end;
+AshitaCore.GetMemoryManager=function()return memory;end;
+GetPlayerEntity=function()return entity;end;
+local function read()
+    local snapshot=client.read(MOCK.now);
+    assert(snapshot.valid and snapshot.id==1001 and snapshot.zone==102);
+    return snapshot.name;
+end;
+assert(read()=='Tester','A temporarily empty party name uses the coherent player entity name.');
+party_name='Partyname';assert(read()=='Partyname','A complete party name keeps the existing preference.');
+party_name='';entity.ZoneId=0;assert(read()=='Tester','An unset raw entity zone does not invalidate the same character name.');
+entity.ZoneId=nil;assert(read()=='Tester','An unavailable raw entity zone does not invent a different owner.');
+entity.ZoneId=103;assert(read()==nil,'A contradictory positive entity zone cannot supply a fallback identity.');
+entity.ZoneId=102;entity.ServerId=1002;assert(read()==nil,'A different entity cannot supply the settings owner name.');
+entity.ServerId=1001;entity.Name='';assert(read()==nil,'Unknown names stay unknown rather than becoming an ID or placeholder.');
+entity.Name='Tester';party_name=nil;assert(read()=='Tester');
+party_name={};assert(read()=='Tester','Unreadable party name values use a coherent entity name.');
+party_name='';entity.Name='Tester\0';assert(read()==nil,'Control characters cannot enter a settings identity.');
+entity.Name='///';assert(read()==nil,'A name with no valid path characters cannot select an anonymous settings file.');

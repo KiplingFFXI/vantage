@@ -1,0 +1,33 @@
+local store = require('core.store');
+local path = MOCK_INSTALL_PATH .. '/config/addons/vantage/settings.json';
+local function content()
+    local file = assert(io.open(path, 'rb'));
+    local text = file:read('*a'); file:close(); return text;
+end
+assert(type(store.read(path)) == 'table');
+assert(store.write(path, { enabled = true, nested = { text = 'Keep me', order = { 2, 1 } } }));
+local saved = assert(store.read(path));
+assert(saved.enabled and saved.nested.text == 'Keep me' and saved.nested.order[1] == 2);
+local baseline = content();
+MOCK.file_replace_error = true;
+assert(not store.write(path, { changed = true }));
+assert(content() == baseline);
+MOCK.file_replace_error = false;
+local file = assert(io.open(path, 'wb')); file:write('{ broken'); file:close();
+local value, err = store.read(path);
+assert(value == nil and type(err) == 'string');
+assert(not store.write(path, { overwrite = true }));
+assert(content() == '{ broken');
+os.remove(path);
+local cycle = {}; cycle.self = cycle;
+assert(not store.write(path, cycle));
+assert(not ashita.fs.exists(path));
+assert(not store.write(path, 'not a table'));
+local copied = store.copy({ arr = { 1, 2 }, nested = { key = 'old' } });
+local again = store.copy(copied); again.nested.key = 'new';
+assert(copied.nested.key == 'old' and again.arr[2] == 2);
+local bad = MOCK_INSTALL_PATH .. '/config/addons/vantage/unreadable.json';
+MOCK.fs[bad] = true;
+assert(store.read(bad) == nil);
+assert(not store.write(bad, {}));
+return true;

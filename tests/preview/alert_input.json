@@ -1,0 +1,12 @@
+[
+  {"frame": 2, "target": "Haste reminder###Haste reminder##frame", "down": true},
+  {"frame": 3, "down": false},
+  {"frame": 4, "lua": "assert(#settings.alerts.rules==1,'Reminder was not created'); assert(settings.alerts.rules[1].effect==33,'Reminder effect changed'); assert(settings.alerts.rules[1].sound=='','Reminder enabled a sound'); assert(settings.alerts.rules[1].thresholds[1]==30,'Reminder threshold changed'); assert(PREVIEW.changes>=2,'Creation did not finish its edit'); assert(PREVIEW.saves>=1,'Creation was not saved')"},
+  {"frame": 5, "target": "##find_settings", "down": true},
+  {"frame": 6, "down": false},
+  {"frame": 7, "text": "Test this alert"},
+  {"frame": 9, "lua": "local r=PREVIEW_PY.item_bounds('Test this alert###Test this alert##frame'); assert(r[2] and r[2]>=settings.window.y and r[4]<=settings.window.y+settings.window.height,'Search did not reveal the alert test action')"},
+  {"frame": 10, "target": "Test this alert###Test this alert##frame", "down": true},
+  {"frame": 11, "down": false},
+  {"frame": 12, "mouse": [-100,-100], "lua": "assert(PREVIEW.tested_rule==settings.alerts.rules[1],'Test button did not receive the created rule'); assert(PREVIEW.tested_rule.sound=='','Test enabled a sound')"}
+]

@@ -1,0 +1,234 @@
+[
+  {
+    "frame": 1,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='left'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 2,
+    "target": "##native_move_1",
+    "point": [
+      0.001,
+      0.5
+    ],
+    "down": true
+  },
+  {
+    "frame": 3,
+    "delta": [
+      -40,
+      20
+    ]
+  },
+  {
+    "frame": 5,
+    "down": false
+  },
+  {
+    "frame": 6,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==-40 and g.native_y==20,'left/left moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+-40 and p.y==PREVIEW.native_before.y+20,'left/left keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==1 and PREVIEW.native_starts==1 and PREVIEW.native_targets==0,'left/left transaction')"
+  },
+  {
+    "frame": 8,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='left'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 9,
+    "target": "##native_move_1",
+    "point": [
+      0.999,
+      0.5
+    ],
+    "down": true
+  },
+  {
+    "frame": 10,
+    "delta": [
+      -40,
+      20
+    ]
+  },
+  {
+    "frame": 12,
+    "down": false
+  },
+  {
+    "frame": 13,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==-40 and g.native_y==20,'left/right moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+-40 and p.y==PREVIEW.native_before.y+20,'left/right keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==2 and PREVIEW.native_starts==2 and PREVIEW.native_targets==0,'left/right transaction')"
+  },
+  {
+    "frame": 15,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='left'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 16,
+    "target": "##native_move_1",
+    "point": [
+      0.001,
+      0.001
+    ],
+    "down": true
+  },
+  {
+    "frame": 17,
+    "delta": [
+      -40,
+      20
+    ]
+  },
+  {
+    "frame": 19,
+    "down": false
+  },
+  {
+    "frame": 20,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==-40 and g.native_y==20,'left/top_left moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+-40 and p.y==PREVIEW.native_before.y+20,'left/top_left keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==3 and PREVIEW.native_starts==3 and PREVIEW.native_targets==0,'left/top_left transaction')"
+  },
+  {
+    "frame": 22,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='left'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 23,
+    "target": "##native_move_1",
+    "point": [
+      0.999,
+      0.999
+    ],
+    "down": true
+  },
+  {
+    "frame": 24,
+    "delta": [
+      -40,
+      20
+    ]
+  },
+  {
+    "frame": 26,
+    "down": false
+  },
+  {
+    "frame": 27,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==-40 and g.native_y==20,'left/bottom_right moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+-40 and p.y==PREVIEW.native_before.y+20,'left/bottom_right keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==4 and PREVIEW.native_starts==4 and PREVIEW.native_targets==0,'left/bottom_right transaction')"
+  },
+  {
+    "frame": 29,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='right'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 30,
+    "target": "##native_move_1",
+    "point": [
+      0.001,
+      0.5
+    ],
+    "down": true
+  },
+  {
+    "frame": 31,
+    "delta": [
+      40,
+      20
+    ]
+  },
+  {
+    "frame": 33,
+    "down": false
+  },
+  {
+    "frame": 34,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==40 and g.native_y==20,'right/left moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+40 and p.y==PREVIEW.native_before.y+20,'right/left keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==5 and PREVIEW.native_starts==5 and PREVIEW.native_targets==0,'right/left transaction')"
+  },
+  {
+    "frame": 36,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='right'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 37,
+    "target": "##native_move_1",
+    "point": [
+      0.999,
+      0.5
+    ],
+    "down": true
+  },
+  {
+    "frame": 38,
+    "delta": [
+      40,
+      20
+    ]
+  },
+  {
+    "frame": 40,
+    "down": false
+  },
+  {
+    "frame": 41,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==40 and g.native_y==20,'right/right moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+40 and p.y==PREVIEW.native_before.y+20,'right/right keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==6 and PREVIEW.native_starts==6 and PREVIEW.native_targets==0,'right/right transaction')"
+  },
+  {
+    "frame": 43,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='right'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 44,
+    "target": "##native_move_1",
+    "point": [
+      0.001,
+      0.001
+    ],
+    "down": true
+  },
+  {
+    "frame": 45,
+    "delta": [
+      40,
+      20
+    ]
+  },
+  {
+    "frame": 47,
+    "down": false
+  },
+  {
+    "frame": 48,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==40 and g.native_y==20,'right/top_left moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+40 and p.y==PREVIEW.native_before.y+20,'right/top_left keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==7 and PREVIEW.native_starts==7 and PREVIEW.native_targets==0,'right/top_left transaction')"
+  },
+  {
+    "frame": 50,
+    "shift": true,
+    "lua": "settings.party_ui.native.side='right'; settings.party_ui.native.width=420; settings.party_ui.groups[1].native_x=0; settings.party_ui.groups[1].native_y=0; settings.party_ui.groups[1].native_detached=false; settings.party_ui.groups[1].native_side='default'; PREVIEW.native_before=PREVIEW.native_plan()"
+  },
+  {
+    "frame": 51,
+    "target": "##native_move_1",
+    "point": [
+      0.999,
+      0.999
+    ],
+    "down": true
+  },
+  {
+    "frame": 52,
+    "delta": [
+      40,
+      20
+    ]
+  },
+  {
+    "frame": 54,
+    "down": false
+  },
+  {
+    "frame": 55,
+    "lua": "local p=PREVIEW.native_plan(); local g=settings.party_ui.groups[1]; assert(not g.native_detached and g.native_x==40 and g.native_y==20,'right/bottom_right moves'); assert(p.width==PREVIEW.native_before.width and p.height==PREVIEW.native_before.height and p.x==PREVIEW.native_before.x+40 and p.y==PREVIEW.native_before.y+20,'right/bottom_right keeps its size'); assert(settings.party_ui.native.width==420 and PREVIEW.native_saves==8 and PREVIEW.native_starts==8 and PREVIEW.native_targets==0,'right/bottom_right transaction')"
+  }
+]

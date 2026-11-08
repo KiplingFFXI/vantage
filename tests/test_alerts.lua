@@ -1,0 +1,62 @@
+local A=require('core.alerts');
+local a=A.new();
+local rule={id='haste',enabled=true,event='remaining',effect=33,scope='self',thresholds={30,10},unit='seconds',
+    cooldown=0,visual=true,chat=true,sound='ding.wav',duration=4};
+local row={key='10:33',instance=1,effect=33,name='Haste',scope='self',entity_id=10,status='server',remaining=40,total=180,present=true};
+local v={valid=true,rows={row},subjects={{id=10,scope='self',known=true}},context={id=10,zone=1,job=1}};
+a:update(v,{}, {rule},0,{});assert(#a:drain(0)==0);
+row.remaining=5;a:update(v,{}, {rule},1,{});
+local notices=a:drain(1);assert(#notices==1 and notices[1].threshold==10,'Crossed thresholds should coalesce to the most urgent.');
+a:update(v,{}, {rule},1.1,{});assert(#a:drain(1.1)==0);
+row.instance=2;row.remaining=180;a:update(v,{{kind='refresh',key=row.key,instance=2}},{rule},2,{});
+assert(#a:view(2)==0,'Refreshing invalidates the previous notice.');
+row.remaining=29;a:update(v,{}, {rule},3,{});assert(#a:drain(3)==1);
+row.status='estimated';row.instance=3;row.remaining=40;a:update(v,{}, {rule},4,{});
+row.remaining=5;a:update(v,{}, {rule},5,{});notices=a:drain(5);assert(#notices==1 and notices[1].estimated,'An estimate fires and says it is one.');
+rule.thresholds={3};a:update(v,{}, {rule},7.1,{});assert(#a:view(7.1)==0,'Editing a rule withdraws old notices.');
+row.remaining=2;a:update(v,{}, {rule},8,{muted=true});assert(#a:drain(8)==0);
+a:update(v,{}, {rule},9,{});assert(#a:drain(9)==0,'Unmute must not replay old warnings.');
+row.status='server';row.instance=4;row.remaining=100;rule.unit='percent';rule.thresholds={50};row.total=nil;
+a:update(v,{}, {rule},10,{});row.remaining=1;a:update(v,{}, {rule},11,{});assert(#a:drain(11)==0,'Percent requires a known total.');
+row.total=100;row.instance=5;row.remaining=90;a:update(v,{}, {rule},12,{});row.remaining=40;a:update(v,{}, {rule},13,{});assert(#a:drain(13)==1);
+row.duration_min=30;row.instance=6;row.remaining=90;a:update(v,{}, {rule},14,{});row.remaining=40;a:update(v,{}, {rule},15,{});
+assert(#a:drain(15)==0,'A duration range must not masquerade as a known total for percent alerts.');row.duration_min=nil;
+
+a=A.new();rule.event='missing';rule.unit='seconds';rule.effect_name='Haste';rule.cooldown=0;rule.repeat_seconds=0;
+v.rows={};v.subjects[1].known=false;
+a:update(v,{}, {rule},0,{});a:update(v,{}, {rule},4,{});assert(#a:drain(4)==0,'Unknown is not missing.');
+v.subjects[1].known=true;a:update(v,{}, {rule},5,{});assert(#a:drain(5)==0);
+a:update(v,{}, {rule},8,{});notices=a:drain(8);assert(#notices==1 and notices[1].event=='missing');
+a:update(v,{}, {rule},9,{});assert(#a:drain(9)==0);
+v.rows={row};a:update(v,{}, {rule},10,{});v.rows={};a:update(v,{}, {rule},11,{});assert(#a:drain(11)==1);
+
+a=A.new();rule.event='removed';v.rows={row};a:update(v,{}, {rule},0,{});
+v.rows={};a:update(v,{}, {rule},1,{});assert(#a:drain(1)==0,'List disappearance is not a removal event.');
+local event={kind='removed',key=row.key,instance=5,effect=33,entity_id=10,scope='self',name='Haste'};
+a:update(v,{event}, {rule},2,{});assert(#a:drain(2)==1);
+a:update(v,{event}, {rule},2.1,{});assert(#a:drain(2.1)==0,'Duplicate events must be deduplicated.');
+a:update(v,{{kind='reset'}}, {rule},3,{});assert(#a:view(3)==0);
+a:test(rule,4);a:test(rule,4);notices=a:drain(4);assert(#notices==2);
+local sounds=0;for _,notice in ipairs(notices) do if notice.sound~='' then sounds=sounds+1; end end
+assert(sounds==1,'Simultaneous alerts must cap sound playback.');
+rule.scope='target';v.context.target={id=99};a:reset();a:update(v,{}, {rule},5,{});
+a:update(v,{event}, {rule},6,{});assert(#a:drain(6)==0,'Target scope must match identity.');
+
+a=A.new();rule.scope='self';rule.event='missing';rule.effect=33;rule.repeat_seconds=0;
+local options={};
+v.rows={row};row.present=true;
+a:update(v,{}, {rule},0,options);a:update(v,{}, {rule},4,options);
+assert(#a:drain(4)==0,'A present effect satisfies a missing-effect rule.');
+v.rows={};a:update(v,{}, {rule},5,options);notices=a:drain(5);
+assert(#notices==1 and notices[1].message:find('Haste',1,true),'An absent effect should emit one named notice.');
+a=A.new();options.muted=true;a:update(v,{}, {rule},0,options);a:update(v,{}, {rule},4,options);
+options.muted=false;a:update(v,{}, {rule},5,options);assert(#a:drain(5)==0);
+a:update(v,{}, {rule},5.1,options);assert(#a:drain(5.1)==0,'Muted absence must not queue a delayed alert.');
+a:update(v,{}, {rule},8,options);assert(#a:drain(8)==1);
+v.rows={row};a:update(v,{}, {rule},8.1,options);
+assert(#a:view(8.1)==0,'Missing notices must withdraw as soon as the condition is resolved.');
+rule.duration=30;a:test(rule,9);assert(a:view(38)[1].ends==39,'The notice lifetime must honor the full UI range.');
+rule.volume=23; rule.flash=true; rule.flash_seconds=2; rule.flash_color={1,0,0,1};
+a:reset(); a:test(rule,40); notices=a:drain(40);
+assert(notices[1].volume==23 and notices[1].flash and notices[1].flash_ends==42);
+assert(notices[1].flash_color[2]==0 and notices[1].ends==70, 'Flash duration is independent of the notice lifetime.');

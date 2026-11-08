@@ -1,0 +1,33 @@
+local A, copy = require('core.alerts'), require('core.store').copy;
+local recast={domain='recast',scope='recast',key='recast:spell:57',instance=1,effect=10057,name='Haste',
+    kind='spell',group='spell_recasts',entity_id=10,entity_name='You',status='server',remaining=40,present=true};
+local view={valid=true,context={id=10,job=5},rows={recast},subjects={{id=10,known=true,scope='self'}}};
+local rule={domain='recast',id='cooldown',enabled=true,effect=0,scope='self',event='remaining',thresholds={10},
+    cooldown=0,duration=4,visual=true,chat=true};
+local a=A.new();
+a:update(view,{}, {rule},0,{}); recast.remaining=8;
+a:update(view,{}, {rule},1,{}); local notices=a:drain(1);
+assert(#notices==1 and notices[1].message=='Haste recast has 8 seconds left.');
+assert(notices[1].domain=='recast' and notices[1].scope=='recast');
+local status=copy(recast);status.domain=nil;status.scope='self';status.effect=33;status.key='status:33';status.remaining=40;
+view.rows={status};a=A.new();a:update(view,{}, {rule},0,{});status.remaining=5;a:update(view,{}, {rule},1,{});
+assert(#a:drain(1)==0,'Recast rules cannot match similarly named buffs.');
+rule.domain=nil;rule.scope='all';view.rows={recast};recast.remaining=40;
+a=A.new();a:update(view,{}, {rule},0,{});recast.remaining=5;a:update(view,{}, {rule},1,{});
+assert(#a:drain(1)==0,'Existing all-target status rules cannot start matching cooldowns.');
+rule.domain='recast';rule.scope='self';rule.event='ready';view.rows={recast};
+a=A.new();a:update(view,{}, {rule},0,{});view.rows={};a:update(view,{}, {rule},1,{});
+assert(#a:drain(1)==0,'An absent recast row does not prove readiness.');
+local event=copy(recast);event.kind='ready';event.remaining=0;
+a:update(view,{event}, {rule},2,{});notices=a:drain(2);
+assert(#notices==1 and notices[1].message=='Haste recast is ready.');
+a:update(view,{event}, {rule},2.1,{});assert(#a:drain(2.1)==0,'Ready events are deduplicated.');
+a:reset();a:update(view,{event}, {rule},3,{});assert(#a:drain(3)==0,'Load does not replay readiness.');
+a:update(view,{}, {rule},4,{muted=true});event.instance=2;
+a:update(view,{event}, {rule},5,{});assert(#a:drain(5)==0,'Unmute baselines ready events.');
+rule.event='started';a:reset();a:update(view,{}, {rule},6,{});event.kind='started';view.rows={recast};event.instance=recast.instance;
+a:update(view,{event}, {rule},7,{});notices=a:drain(7);
+assert(#notices==1 and notices[1].message=='Haste is on cooldown.');
+rule.event='remaining';rule.unit='percent';rule.thresholds={50};recast.remaining=90;recast.total=nil;
+a:reset();a:update(view,{}, {rule},8,{});recast.remaining=1;a:update(view,{}, {rule},9,{});
+assert(#a:drain(9)==0,'A loaded partial cooldown cannot trigger percent thresholds.');

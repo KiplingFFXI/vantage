@@ -1,0 +1,505 @@
+[
+  {
+    "frame": 3,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==0 and PREVIEW.addon.state.transaction==nil); PREVIEW.expect_geometry(100,100,800,600) end); assert(ok,'Input frame 3: '..tostring(issue))"
+  },
+  {
+    "frame": 4,
+    "mouse": [
+      899,
+      699
+    ],
+    "shift": true
+  },
+  {
+    "frame": 6,
+    "down": true
+  },
+  {
+    "frame": 7,
+    "delta": [
+      40,
+      30
+    ]
+  },
+  {
+    "frame": 8,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==0,'Resize was saved before release'); PREVIEW.expect_window(840,630) end); assert(ok,'Input frame 8: '..tostring(issue))"
+  },
+  {
+    "frame": 9,
+    "down": false
+  },
+  {
+    "frame": 10,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(100,100,840,630,'bottom right'); local b,a,s=PREVIEW.resize_counts(); assert(b==1 and a==1 and s==1,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==1 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 10: '..tostring(issue))"
+  },
+  {
+    "frame": 12,
+    "mouse": [
+      939,
+      400
+    ],
+    "shift": true
+  },
+  {
+    "frame": 14,
+    "down": true
+  },
+  {
+    "frame": 15,
+    "delta": [
+      30,
+      0
+    ]
+  },
+  {
+    "frame": 16,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==1,'Resize was saved before release'); PREVIEW.expect_window(870,630) end); assert(ok,'Input frame 16: '..tostring(issue))"
+  },
+  {
+    "frame": 17,
+    "down": false
+  },
+  {
+    "frame": 18,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(100,100,870,630,'right'); local b,a,s=PREVIEW.resize_counts(); assert(b==2 and a==2 and s==2,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==2 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 18: '..tostring(issue))"
+  },
+  {
+    "frame": 20,
+    "mouse": [
+      500,
+      729
+    ],
+    "shift": true
+  },
+  {
+    "frame": 22,
+    "down": true
+  },
+  {
+    "frame": 23,
+    "delta": [
+      0,
+      20
+    ]
+  },
+  {
+    "frame": 24,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==2,'Resize was saved before release'); PREVIEW.expect_window(870,650) end); assert(ok,'Input frame 24: '..tostring(issue))"
+  },
+  {
+    "frame": 25,
+    "down": false
+  },
+  {
+    "frame": 26,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(100,100,870,650,'bottom'); local b,a,s=PREVIEW.resize_counts(); assert(b==3 and a==3 and s==3,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==3 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 26: '..tostring(issue))"
+  },
+  {
+    "frame": 28,
+    "mouse": [
+      101,
+      400
+    ],
+    "shift": true
+  },
+  {
+    "frame": 30,
+    "down": true
+  },
+  {
+    "frame": 31,
+    "delta": [
+      -20,
+      0
+    ]
+  },
+  {
+    "frame": 32,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==3,'Resize was saved before release'); PREVIEW.expect_window(890,650) end); assert(ok,'Input frame 32: '..tostring(issue))"
+  },
+  {
+    "frame": 33,
+    "down": false
+  },
+  {
+    "frame": 34,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(80,100,890,650,'left'); local b,a,s=PREVIEW.resize_counts(); assert(b==4 and a==4 and s==4,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==4 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 34: '..tostring(issue))"
+  },
+  {
+    "frame": 36,
+    "mouse": [
+      500,
+      101
+    ],
+    "shift": true
+  },
+  {
+    "frame": 38,
+    "down": true
+  },
+  {
+    "frame": 39,
+    "delta": [
+      0,
+      -10
+    ]
+  },
+  {
+    "frame": 40,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==4,'Resize was saved before release'); PREVIEW.expect_window(890,660) end); assert(ok,'Input frame 40: '..tostring(issue))"
+  },
+  {
+    "frame": 41,
+    "down": false
+  },
+  {
+    "frame": 42,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(80,90,890,660,'top'); local b,a,s=PREVIEW.resize_counts(); assert(b==5 and a==5 and s==5,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==5 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 42: '..tostring(issue))"
+  },
+  {
+    "frame": 44,
+    "mouse": [
+      81,
+      91
+    ],
+    "shift": true
+  },
+  {
+    "frame": 46,
+    "down": true
+  },
+  {
+    "frame": 47,
+    "delta": [
+      -20,
+      -20
+    ]
+  },
+  {
+    "frame": 48,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==5,'Resize was saved before release'); PREVIEW.expect_window(910,680) end); assert(ok,'Input frame 48: '..tostring(issue))"
+  },
+  {
+    "frame": 49,
+    "down": false
+  },
+  {
+    "frame": 50,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(60,70,910,680,'top left'); local b,a,s=PREVIEW.resize_counts(); assert(b==6 and a==6 and s==6,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==6 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 50: '..tostring(issue))"
+  },
+  {
+    "frame": 52,
+    "mouse": [
+      969,
+      71
+    ],
+    "shift": true
+  },
+  {
+    "frame": 54,
+    "down": true
+  },
+  {
+    "frame": 55,
+    "delta": [
+      30,
+      -20
+    ]
+  },
+  {
+    "frame": 56,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==6,'Resize was saved before release'); PREVIEW.expect_window(940,700) end); assert(ok,'Input frame 56: '..tostring(issue))"
+  },
+  {
+    "frame": 57,
+    "down": false
+  },
+  {
+    "frame": 58,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(60,50,940,700,'top right'); local b,a,s=PREVIEW.resize_counts(); assert(b==7 and a==7 and s==7,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==7 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 58: '..tostring(issue))"
+  },
+  {
+    "frame": 60,
+    "mouse": [
+      61,
+      749
+    ],
+    "shift": true
+  },
+  {
+    "frame": 62,
+    "down": true
+  },
+  {
+    "frame": 63,
+    "delta": [
+      -10,
+      20
+    ]
+  },
+  {
+    "frame": 64,
+    "lua": "local ok, issue=pcall(function() assert(#PREVIEW.addon.state.history==7,'Resize was saved before release'); PREVIEW.expect_window(950,720) end); assert(ok,'Input frame 64: '..tostring(issue))"
+  },
+  {
+    "frame": 65,
+    "down": false
+  },
+  {
+    "frame": 66,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(50,50,950,720,'bottom left'); local b,a,s=PREVIEW.resize_counts(); assert(b==8 and a==8 and s==8,'Resize saved more than once'); assert(#PREVIEW.addon.state.history==8 and PREVIEW.resize_label=='Settings window layout') end); assert(ok,'Input frame 66: '..tostring(issue))"
+  },
+  {
+    "frame": 68,
+    "mouse": [
+      999,
+      769
+    ],
+    "shift": true
+  },
+  {
+    "frame": 70,
+    "down": true
+  },
+  {
+    "frame": 71,
+    "down": false
+  },
+  {
+    "frame": 72,
+    "lua": "local ok, issue=pcall(function() local b,a,s=PREVIEW.resize_counts(); assert(b==8 and a==8 and s==8 and PREVIEW.addon.state.transaction==nil,'A grip click left a stale transaction') end); assert(ok,'Input frame 72: '..tostring(issue))"
+  },
+  {
+    "frame": 73,
+    "mouse": [
+      999,
+      769
+    ],
+    "lua": "local ok, issue=pcall(function() MOCK.typing=true; PREVIEW.addon.refresh(MOCK.now) end); assert(ok,'Input frame 73: '..tostring(issue))"
+  },
+  {
+    "frame": 74,
+    "down": true
+  },
+  {
+    "frame": 75,
+    "delta": [
+      30,
+      20
+    ]
+  },
+  {
+    "frame": 76,
+    "down": false
+  },
+  {
+    "frame": 77,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(50,50,950,720,'Typing guard'); assert(#PREVIEW.addon.state.history==8); MOCK.typing=false; PREVIEW.addon.refresh(MOCK.now) end); assert(ok,'Input frame 77: '..tostring(issue))"
+  },
+  {
+    "frame": 78,
+    "mouse": [
+      997,
+      767
+    ],
+    "shift": false
+  },
+  {
+    "frame": 80,
+    "down": true
+  },
+  {
+    "frame": 81,
+    "delta": [
+      40,
+      30
+    ]
+  },
+  {
+    "frame": 82,
+    "down": false
+  },
+  {
+    "frame": 84,
+    "lua": "local ok, issue=pcall(function() assert(settings.window.width>950 and settings.window.height>720,'Ordinary ImGui resize was blocked'); PREVIEW.normal_geometry=require('ui.defaults').copy(settings.window); assert(#PREVIEW.addon.state.history==9) end); assert(ok,'Input frame 84: '..tostring(issue))"
+  },
+  {
+    "frame": 85,
+    "target": "Undo",
+    "down": true
+  },
+  {
+    "frame": 86,
+    "down": false
+  },
+  {
+    "frame": 88,
+    "lua": "local ok, issue=pcall(function() PREVIEW.expect_geometry(50,50,950,720,'Undo'); assert(settings.window.open and settings.window.tab=='Help' and settings.window.sections['Help/Kept section']); assert(#PREVIEW.addon.state.redo==1 and PREVIEW.addon.state.redo[1].label=='Settings window size') end); assert(ok,'Input frame 88: '..tostring(issue))"
+  },
+  {
+    "frame": 89,
+    "target": "Redo",
+    "down": true
+  },
+  {
+    "frame": 90,
+    "down": false
+  },
+  {
+    "frame": 92,
+    "lua": "local ok, issue=pcall(function() local r=PREVIEW.normal_geometry; PREVIEW.expect_geometry(r.x,r.y,r.width,r.height,'Redo'); assert(settings.window.tab=='Help' and settings.window.sections['Help/Kept section']); assert(#PREVIEW.addon.state.history==9 and #PREVIEW.addon.state.redo==0) end); assert(ok,'Input frame 92: '..tostring(issue))"
+  },
+  {
+    "frame": 93,
+    "mouse": [
+      500,
+      400
+    ],
+    "shift": true
+  },
+  {
+    "frame": 95,
+    "lua": "local ok, issue=pcall(function() assert(require('bit').band(PREVIEW.settings_flags,ImGuiWindowFlags_NoInputs)~=0,'Shift peek kept settings controls visible') end); assert(ok,'Input frame 95: '..tostring(issue))"
+  },
+  {
+    "frame": 96,
+    "mouse": [
+      50,
+      400
+    ],
+    "down": true
+  },
+  {
+    "frame": 97,
+    "delta": [
+      -20,
+      0
+    ]
+  },
+  {
+    "frame": 98,
+    "down": false
+  },
+  {
+    "frame": 100,
+    "lua": "local ok, issue=pcall(function() local r=PREVIEW.normal_geometry; PREVIEW.expect_geometry(30,r.y,r.width+20,r.height,'Resize directly from peek'); assert(#PREVIEW.addon.state.history==10) end); assert(ok,'Input frame 100: '..tostring(issue))"
+  },
+  {
+    "frame": 101,
+    "shift": false,
+    "mouse": [
+      500,
+      400
+    ]
+  },
+  {
+    "frame": 102,
+    "lua": "settings.window.tab='Display'"
+  },
+  {
+    "frame": 103,
+    "down": false,
+    "lua": "settings.window.peek=false; PREVIEW.before_move=require('ui.defaults').copy(settings.window); PREVIEW.before_enabled=settings.panels.self_buffs.enabled"
+  },
+  {
+    "frame": 105,
+    "target": "On##frame_display",
+    "shift": true
+  },
+  {
+    "frame": 107,
+    "down": true
+  },
+  {
+    "frame": 108,
+    "delta": [
+      35,
+      40
+    ]
+  },
+  {
+    "frame": 110,
+    "down": false
+  },
+  {
+    "frame": 112,
+    "lua": "local r=PREVIEW.before_move; PREVIEW.expect_geometry(r.x+35,r.y+40,r.width,r.height,'Move over a checkbox'); assert(settings.panels.self_buffs.enabled==PREVIEW.before_enabled,'Shift movement activated the checkbox'); assert(#PREVIEW.addon.state.history==11 and PREVIEW.resize_label=='Settings window layout'); settings.window.peek=true"
+  },
+  {
+    "frame": 114,
+    "mouse": [
+      400,
+      110
+    ],
+    "shift": true
+  },
+  {
+    "frame": 116,
+    "down": true
+  },
+  {
+    "frame": 117,
+    "delta": [
+      30,
+      20
+    ]
+  },
+  {
+    "frame": 119,
+    "down": false
+  },
+  {
+    "frame": 121,
+    "lua": "local r=PREVIEW.before_move; PREVIEW.expect_geometry(r.x+65,r.y+60,r.width,r.height,'Title movement with peek'); assert(#PREVIEW.addon.state.history==12 and PREVIEW.resize_label=='Settings window layout')"
+  },
+  {
+    "frame": 123,
+    "target": "Undo",
+    "shift": false,
+    "down": true
+  },
+  {
+    "frame": 124,
+    "down": false
+  },
+  {
+    "frame": 126,
+    "lua": "local r=PREVIEW.before_move; PREVIEW.expect_geometry(r.x+35,r.y+40,r.width,r.height,'Undo movement'); assert(settings.window.open and settings.window.tab=='Display' and settings.window.sections['Help/Kept section'])"
+  },
+  {
+    "frame": 128,
+    "target": "Redo",
+    "down": true
+  },
+  {
+    "frame": 129,
+    "down": false
+  },
+  {
+    "frame": 131,
+    "lua": "local r=PREVIEW.before_move; PREVIEW.expect_geometry(r.x+65,r.y+60,r.width,r.height,'Redo movement'); assert(#PREVIEW.addon.state.history==12 and #PREVIEW.addon.state.redo==0); settings.window.peek=false"
+  },
+  {
+    "frame": 133,
+    "target": "On##frame_display",
+    "shift": true
+  },
+  {
+    "frame": 135,
+    "down": true
+  },
+  {
+    "frame": 136,
+    "down": false
+  },
+  {
+    "frame": 138,
+    "lua": "assert(#PREVIEW.addon.state.history==12 and PREVIEW.addon.state.transaction==nil,'An interior click left a stale transaction'); assert(settings.panels.self_buffs.enabled==PREVIEW.before_enabled)"
+  },
+  {
+    "frame": 140,
+    "shift": false
+  }
+]

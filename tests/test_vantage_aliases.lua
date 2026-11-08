@@ -1,0 +1,21 @@
+local identity=require('core.identity');
+local app=dofile(ADDON_DIR..'/vantage.lua');
+assert(app and addon.name=='vantage' and addon.version=='1.0.0');
+assert(MOCK.events.command.vantage_command);
+assert(MOCK.events.load.vantage_load and MOCK.events.unload.vantage_unload);
+for _,alias in ipairs({'/vantage','/vg','/VANTAGE','/VG'}) do
+    app.state.settings.window.open=false;
+    local event={command=alias};MOCK.fire('command',event);
+    assert(event.blocked and app.state.settings.window.open,'The real command handler accepts '..alias);
+end;
+local unrelated={command='/vantages'};app.state.settings.window.open=false;MOCK.fire('command',unrelated);
+assert(not unrelated.blocked and not app.state.settings.window.open);
+MOCK.fire('load');app.refresh(0);
+assert(app.state.path:sub(1,#identity.root())==identity.root(),'Character settings use the selected root');
+assert(require('core.sound').FOLDER==identity.path('sounds/'),'Sound selection shares the same selected root');
+MOCK.fire('command',{command='/vg report'});
+local message=MOCK.printed[#MOCK.printed] or '';
+assert(message:find(identity.relative('reports/latest.json'),1,true),'The report message names the actual selected root');
+assert(message:find('Vantage',1,true));
+local file=io.open(identity.path('reports/latest.json'),'rb');assert(file,'The report is saved in the advertised location');file:close();
+MOCK.fire('unload');

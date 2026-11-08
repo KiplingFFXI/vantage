@@ -1,0 +1,19 @@
+[
+  {"frame":2,"mouse":[880,60],"down":true},
+  {"frame":3,"down":false},
+  {"frame":4,"lua":"assert(PREVIEW.native_targets==0 and PREVIEW.native_saves==0)"},
+  {"frame":5,"shift":true},
+  {"frame":7,"target":"##native_move_1","down":true},
+  {"frame":8,"delta":[-40,20]},
+  {"frame":10,"down":false},
+  {"frame":11,"lua":"assert(settings.party_ui.groups[1].native_x==-40 and settings.party_ui.groups[1].native_y==20); assert(PREVIEW.native_saves==1)"},
+  {"frame":12,"target":"##native_move_2","down":true},
+  {"frame":13,"delta":[-20,10]},
+  {"frame":15,"down":false},
+  {"frame":16,"shift":false,"lua":"assert(settings.party_ui.groups[2].native_x==-20 and settings.party_ui.groups[2].native_y==10); assert(settings.party_ui.groups[3].native_x==0); assert(PREVIEW.native_saves==2); settings.party_ui.native.side='right'"},
+  {"frame":18,"shift":true},
+  {"frame":20,"target":"##native_move_3","down":true},
+  {"frame":21,"delta":[10,-10]},
+  {"frame":23,"down":false},
+  {"frame":24,"shift":false,"lua":"assert(settings.party_ui.groups[3].native_x==10 and settings.party_ui.groups[3].native_y==-10); assert(PREVIEW.native_saves==3 and PREVIEW.native_targets==0)"}
+]
