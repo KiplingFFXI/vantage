@@ -97,6 +97,7 @@ assert(overhead._claimer(0x1000102) == nil, 'A despawn forgets it.');
 overhead.packet(update_packet(0x1000102, 0x102, 0x02, 1001));
 overhead.packet({ id = 0x00A, data = '', size = 0 });
 assert(overhead._claimer(0x1000102) == nil, 'A zone change forgets every claim.');
+W.spawns();
 overhead.packet(update_packet(0x1000102, 0x102, 0x02, 1001));
 -- Packets are read while overhead icons are off too, so icons turned on mid-fight know the claims made meanwhile.
 settings.overhead.enabled = false;
@@ -392,6 +393,8 @@ for n = 1, 1023 do overhead.packet(update_packet(0x1300000 + n, 0x200 + n % 0x60
 assert(overhead._claimer(0x1000102) == 1001, 'Up to 1024 entities at once are kept.');
 overhead.packet(update_packet(0x1400000, 0x7FF, 0x01));
 assert(overhead._claimer(0x1000102) == nil, 'One more forgets them all.');
+-- Each mob's next 0x00E brings its icons back.
+W.spawns();
 
 -- A unit the client gives no distance for between two lists gets no block.
 W.frame(bob, settings, snapshot, false, 0.2);

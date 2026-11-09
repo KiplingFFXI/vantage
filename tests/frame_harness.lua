@@ -334,6 +334,14 @@ local function overhead_on(config, on)
     if on then config.types.party.buffs_mine_only = false; end;
 end;
 overhead_on(settings.overhead, OVERHEAD_ON);
+-- The target and the four other mobs come into range: the spawn 0x00E the game sends for each, with all four update
+-- bits and server status 1, as Phoenix sends a mob players can see. Overhead icons leave out a mob with none.
+for index = 500, 504 do
+    local bytes = MOCK.bytes(0x58);
+    MOCK.put(bytes, 4, 4, entity:GetServerId(index)); MOCK.put(bytes, 8, 2, index);
+    bytes[0x0A], bytes[0x20] = 0x0F, 1;
+    MOCK.fire('packet_in', MOCK.packet(0x00E, bytes));
+end;
 settings.alerts.enabled = true;
 settings.diagnostics.record = false;
 -- The target's effects and the effects tracked on alliance members (slots 6 on), as the tracker hears of them.

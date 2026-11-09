@@ -71,8 +71,9 @@ end
 for _, tick in ipairs(overhead_defaults.always) do
     for _, id in ipairs(tick.ids) do SWITCH[id], ALWAYS[id] = tick.key, tick.key; end
 end
--- From 0x00D and 0x00E: each entity's index, and each mob's claimer.
-local index_of, claimer_of, known = {}, {}, 0;
+-- From 0x00D and 0x00E: each entity's index, and each mob's claimer. From 0x00E only: the server status each entity
+-- was last sent with, and true for one last sent with its name hidden and untargetable both.
+local index_of, claimer_of, status_of, masked_of, known = {}, {}, {}, {}, 0;
 local memory = { zone = nil };
 local rebuilt_at, rebuilt_view, rebuilt_settings, main_seen, sub_seen = -1, nil, nil, 0, 0;
 -- Counts list rebuilds and tenths of a second (ticked_at), so the name points read their skeletons, icons and the
@@ -94,7 +95,7 @@ local function u16(data, pos) return data:byte(pos + 1) + data:byte(pos + 2) * 2
 local function u32(data, pos) return u16(data, pos) + u16(data, pos + 2) * 65536; end
 
 local function forget()
-    wipe(index_of); wipe(claimer_of); known = 0;
+    wipe(index_of); wipe(claimer_of); wipe(status_of); wipe(masked_of); known = 0;
 end
 
 -- 0x00D and 0x00E carry each entity's server id at 0x04 and index at 0x08. An 0x00E with its claim bit (0x02 at 0x0A)
@@ -102,6 +103,10 @@ end
 -- entity_update.cpp). A zone change forgets them all. They are read while overhead icons are off too, so icons turned
 -- on mid-fight know the claims already made. known counts the entities kept, so it takes more than 1024 at once to
 -- forget them all, not a long run of respawns. size and data are the packet's, when the caller has read them already.
+-- Every 0x00E also carries the entity's server status at 0x20. Phoenix sends 0 or 1 for one players can see, 3 while
+-- it is invisible, 2 as it disappears and 6 for a cutscene only. One with its HP bit (0x04) carries the entity flags at
+-- 0x21 too, untargetable 0x800, and its name display at 0x2B, hide name 0x08 (data/enums/entity_flags.yaml and
+-- name_vis.yaml). Those two stay as last sent until the next update with that bit.
 function overhead.packet(e, size, data)
     local id = e.id;
     if id == 0x00A or id == 0x00B then forget(); return; end
@@ -112,7 +117,7 @@ function overhead.packet(e, size, data)
     if unit == 0 or index == 0 or index > 0x8FF then return; end
     if band(flags, 0x20) ~= 0 then
         if index_of[unit] then known = known - 1; end
-        index_of[unit], claimer_of[unit] = nil, nil;
+        index_of[unit], claimer_of[unit], status_of[unit], masked_of[unit] = nil, nil, nil, nil;
         return;
     end
     if not index_of[unit] then
@@ -120,10 +125,24 @@ function overhead.packet(e, size, data)
         if known > 1024 then forget(); known = 1; end
     end
     index_of[unit] = index;
-    if id == 0x00E and band(flags, 0x02) ~= 0 and size >= 0x30 then
+    if id ~= 0x00E then return; end
+    if band(flags, 0x02) ~= 0 and size >= 0x30 then
         local claimer = u32(data, 0x2C);
         claimer_of[unit] = claimer ~= 0 and claimer or nil;
     end
+    if size >= 0x21 then status_of[unit] = data:byte(0x21); end
+    if band(flags, 0x04) ~= 0 and size >= 0x2C then
+        masked_of[unit] = band(u32(data, 0x21), 0x800) ~= 0 and band(data:byte(0x2C), 0x08) ~= 0 or nil;
+    end
+end
+
+-- Whether the server keeps a mob out of players' sight, by its last 0x00E. One with none seen yet counts, as after
+-- reloading Vantage near it, until its next update. So does a status other than 0 or 1, as Shikigami Weapon out of a
+-- fight. So does a name hidden and untargetable at once, as a worm going under, a chigoe roaming hidden or an antlion
+-- buried in wait (Phoenix mob_controller.cpp and mixins/families/antlion_ambush.lua).
+local function concealed(id)
+    local status = status_of[id];
+    return status == nil or status > 1 or masked_of[id] == true;
 end
 
 -- The client objects, taken again only when the character or zone changes.
@@ -275,7 +294,8 @@ end
 -- Takes a unit as a candidate for a reason: the target, the subtarget and a watched unit (any unit), a mob claimed or
 -- debuffed by the party (switch named by reason), or by what it is (reason nil). One its type's filters leave nothing to show
 -- is left out, except the target, the subtarget and a member with party cooldowns over heads; so is one beyond the
--- distance cap. A full list keeps the best.
+-- distance cap. A mob the server keeps out of sight is left out for any reason, the target too. A full list keeps the
+-- best.
 local function add(entities, snapshot, config, index, id, reason, level, city)
     if not index or index <= 0 or index > 0x8FF or not id or id <= 0 then return; end
     local unit = by_id[id];
@@ -288,6 +308,7 @@ local function add(entities, snapshot, config, index, id, reason, level, city)
     if entities:GetServerId(index) ~= id then return; end
     local kind = classify(entities, index, id);
     if not kind then return; end
+    if kind == 'mob' and concealed(id) then return; end
     if not reason then
         if not config.units[kind] then return; end
         level = LEVELS[kind];
@@ -458,6 +479,8 @@ end
 local function place(unit, entities, config, ui, cap, first_person)
     local index = unit.index;
     if entities:GetServerId(index) ~= unit.id then return false, true; end
+    -- Hidden by the server since the list was made.
+    if unit.kind == 'mob' and concealed(unit.id) then return false; end
     local actor = entities:GetActorPointer(index);
     if actor == 0 then return false; end
     -- Drawn: 0x200 set and 0x4000 (hidden in a cutscene or menu) clear.

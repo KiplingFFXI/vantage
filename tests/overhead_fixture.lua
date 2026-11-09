@@ -67,14 +67,34 @@ camera._set_reader(function(view, projection)
     return true;
 end);
 
--- A unit at world X, Y (Z, the height, 0), drawn and alive. kind: 'mob', 'player', 'pet' or 'npc'.
+-- An 0x00E for the unit at index, in the layout Phoenix sends, straight to core/overhead.lua: its id at 0x04, index at
+-- 0x08, update bits at 0x0A (mask, all four unless given), server status at 0x20 (server_status, 0 unless given), with
+-- the HP bit (0x04) its entity flags at 0x21 (entity_flags) and name display at 0x2B (namevis), and with the claim bit
+-- (0x02) its claimer at 0x2C (claimer, none unless given). A mob gets no icons until one comes.
+function W.update(index, fields)
+    fields = fields or {};
+    local bytes = MOCK.bytes(0x48);
+    MOCK.put(bytes, 4, 4, W.entities[index].id); MOCK.put(bytes, 8, 2, index);
+    bytes[0x0A], bytes[0x20], bytes[0x2B] = fields.mask or 0x0F, fields.server_status or 0, fields.namevis or 0;
+    MOCK.put(bytes, 0x21, 4, fields.entity_flags or 0); MOCK.put(bytes, 0x2C, 4, fields.claimer or 0);
+    require('core.overhead').packet(MOCK.packet(0x00E, bytes));
+end
+
+-- A unit at world X, Y (Z, the height, 0), drawn and alive. kind: 'mob', 'player', 'pet' or 'npc'. A mob comes with
+-- its spawn 0x00E, as when it comes into range.
 function W.unit(index, id, kind, x, y, fields)
     local e = { id = id, name = 'Unit ' .. index, x = x, y = y, z = 0, actor = 0x2000000, flags = 0x200, status = 0, hpp = 100,
         spawn = kind == 'mob' and 0x10 or kind == 'player' and 0x01 or 0x02, type = kind == 'npc' and 2 or (kind == 'player' and 0 or 1),
         race = kind == 'player' and 1 or 0, hitbox = kind == 'player' and 0.4 or 1.5, model = -1 };
     for key, value in pairs(fields or {}) do e[key] = value; end
     W.entities[index] = e;
+    if kind == 'mob' then W.update(index); end
     return e;
+end
+
+-- The spawn 0x00E of every mob here, as after a zone-in.
+function W.spawns()
+    for index, e in pairs(W.entities) do if e.spawn == 0x10 then W.update(index); end end
 end
 W.unit(W.self, 1001, 'player', 0, 0, { name = 'Tester' });
 

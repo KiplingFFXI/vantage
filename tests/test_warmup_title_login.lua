@@ -51,6 +51,8 @@ assert(warmup.wanted('xiview') and not warmup.pending('xiview') and F.uploads > 
     'The zone-in packet loads XI View inside the loading screen.');
 L.members[0], MOCK.zoning = you, nil;
 L.self_timers();
+-- In the zone, the game sends the 0x00E of the mob you target, as it does for each one in range.
+L.entity(0x1000100, 0x100);
 local searched = #F.during;
 F.present();
 assert(app.state.path and warmup.wanted('party') and warmup.wanted('names') and app.state.ready == false,
@@ -61,7 +63,7 @@ while warmup.pending('party') or warmup.pending('names') or app.state.ready == f
 end
 for _ = 1, 3 do F.present(); end
 assert(F.first['panels'] and F.first['panels'] == F.first['party strips'], 'The panels and the strips first draw together.');
-assert(F.first['overhead icons'], 'Fixture: the overhead icons draw.');
+assert(F.first['overhead icons'] and L.unit(0x1000100), 'Fixture: the overhead icons draw, with a block over your target.');
 assert(#waiting == 0, 'Nothing draws while the party list is still to run: ' .. table.concat(waiting, ', '));
 assert(#F.during == searched and searched == 0, 'No draw reads, uploads or searches: ' .. table.concat(F.during, ', '));
 assert(#F.early == 0, 'Nothing drew before the warmup let it: ' .. table.concat(F.early, ', '));
