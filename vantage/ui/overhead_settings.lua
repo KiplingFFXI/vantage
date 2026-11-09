@@ -11,11 +11,11 @@ local page = {};
 local ctx = frame.ctx;
 local selection = { kind = 'mob', name = '' };
 
--- Who can get a block, and what each switch says. The target and subtarget get one whatever they are; the claimed,
--- watched and debuffed ones are mobs.
+-- Who can get a block, and what each switch says. The target and subtarget get one whatever they are, but not a mob
+-- the server keeps out of sight. The claimed, watched and debuffed ones are mobs.
 local units = {
-    { 'target', 'Your target', 'Your current target gets a block whatever it is. A player or pet uses its own kind\'s layout and filters.' },
-    { 'subtarget', 'Your subtarget', 'The unit under the subtarget cursor, whatever it is.' },
+    { 'target', 'Your target', 'Your current target gets a block, unless it\'s a mob the game keeps out of sight. A player or pet uses its own kind\'s layout and filters.' },
+    { 'subtarget', 'Your subtarget', 'The unit under the subtarget cursor, unless it\'s a mob the game keeps out of sight.' },
     { 'claimed', 'Mobs your party claimed', 'Mobs claimed by you, your party or your alliance.' },
     { 'watched', 'Watched mobs', 'The mobs on the list on Watched enemy timers.' },
     { 'debuffed', 'Mobs your party debuffed', 'Mobs with a debuff from you, your party, your alliance or your pet.' },
