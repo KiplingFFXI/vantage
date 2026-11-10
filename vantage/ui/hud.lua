@@ -141,6 +141,7 @@ function hud.filter_rows(view, panel, key, settings, filtering, into)
             effect_filters.context(recipients, row.entity_id, row)) then wanted = false end
         -- Every recast is your own, so Only effects I cast leaves recasts alone.
         if wanted and panel.mine_only and not row.mine and not row.by_pet and row.domain ~= 'recast' then wanted = false end
+        if wanted and panel.abilities_only and not catalog.from_ability(row) then wanted = false end
         if wanted and panel.known_only and (row.status == 'unknown' or not row.deadline) then wanted = false end
         if wanted and any(panel.include) and not selected(panel.include, row.effect) then wanted = false end
         if wanted and selected(panel.exclude, row.effect) then wanted = false end
@@ -855,14 +856,20 @@ local function widest_elapsed(set, style, run, own, total)
 end
 
 -- The probes for an icon panel's timed rows, each once, the hour's first, and their set. The list is kept and refilled
--- by the next call, so a caller reads it before asking again.
-local timer_probes, probes_seen = {}, {}
+-- by the next call, so a caller reads it before asking again. effective_panel asks for a panel that sizes itself, and
+-- panel_rect asks again right after (again) for the same rows at the same time: that takes the first asking's.
+local timer_probes, probes_seen, asked = {}, {}, {}
 local function add_probes(list)
     for _, entry in ipairs(list) do
         if not probes_seen[entry] then probes_seen[entry] = true; timer_probes[#timer_probes + 1] = entry end
     end
 end
-local function icon_countdowns(rows, panel, style, now)
+local function icon_countdowns(rows, panel, style, now, again)
+    if again then
+        local same = asked.rows == rows and asked.panel == panel and asked.style == style and asked.now == now
+        asked.rows = nil
+        if same then return timer_probes, asked.set end
+    end
     clear(timer_probes)
     clear(probes_seen)
     local set
@@ -878,6 +885,7 @@ local function icon_countdowns(rows, panel, style, now)
             else add_probes(set.probes(hud.counter(row, now))) end
         end
     end
+    if not again then asked.rows, asked.panel, asked.style, asked.now, asked.set = rows, panel, style, now, set end
     return timer_probes, set
 end
 
@@ -1038,16 +1046,32 @@ local function keep_inputs(names)
     return record
 end
 
--- A bars row's lines in this much room, and how tall they are.
+-- A bars row's lines in this much room, and how tall they are. A panel of several columns can lay its rows out in more
+-- than one room each frame, narrower once it has measured them, so a row keeps its lines for its last few rooms.
+local ROOMS = 4
 local function row_lines(store, row, p, style, now, signature, room)
     row_inputs(row, p, now, signature)
     inputs.color, inputs.soon, inputs.room = row_color(row, p, style, now), (not p.show_fill and ending_soon(row, p, now)) and true or false, room
     local id = row.key or row
-    local record = kept(store.lines, store.old_lines, id)
-    if record and same_inputs(record, LINE_INPUTS) then return record end
+    local first = kept(store.lines, store.old_lines, id)
+    local record = first
+    while record do
+        if same_inputs(record, LINE_INPUTS) then return record end
+        record = record.other
+    end
     record = keep_inputs(LINE_INPUTS)
     record.lines = text_lines(row, p, style, now, room)
     record.height = lines_height(record.lines, style.scale)
+    -- The new lines go first, with what was kept for other rooms behind them. What was kept for this room goes.
+    local last, count, other = record, 1, first
+    while other and count < ROOMS do
+        if other.room ~= room then
+            last.other = other
+            last, count = other, count + 1
+        end
+        other = other.other
+    end
+    last.other = nil
     store.lines[id] = record
     return record
 end
@@ -1210,7 +1234,7 @@ local function panel_rect(key, panel, style, rows, now, width, height)
     end
     local icon_only,preferred,countdowns,probe=panel.mode=='icons',nil,nil,nil
     if icon_only then
-        countdowns,probe=icon_countdowns(rows,panel,style,now)
+        countdowns,probe=icon_countdowns(rows,panel,style,now,true)
         preferred=style.icon_size*style.scale
         for _,entry in ipairs(countdowns) do preferred=math.max(preferred,entry.probe_width) end
     end
@@ -2117,7 +2141,8 @@ function hud.draw(view, settings, now, callbacks)
 end
 
 -- The samples' rows: effect, name, kind, scope, entity, entity name, duration, status, source and whether the full
--- duration shows. fill_sample works out each one's times from now.
+-- duration shows. fill_sample works out each one's times from now. The party member's Divine Seal is from a job
+-- ability, so Only effects from job abilities leaves one to see.
 local SAMPLE_ROWS = {
     { 33, 'Haste', 'buff', 'self', 1001, 'You', 180, 'server', 'Party member', true },
     { 41, 'Shell', 'buff', 'self', 1001, 'You', 82, 'server', 'You', true },
@@ -2135,6 +2160,7 @@ local SAMPLE_ROWS = {
     { 10057, 'Haste', 'spell', 'recast', 1001, 'You', 15, 'server', 'You', true },
     { 20005, 'Provoke', 'ability', 'recast', 1001, 'You', 30, 'server', 'You', true },
     { 45762, 'Empress Band', 'item', 'recast', 1001, 'You', 300, 'server', 'You', true },
+    { 78, 'Divine Seal', 'buff', 'party', 1002, 'Party member', 60, 'estimated', 'Party member', true },
 }
 -- What a sample recast row takes from its action's picture.
 local PREVIEW_ICON_KEYS = { 'spell_id', 'ability_id', 'item_id', 'list_icon_hq', 'list_icon_nq', 'list_icon_id', 'ability_element' }

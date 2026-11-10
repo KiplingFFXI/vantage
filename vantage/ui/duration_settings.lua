@@ -124,10 +124,12 @@ function page.draw(imgui, settings, view, callbacks, c)
     if c.section('Duration overrides', 'Your own time for a spell, ability or effect, on every mob and player or one by name.', true) then
         imgui.TextWrapped('A fixed time goes before a learned time, and adding, taking away or a percent change it. One for a spell or ability goes before one for its effect, and one with a name before one without.');
         (c.choice or c.combo)('Override applies to', pick, 'kind', durations.kinds, kind_labels, 'Spells and job abilities are matched by what was used, effects by what landed from anything.');
-        local statuses = require('ui.filter_settings').status_catalog(c.catalog());
+        local revision = c.catalog_revision and c.catalog_revision();
+        local statuses = require('ui.filter_settings').status_catalog(c.catalog(), revision);
         local catalog = pick.kind == 'effect' and statuses or action_catalog(pick.kind);
         (c.query or c.text)('Find what to override', pick, 'query', 'Search by name. Searching changes nothing.', 60);
-        effect_editor.selection(catalog, pick);
+        -- The effects go by the window's catalog revision. A spell or ability list never changes once it's made.
+        effect_editor.selection(catalog, pick, pick.kind == 'effect' and revision or 0);
         if pick.effect then
             (c.choice or c.combo)('What to override', pick, 'effect', pick.ids, pick.labels);
         else imgui.TextWrapped('Nothing matches. Try another name.'); end;

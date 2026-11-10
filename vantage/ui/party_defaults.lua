@@ -50,7 +50,7 @@ function party.make()
             icon_countdown_position = 'below', icon_countdown_size = 0, icon_countdown_gap = 0,
             countdown_bold = false, countdown_shadow = true, countdown_outline = true, countdown_outline_color = { 0, 0, 0, 1 },
             blink_icons = true, blink_seconds = 15, separate = false, cleanse_light = false,
-            show_copy_image = true, show_third_eye = true },
+            show_copy_image = true, show_third_eye = true, abilities_only = false },
     };
 end
 
@@ -104,10 +104,14 @@ local function color(value)
     return out;
 end
 
+-- What older Vantage builds saved in the strips' style before they took the main look. A save loses those and keeps the rest.
+local retired_style = { theme = true, window_type = true, window_art = true, gauge_art = true, font = true, font_size = true,
+    rounding = true, border = true, background = true, minimal = true, colors = true };
+
 local function style(value)
     value = merge(type(value) == 'table' and value or {}, party.make().style);
-    return { icon_art = choice(value.icon_art, { 'Client', 'Original FFXI', 'XI View' }, 'Original FFXI'),
-        opacity = number(value.opacity, 0.05, 1, 1) };
+    return require('core.store').keep_unknown({ icon_art = choice(value.icon_art, { 'Client', 'Original FFXI', 'XI View' }, 'Original FFXI'),
+        opacity = number(value.opacity, 0.05, 1, 1) }, value, retired_style);
 end
 
 function party.tidy(value)
@@ -159,7 +163,8 @@ function party.tidy(value)
     if effects.icon_countdown_size > 0 then effects.icon_countdown_size = math.max(6, effects.icon_countdown_size); end;
     effects.icon_countdown_gap = math.floor(number(effects.icon_countdown_gap, 0, 16, 0) + 0.5);
     for _, key in ipairs({ 'fit_all', 'timers', 'separate',
-        'countdown_bold', 'countdown_shadow', 'countdown_outline', 'blink_icons', 'cleanse_light', 'show_copy_image', 'show_third_eye' }) do
+        'countdown_bold', 'countdown_shadow', 'countdown_outline', 'blink_icons', 'cleanse_light', 'show_copy_image', 'show_third_eye',
+        'abilities_only' }) do
         effects[key] = effects[key] == true;
     end
     effects.countdown_outline_color = color(effects.countdown_outline_color) or copy(fresh.effects.countdown_outline_color);

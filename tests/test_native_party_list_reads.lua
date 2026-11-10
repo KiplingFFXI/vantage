@@ -1,6 +1,7 @@
 -- The strips read the game's party windows once for each roster and screen size, not every frame. The host makes a
 -- new roster at each refresh, so a new one reads them again, and so does another screen size. DisplaySize goes in as
--- whole pixels, so a screen of a fraction of a pixel still finds the windows.
+-- whole pixels, so a screen of a fraction of a pixel still finds the windows. The game menu's size comes from the chat
+-- log's last read once there is one, and is read with the windows only before it.
 local native = require('core.native_party_ui');
 local mem, reads = {}, 0;
 local function put16(at, value) value = value % 65536; mem[at], mem[at + 1] = value % 256, math.floor(value / 256); end
@@ -61,5 +62,13 @@ assert(again > 0 and strips == 3, 'So does another screen size.');
 MOCK.screen = { 1600.5, 900.25 };
 again, strips = draw(refreshed());
 assert(again > 0 and strips == 3 and native.status().geometry.available, 'A screen a fraction of a pixel wider finds them too.');
+local chat, asked = require('core.chat'), 0;
+local menu_size, menu_dimensions = chat.menu_size, chat.menu_dimensions;
+chat.menu_size = function() return 1920, 1080; end;
+chat.menu_dimensions = function() asked = asked + 1; return { width = 1920, height = 1080 }; end;
+MOCK.screen = { 1920, 1080 };
+again, strips = draw(refreshed());
+assert(again > 0 and strips == 3 and asked == 0, 'With the chat log read, its menu size is the one used: ' .. asked);
+chat.menu_size, chat.menu_dimensions = menu_size, menu_dimensions;
 native._set_platform(nil);
 return 'The strips read the game\'s party windows once a roster';

@@ -3,6 +3,7 @@ local layout = {};
 local countdown = require('ui.countdown_text');
 local metrics, render_cache = require('ui.text_metrics'), require('ui.render_cache');
 local effect_ordering = require('core.effect_order');
+local catalog = require('core.catalog');
 
 local finite = require('ui.numbers').finite;
 
@@ -33,7 +34,7 @@ end
 
 local selection_plans, selection_orders = render_cache.new(256), render_cache.new(64);
 local selection_revision = render_cache.revisions(64,
-    {'fit_all','kind','include','exclude','pinned','sort','max','show_copy_image','show_third_eye'});
+    {'fit_all','kind','include','exclude','pinned','sort','max','show_copy_image','show_third_eye','abilities_only'});
 -- The key of the Always show tick of the effects that have one, by id.
 local always = {};
 for _, tick in ipairs(require('ui.overhead_defaults').always) do
@@ -81,7 +82,7 @@ function layout.effects(subject, options, cache)
     local source = subject and subject.effects or {};
     for index, effect in ipairs(source) do
         signature[index + 1] = render_cache.key(effect.effect, effect.kind, effect.present, effect.name, effect.key,
-            effect.first_seen, effect.first_sequence);
+            effect.first_seen, effect.first_sequence, effect.action_kind);
     end;
     local selection_key = table.concat(signature);
     local previous = selection_plans:get(selection_key);
@@ -103,7 +104,9 @@ function layout.effects(subject, options, cache)
         if #filtered >= 96 then break; end
         local id, kind = effect.effect, effect.kind or 'neutral';
         local shown, tick = options.kind == nil or options.kind == 'all' or options.kind == kind, options.kind ~= 'none' and always[id];
-        -- Ticked beats Show. Unticked hides it, unless it's on Show only, which shows it either way.
+        if options.abilities_only and not catalog.from_ability(effect) then shown = false; end
+        -- Ticked beats Show and Only effects from job abilities. Unticked hides it, unless it's on Show only: then Show and
+        -- Only effects from job abilities decide, as for any effect. Hide here and Show only apply either way.
         if tick and options[tick] ~= false then shown = true; elseif tick and not has_include then shown = false; end
         if effect.present ~= false and shown
             and not selected(options.exclude, id) and (not has_include or selected(options.include, id)) then
@@ -125,7 +128,7 @@ function layout.effects(subject, options, cache)
 end
 
 -- The fields of an effect the selection reads, in the order kept_effects keeps them.
-local SELECTED_FIELDS = 8;
+local SELECTED_FIELDS = 9;
 
 -- The draw's cache and the settings table the selection revision was last worked out for, and that revision.
 local checked_cache, checked_identity, checked_revision;
@@ -159,7 +162,8 @@ function layout.kept_effects(holder, subject, options, cache)
             local effect = source[index];
             if fields[at + 1] ~= effect or fields[at + 2] ~= effect.effect or fields[at + 3] ~= effect.kind
                 or fields[at + 4] ~= effect.present or fields[at + 5] ~= effect.name
-                or fields[at + 6] ~= effect.key or fields[at + 7] ~= effect.first_seen or fields[at + 8] ~= effect.first_sequence then
+                or fields[at + 6] ~= effect.key or fields[at + 7] ~= effect.first_seen or fields[at + 8] ~= effect.first_sequence
+                or fields[at + 9] ~= effect.action_kind then
                 same = false;
                 break;
             end;
@@ -181,7 +185,7 @@ function layout.kept_effects(holder, subject, options, cache)
         local effect = source[index];
         fields[at + 1], fields[at + 2], fields[at + 3] = effect, effect.effect, effect.kind;
         fields[at + 4], fields[at + 5], fields[at + 6] = effect.present, effect.name, effect.key;
-        fields[at + 7], fields[at + 8] = effect.first_seen, effect.first_sequence;
+        fields[at + 7], fields[at + 8], fields[at + 9] = effect.first_seen, effect.first_sequence, effect.action_kind;
         at = at + SELECTED_FIELDS;
     end;
     for index = #fields, at + 1, -1 do fields[index] = nil; end;

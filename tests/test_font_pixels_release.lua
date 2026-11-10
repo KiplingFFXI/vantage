@@ -1,5 +1,6 @@
 -- XI View art waits for its first use, and uploaded pixels are let go: a face keeps what it needs, a late
--- upload of another kind leaves a face alone, and a device change reads the files again.
+-- upload of another kind leaves a face alone, and a device change reads the files again. A face lets its glyph rows go
+-- once its countdown atlas is made, and the atlas's bytes go once that is uploaded.
 local function u16(value) return string.char(value % 256, math.floor(value / 256) % 256) end
 local function u32(value) return u16(value % 65536) .. u16(math.floor(value / 65536)) end
 local function chunk(kind, payload)
@@ -81,6 +82,13 @@ local list = { AddImageQuad = function(_, id) drawn = id end, AddImage = functio
 assert(bitmap.available('Original FFXI') and parses == 0, 'The stock face made at load is kept.')
 assert(bitmap.draw(list, 'Original FFXI', 'Aster', 0, 0, 16, 0xFFFFFFFF) and drawn)
 local stock_image = drawn
+local faces = upvalue(bitmap.available, 'faces')
+local function lean(name, kind)
+    local face = faces[name]
+    for _, glyph in pairs(face.glyphs) do if glyph.pixels then return false end end
+    return face.foreground.image ~= nil and face.foreground.dds == nil and state()[kind].derived.countdown_foreground.dds == nil
+end
+assert(lean('Original FFXI', 'original_font'), 'The stock face keeps no glyph rows or atlas bytes, and its atlas texture none.')
 
 -- The window art uploads later. The stock face's own texture is unchanged, so the face stays.
 local generation = assets.generation()
@@ -96,6 +104,7 @@ assert(bitmap.available('XI View') and reads[view_path] == 2 and uploads == 10 a
     'The first XI View use reads its file once and uploads its art.')
 assert(not pixels('xiview_font', 'font    moji    ').dds and not pixels('xiview_font', 'menu    gauge   ').dds,
     'A face made after load lets its pixels go at once.')
+assert(lean('XI View', 'xiview_font'), "Nor does XI View's.")
 local steady_reads, steady_uploads = reads[stock_path] + reads[view_path], uploads
 for _ = 1, 100 do
     for _, name in ipairs({ 'Original FFXI', 'XI View' }) do

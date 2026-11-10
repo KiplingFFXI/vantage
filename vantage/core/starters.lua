@@ -7,16 +7,17 @@ local starters = {};
 -- Every starter sets these, with its own changes over them, so one applied after another turns off what the last one
 -- turned on. Item recasts, party list Countdowns and the overhead Other players, Other players' pets and You ticks
 -- aren't here, as they're the player's own picks whatever the role. Nor are the parts of the Pet display, the icon
--- lights or the party list's strip: a starter turns those on, and the next one leaves them.
+-- lights or the party list's strip: a starter turns those on, and the next one leaves them. No starter turns on Only
+-- effects from job abilities, but each turns it off, so the party displays show what the role's table says.
 local BASE = {
     panels = {
         self_buffs = { enabled = true },
         self_debuffs = { enabled = true, dispel_light = false },
         target = { enabled = false, dispel_light = false },
-        party = { enabled = false, mine_only = false, dispel_light = false },
+        party = { enabled = false, mine_only = false, dispel_light = false, abilities_only = false },
         watch = { enabled = false, mine_only = false, dispel_light = false, list_debuffed = false },
     },
-    party_ui = { enabled = false, effects = { kind = 'all', cleanse_light = false } },
+    party_ui = { enabled = false, effects = { kind = 'all', cleanse_light = false, abilities_only = false } },
     overhead = {
         enabled = true,
         units = { target = true, subtarget = true, claimed = true, watched = true, debuffed = true,

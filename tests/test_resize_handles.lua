@@ -5,8 +5,8 @@ for _,size in ipairs({{300,200},{300,24},{24,200},{24,24},{3,3},{1,1}}) do
     local fills,lines={},{};
     local list={
         AddRect=function() end,
-        AddRectFilled=function(_,a,b,color) fills[#fills+1]={a=a,b=b,color=color}; end,
-        AddLine=function(_,a,b) lines[#lines+1]={a=a,b=b}; end,
+        AddRectFilled=function(_,a,b,color) fills[#fills+1]={a=MOCK.copy_vector(a),b=MOCK.copy_vector(b),color=color}; end,
+        AddLine=function(_,a,b) lines[#lines+1]={a=MOCK.copy_vector(a),b=MOCK.copy_vector(b)}; end,
     };
     resize.hint(list,rect,0x10223344,'bottom_right');
     assert(#fills==8 and #lines==2,'Eight visible handles and both selected corner axes.');

@@ -26,6 +26,12 @@ for _, name in ipairs({ 'TextWrapped', 'BulletText', 'SetTooltip' }) do
     imgui[name]('%n%s%');
     assert(given[name][1] == '%%n%%s%%', name .. ' doubles every %.');
 end;
+-- Text with no % goes as it is, with no gsub over it: Help draws lines of up to 1,000 characters every frame.
+local gsub, escaped = string.gsub, 0;
+string.gsub = function(...) escaped = escaped + 1; return gsub(...); end;
+for _, name in ipairs({ 'TextWrapped', 'BulletText', 'SetTooltip' }) do imgui[name]('Plain words'); imgui[name]('100% nin'); end;
+string.gsub = gsub;
+assert(escaped == 3, 'Only the text with a % is escaped: ' .. escaped .. ' gsubs for 3 lines with one.');
 
 -- A learned time waits for the next save, a minute at most, not 0.6 s after each wear-off.
 SNAP.self_known = true;

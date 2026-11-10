@@ -17,3 +17,13 @@ The exporter's pin `071c401048` has the same 668 ids as `ed41f351f6`. The only f
 Some things weren't checked. `modules/phoenix_ac` is an empty gitlink (`0d44a6c0e1`), and the live host's settings, database and local patches can't be read from the source. The audit didn't trace items that only code hands out, and it counts GM commands as out of reach. It didn't run a client or a server.
 
 Recheck when Phoenix opens WotG content or changes its era settings. The list is `AUDITED_OUT` in `tools/export_catalog.py`. An id that was left out does no harm if it does turn up. It tracks and draws under the game's own name, and one saved in a list or rule stays there until you take it out.
+
+## Job ability effects
+
+**Only effects from job abilities** goes by the action Vantage saw put each effect on. Blood pacts and rolls count as job abilities. When Vantage didn't see the action, because the effect was up before you zoned in or loaded Vantage or it landed out of range, the tick goes by `vantage/data/ability_effects.lua`.
+
+- That list holds the 91 effects era job abilities put on players. They come from every era ability in `sql/abilities.sql` at the exporter's pin `071c401048`, read through its script in `scripts/actions/abilities` (`pets/` for blood pacts), the `job_utils` it calls and their `modules/era` overrides. It comes out the same at `ed41f351f6`.
+- Effects a spell gives too are left out, since a copy Vantage didn't see land could be the spell's. That covers Chakra's Regen, Mantra's Max HP Boost, Hastega's Haste and what Ecliptic Howl gives. Effects only a pet gets, ones that land on the enemy and ones that can't exist on Phoenix are left out as well.
+- `tests/test_ability_effects.lua` checks that the catalog names each id and that no spell in `vantage/data/effects.lua` gives one.
+
+The exporter doesn't write this list, so it doesn't change when the catalog is exported again. Recheck it when Phoenix opens WotG content, changes its era settings or changes what an ability's script puts on.

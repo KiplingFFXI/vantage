@@ -53,11 +53,13 @@ function filters.make()
     return {enabled=true, rules={}};
 end;
 
+-- Keys this doesn't know are kept, as the rest of the settings keep them.
 function filters.tidy(value)
     local out = filters.make();
     if type(value)~='table' then return out; end;
+    local keep = require('core.store').keep_unknown;
     out.enabled = value.enabled==nil or value.enabled==true;
-    if type(value.rules)~='table' then return out; end;
+    if type(value.rules)~='table' then return keep(out, value); end;
     for index=1,math.min(#value.rules,128) do
         local source=value.rules[index];
         if type(source)=='table' then
@@ -73,11 +75,11 @@ function filters.tidy(value)
                 and #rule.name<=32 and not rule.name:find('[%c]')
                 and (source.name==nil or type(source.name)=='string' and not source.name:find('[%c]')) then
                 rule.enabled=source.enabled==nil or source.enabled==true;
-                out.rules[#out.rules+1]=rule;
+                out.rules[#out.rules+1]=keep(rule, source);
             end;
         end;
     end;
-    return out;
+    return keep(out, value);
 end;
 
 local function unchanged(previous, value)

@@ -69,7 +69,9 @@ Vantage shows recasts for spells, abilities and equipped enchanted items. They c
 
 *Beside the game's party list.*
 
-**Party cooldowns** start off. They show the two-hours and key abilities your party and alliance were seen using, with an estimate of the time left. They can go beside the party list, over the party members' heads or in a list.
+Both can show only the effects job abilities put on your party, such as Berserk, rolls and blood pacts. Tick **Only effects from job abilities** on their **Filters** tab.
+
+**Party cooldowns** start off. They show the two-hours and key abilities your party and alliance were seen using, with an estimate of when each is ready again. They can go beside the party list, over the party members' heads or in a list.
 
 ![Party cooldowns](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/party-cooldowns.png)
 

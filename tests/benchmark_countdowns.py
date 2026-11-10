@@ -26,7 +26,8 @@ local client=require('ui.client_fonts');client.prepare();
 local countdown=require('ui.countdown_text');
 local quads=0;
 local sink={};
-local list={AddImageQuad=function(_,a,b,c,d,e,f,g,h,i,j)quads=quads+1;
+local list={AddImage=function(_,a,b,c,d,e,f)quads=quads+1;sink[1],sink[2],sink[3],sink[4],sink[5],sink[6]=a,b,c,d,e,f;end,
+    AddImageQuad=function(_,a,b,c,d,e,f,g,h,i,j)quads=quads+1;
     sink[1],sink[2],sink[3],sink[4],sink[5],sink[6],sink[7],sink[8],sink[9],sink[10]=a,b,c,d,e,f,g,h,i,j;end};
 local labels={'4h','12m','59s','2h','3m','9s'};
 function benchmark(frames,outline)

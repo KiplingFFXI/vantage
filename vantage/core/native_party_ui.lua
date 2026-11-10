@@ -288,11 +288,18 @@ local function measure_pitch(frame, group, items, member, dimensions, sy)
     frame.pitch, frame.measured_by = pitch, measured_by;
 end
 
+-- The game menu's size from the chat log's last read. The host reads the chat log at least once a second, and again
+-- for another screen size, so this reads nothing more of the client. Before its first read it is read here.
+local menu = {};
 local function geometry(roster, width, height, dimensions)
     local out = { available = false, groups = {}, reason = 'Waiting for the game party windows.' };
     if not roster or not roster.valid or roster.hidden or roster.map or roster.in_event then return out; end
     if not locate() then out.reason = reason; return out; end
-    if not dimensions then dimensions = require('core.chat').menu_dimensions(); end
+    if not dimensions then
+        local chat = require('core.chat');
+        menu.width, menu.height = chat.menu_size();
+        dimensions = menu.width and menu or chat.menu_dimensions();
+    end
     local function dimension(value)
         return type(value) == 'number' and value == math.floor(value) and value > 0 and value <= 16384;
     end

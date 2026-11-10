@@ -5,7 +5,7 @@
 -- the game's party list and the chat log, as settings.edit_mode chooses, and the grid shows while it is dragged if
 -- Show the grid is on (ui/snap.lua, which every Shift drag uses); the bar then holds its tick and the grid's switches. While the bar or a
 -- picked display has focus, the arrow keys move it 1 px, 10 with Shift, and Escape ends edit mode; Escape in the Grid
--- box only puts its number back, and the next Escape ends edit mode. Typed numbers for a spot are on the display's
+-- box only puts its number back, Escape on the Pick a display list only closes it, and the next Escape ends edit mode. Typed numbers for a spot are on the display's
 -- Size and place tab, which the bar's button opens. A locked display can
 -- be picked and looked at, but nothing moves it until it is unlocked in the bar; Shift never moves it. An anchored
 -- display keeps its anchor and moves away from it. Each move is one Undo step: a drag or a run of arrow presses. Ending
@@ -24,6 +24,9 @@ local bit = require('bit');
 local floor = math.floor;
 
 local active, selected, gesture = false, nil, nil;
+-- Whether the bar's Pick a display list is open this frame, and was the frame before. ImGui closes it on Escape before
+-- edit mode sees the key, so that Escape ends nothing else.
+local listing, listed = false, false;
 local message, message_at = nil, 0;
 local bar = { x = 0, y = 0, width = 0, height = 0 };
 -- Tables each frame refills: the window place and size, line ends, a move's start and the box's value.
@@ -47,7 +50,7 @@ function edit.cancel_gesture()
     if prior and prior.dirty and prior.callbacks.save then prior.callbacks.save(); end
 end
 
-function edit.start() active = true; end
+function edit.start() active, listing, listed = true, false, false; end
 
 -- Ending leaves every display where it is: a drag under way is kept as it stands.
 function edit.stop()
@@ -63,7 +66,7 @@ local function clamp(value, low, high) return math.max(low, math.min(high, value
 
 -- What a move of id starts from: the offsets its strip is drawn at, its anchor while the anchor placed it, or its spot
 -- on the screen.
-local function capture(settings, id, rect, into)
+local function capture(settings, id, rect, into, screen)
     local element, config = elements.by_id[id], elements.config(settings, id);
     into.id, into.width, into.height = id, rect.width, rect.height;
     if element.strip then
@@ -76,6 +79,10 @@ local function capture(settings, id, rect, into)
     elseif elements.anchored(id) then
         local anchor = elements.anchor(settings, id);
         into.kind, into.dx, into.dy, into.gap, into.offset = 'anchor', anchor.dx, anchor.dy, anchor.gap, anchor.offset;
+        -- Where it is drawn, and where its anchor puts it, which is past the edge when it is drawn at the edge.
+        into.x, into.y = rect.x, rect.y;
+        into.ax, into.ay = elements.spot(settings, id, rect.width, rect.height, screen.x, screen.y);
+        if not into.ax then into.ax, into.ay = rect.x, rect.y; end
     else
         into.kind, into.x, into.y = 'free', rect.x, rect.y;
     end
@@ -87,6 +94,12 @@ local probe = {};
 local function apply(settings, from_state, dx, dy, screen, begin)
     local id = from_state.id;
     local element, config = elements.by_id[id], elements.config(settings, id);
+    -- An anchored display moves from where it is drawn and no further than the screen's edges, as one placed on the
+    -- screen does, so its numbers never run on past an edge where nothing on the screen moves.
+    if from_state.kind == 'anchor' then
+        dx = clamp(from_state.x + dx, 0, math.max(0, screen.x - from_state.width)) - from_state.ax;
+        dy = clamp(from_state.y + dy, 0, math.max(0, screen.y - from_state.height)) - from_state.ay;
+    end
     -- A strip or an anchor moves by a whole offset. A display placed on the screen lands on the whole pixel nearest
     -- where the move puts it, so from a half pixel one arrow press moves its number on Size and place by exactly one.
     if from_state.kind == 'strip' or from_state.kind == 'anchor' then dx, dy = floor(dx + 0.5), floor(dy + 0.5); end
@@ -145,7 +158,7 @@ local function nudge(settings, callbacks, id, dx, dy, screen)
     if dx > 0 and rect.x + rect.width >= screen.x or dx < 0 and rect.x <= 0 then dx = 0; end
     if dy > 0 and rect.y + rect.height >= screen.y or dy < 0 and rect.y <= 0 then dy = 0; end
     if dx == 0 and dy == 0 then return; end
-    local moved = apply(settings, capture(settings, id, rect, start), dx, dy, screen, function()
+    local moved = apply(settings, capture(settings, id, rect, start, screen), dx, dy, screen, function()
         if callbacks.changed then callbacks.changed('before', 'Nudge ' .. elements.label(id)); end
     end);
     if moved and callbacks.changed then callbacks.changed('after'); end
@@ -215,7 +228,7 @@ local function outlines(imgui, settings, callbacks, mx, my, shift, blocked, acce
                             else
                                 local label = 'Move ' .. element.label;
                                 gesture = { settings = settings, callbacks = callbacks, mx = mx, my = my, rect_x = rect.x, rect_y = rect.y,
-                                    from = capture(settings, id, rect, {}),
+                                    from = capture(settings, id, rect, {}, screen),
                                     begin = function() if callbacks.changed then callbacks.changed('before', label); end end };
                             end
                         elseif not shift then say(locked and element.label .. ' is locked. Unlock it here to move it.' or 'Hold Shift and drag to move it.'); end
@@ -300,7 +313,8 @@ local function draw_bar(imgui, settings, callbacks, screen)
         imgui.TextUnformatted('Display');
         imgui.SameLine();
         imgui.SetNextItemWidth(220);
-        if imgui.BeginCombo('##edit_pick', selected and elements.label(selected) or 'Pick a display') then
+        listed, listing = listing, imgui.BeginCombo('##edit_pick', selected and elements.label(selected) or 'Pick a display') == true;
+        if listing then
             for _, element in ipairs(elements.movable) do
                 if elements.on(settings, element.id) and elements.drawn(element.id) then
                     if imgui.Selectable(element.label .. '##edit_pick_' .. element.id, selected == element.id) then selected = element.id; end
@@ -428,7 +442,10 @@ function edit.draw(settings, callbacks)
     -- A value being typed in a box keeps its own keys. Escape there lets go of the box before this check, so the box
     -- that had the keys the frame before keeps them one frame more: that Escape only puts its number back.
     if imgui.IsAnyItemActive() or typing_in then return; end
-    if ImGuiKey_Escape and imgui.IsKeyPressed(ImGuiKey_Escape, false) then edit.stop(); return; end
+    if ImGuiKey_Escape and imgui.IsKeyPressed(ImGuiKey_Escape, false) then
+        if not (listing or listed) then edit.stop(); end
+        return;
+    end
     if not selected or gesture then return; end
     local dx, dy = 0, 0;
     local step = shift and 10 or 1;

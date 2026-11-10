@@ -1,6 +1,6 @@
 # Release checklist
 
-A Vantage release is one addon archive, `vantage-1.0.0-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
+A Vantage release is one addon archive, `vantage-1.1.0-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
 
 Don't change the version unless the author tells you to release. Keep `vantage/vantage.lua` and the newest changelog heading at the same version.
 
@@ -16,7 +16,7 @@ Don't change the version unless the author tells you to release. Keep `vantage/v
 8. To install it on a game folder, run `tools/install_addon.ps1` in Windows PowerShell. The game can be open:
 
    ```text
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.0.0-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.1.0-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
    ```
 
    It refuses an archive whose SHA-256 differs. It notes the hash of every file under `config/addons/vantage` (settings, profiles, shared layout and the rest). It moves the current `addons/vantage` to `vantage-addon-backup-<UTC time>` in your Documents folder. You can pass `-BackupParent` to use a folder outside the game folder and on the same drive instead. Then it copies the new addon in and checks every copied file's hash. It also checks that no settings file changed. If anything fails, it puts the backup back. Each folder moves whole or not at all, so an old addon with a file held open stays where it is. A JSON receipt goes beside the backup. It never touches a startup script or the launcher. With the game open, a loaded Vantage keeps its old code until you run `/addon reload vantage` in game. Don't change any setting in game while the install runs. A saved settings file counts as a change and puts the old addon back.
@@ -280,3 +280,15 @@ These need a second character in the alliance's other party, with both ticked un
 213. With it targeted, run `!exec target:disengage()`. It goes invisible again, and its block goes at once, though Paralysis hasn't worn off.
 214. In East Ronfaure (`!pos 100 -50 120 101`), cast Paralyze on a Tunnel Worm that's above ground. With it targeted, run `!exec target:disengage()`. When it starts to sink into the ground, its block goes. When it comes back up with Paralysis still on, its block comes back.
 215. Target a mob that's standing still and run `/addon reload vantage`. It gets no block until it moves, is hit or anything else about it changes.
+
+### Only effects from job abilities
+
+These need a second character in your party, in East Ronfaure (`!pos 100 -50 120 101`). Type the GM commands on that character. Turn on Party members' timers and Party list buffs, and tick **Only effects from job abilities** on the **Filters** tab of each.
+
+216. Make them a WAR (`!changejob war 75`) and use Berserk and Warcry. Both show on their row of Party list buffs and on Party members' timers. Warcry shows on your own row of Party list buffs too.
+217. While Berserk is up, run `/addon reload vantage`. It still shows on both displays, as only job abilities give it.
+218. Make them a WHM (`!changejob whm 75`, `!addspell 43`) and cast Protect on themselves. It shows on neither display. Untick **Only effects from job abilities** on Party members' timers, and it shows there. Tick it again.
+219. Make them a COR (`!changejob cor 75`) and use Fighter's Roll, then Double-Up until it busts. The roll shows on both displays, and Bust shows after it.
+220. Make them a SMN (`!changejob smn 75`, `!addspell 301`), call Garuda and use Hastega. Haste shows on both displays. Run `/addon reload vantage`, and Haste goes from both, as Vantage didn't see what put it on and a spell gives Haste too.
+221. Make them a NIN (`!changejob nin 75`, `!addspell 339`, `!additem 1179 12`) and cast Utsusemi: Ni. Copy Image shows on their row of Party list buffs, as it's ticked under **Always show**, and not on Party members' timers. Untick it under **Always show**, and it goes. Tick it again.
+222. Turn on **Show samples** for both. Party members' timers shows only its Divine Seal sample, and Party list buffs shows only a Berserk sample, on your own row. Untick **Only effects from job abilities** on both, and every sample is back.

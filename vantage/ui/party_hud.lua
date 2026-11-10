@@ -40,15 +40,15 @@ local function icon_box(options, cell)
     return math.floor(cell.x + math.max(0, (icon_column - icon_width) / 2) + 0.5), math.floor(cell.y + 0.5), icon_width, icon_column;
 end
 
--- One effect cell; paint_cells keeps the clip and rethrows an error after popping it.
-local function paint_cell(list, look, options, cell, effect, now)
+-- One effect cell, its icon tinted from icon_ink and its countdown in text_ink; paint_cells keeps the clip and rethrows
+-- an error after popping it.
+local function paint_cell(list, look, options, cell, effect, now, icon_ink, text_ink)
     local icon_x, icon_y, icon_width, icon_column = icon_box(options, cell);
     -- Made at the size it is drawn where the art allows, and drawn from its texture's top left corner.
     local texture, corner = icons.status_at(effect.icon or effect.effect, look.icon_art, icon_width);
     if texture then
-        white[4] = look.opacity;
         icon_min[1], icon_min[2], icon_max[1], icon_max[2] = icon_x, icon_y, icon_x + icon_width, icon_y + icon_width;
-        list:AddImage(texture, icon_min, icon_max, UV0, corner, effect_blink.tint(effect, options, now, theme.u32(white)));
+        list:AddImage(texture, icon_min, icon_max, UV0, corner, effect_blink.tint(effect, options, now, icon_ink));
     end
     local timer_plan = cell.countdown;
     if timer_plan then
@@ -57,19 +57,22 @@ local function paint_cell(list, look, options, cell, effect, now)
         local top = timer_plan.below and icon_width + timer_plan.gap or math.max(0, icon_width - timer_plan.height);
         for _, line in ipairs(timer_plan.lines) do
             countdown.draw(list,look.font,line.text,left+math.max(0,(width-line.width)/2),cell.y+top+line.y,
-                timer_plan.size,theme.u32(look.gauge_text_color,look.opacity),options,true,text_at);
+                timer_plan.size,text_ink,options,true,text_at);
         end;
     end
 end
 
 local function paint_cells(list, look, options, cells, clip, mx, my, now)
     local hovered;
+    -- Every cell of the row takes the same tint and countdown color.
+    white[4] = look.opacity;
+    local icon_ink, text_ink = theme.u32(white), theme.u32(look.gauge_text_color, look.opacity);
     for _, cell in ipairs(cells) do
         if intersects(cell,clip) then
             local effect = cell.effect;
             clip_min[1], clip_min[2], clip_max[1], clip_max[2] = cell.x, cell.y, cell.x + cell.width, cell.y + cell.height;
             list:PushClipRect(clip_min, clip_max, true);
-            local painted, paint_error = pcall(paint_cell, list, look, options, cell, effect, now);
+            local painted, paint_error = pcall(paint_cell, list, look, options, cell, effect, now, icon_ink, text_ink);
             list:PopClipRect();
             if not painted then error(paint_error, 0); end
             if mx and layout.inside(cell, mx, my) then hovered = effect; end
@@ -173,6 +176,15 @@ function hud.paint_cooldowns(list, look, options, entries, cells, now, mx, my, s
     return hovered;
 end
 
+-- The sample WAR's Berserk, DRK's Souleater and COR's Fighter's Roll, one in each party: effect, name and length.
+local JOB_ABILITY_SAMPLES = { [1] = { 56, 'Berserk', 180 }, [8] = { 63, 'Souleater', 60 }, [17] = { 310, "Fighter's Roll", 300 } };
+-- What each timed sample effect has left at the start of the 30 seconds its countdown runs over and over.
+local sample_starts = setmetatable({}, { __mode = 'k' });
+local function timed(effect, start, now)
+    sample_starts[effect], effect.remaining = start, start - (now or 0) % 30;
+    return effect;
+end
+
 function hud.sample(count, now)
     count = count == 6 and 6 or 18;
     local names = { 'Aster', 'Bramble', 'Cinder', 'Dawn', 'Elm', 'Fable', 'Gale', 'Hazel', 'Iris', 'Juniper', 'Kestrel', 'Lark', 'Moss', 'Nettle', 'Orchid', 'Pine', 'Quill', 'Reed' };
@@ -184,8 +196,8 @@ function hud.sample(count, now)
             active = true, job = (i - 1) % 18 + 1, subjob = subjobs[(i - 1) % 6 + 1], available = true };
         roster.members[i] = member;
         subjects[member.id] = { known = true, complete = i <= 6, source = 'sample', effects = {
-            { effect = 40, name = 'Protect', kind = 'buff', status = 'server', remaining = 950 - (now or 0) % 30, total = 1800, present = true, key = 'p' .. i },
-            { effect = 33, name = 'Haste', kind = 'buff', status = 'estimated', remaining = 110 - (now or 0) % 30, total = 180, present = true, key = 'h' .. i, reason = 'Observed application; remaining time is estimated.' },
+            timed({ effect = 40, name = 'Protect', kind = 'buff', status = 'server', total = 1800, present = true, key = 'p' .. i }, 950, now),
+            timed({ effect = 33, name = 'Haste', kind = 'buff', status = 'estimated', total = 180, present = true, key = 'h' .. i, reason = 'Observed application; remaining time is estimated.' }, 110, now),
             { effect = 4, name = 'Paralysis', kind = 'debuff', status = 'unknown', present = true, key = 'd' .. i, reason = 'Present icon without a supplied timer.' },
         } };
         -- In each party, one with each Always show effect, so the ticks move the samples.
@@ -195,8 +207,27 @@ function hud.sample(count, now)
             effects[#effects + 1] = { effect = always[1], name = always[2], kind = 'buff', status = 'unknown', present = true, key = 'a' .. i,
                 reason = 'Present icon without a supplied timer.' };
         end
+        -- In each party, one with an effect from their job ability, so Only effects from job abilities leaves one to see.
+        local ability = JOB_ABILITY_SAMPLES[i];
+        if ability then
+            local effects = subjects[member.id].effects;
+            effects[#effects + 1] = timed({ effect = ability[1], name = ability[2], kind = 'buff', status = 'estimated',
+                total = ability[3], present = true, key = 'j' .. i, reason = 'Observed application; remaining time is estimated.' },
+                ability[3] - 20, now);
+        end
     end
     return roster, subjects;
+end
+
+-- Moves the countdowns of the subjects hud.sample made to now, in place, so a kept set of samples runs as new ones would.
+function hud.sample_time(subjects, now)
+    local turn = (now or 0) % 30;
+    for _, subject in pairs(subjects) do
+        for _, effect in ipairs(subject.effects) do
+            local start = sample_starts[effect];
+            if start then effect.remaining = start - turn; end
+        end
+    end
 end
 
 return hud;

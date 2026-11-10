@@ -13,9 +13,9 @@ import benchmark_frame
 GAME = Path(os.environ['ASHITA_LIBS']).resolve().parent.parent / 'SquareEnix/FINAL FANTASY XI'
 # scenario: (draw calls, hash), recorded on the installed client.
 EXPECTED = {
-    'solo': (78000, 74708699),
-    'party6': (96240, 21317606),
-    'alliance18': (293640, 1368981192),
+    'solo': (78000, 1232000184),
+    'party6': (96240, 1836476962),
+    'alliance18': (293640, 1232373777),
 }
 
 

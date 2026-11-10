@@ -73,7 +73,7 @@ function conditions.tidy(value)
     out.group = names(value.group, conditions.groups);
     out.engaged = choice(value.engaged, conditions.states, 'any');
     out.pet = choice(value.pet, conditions.states, 'any');
-    return out;
+    return require('core.store').keep_unknown(out, value);
 end
 
 -- Whether any condition is set.
@@ -211,12 +211,17 @@ function conditions.describe(value)
     return out;
 end
 
--- Where you are now, in plain words, for the settings page.
+-- Where you are now, in plain words, for the settings page. The When tabs draw it each frame, so the line is kept until
+-- the place it was made from changes.
 local in_zone = { town = 'in a town', field = 'in a field', dungeon = 'in a dungeon', dynamis = 'in Dynamis', limbus = 'in Limbus',
     assault = 'in Assault', salvage = 'in Salvage', nyzul = 'in Nyzul Isle', ashu_talif = 'on The Ashu Talif', mog_house = 'in a Mog House',
     other = 'in another zone' };
+local said = {};
 function conditions.where()
     if not place.valid then return 'Waiting for your character.'; end
+    local same = said.line ~= nil;
+    for key, value in pairs(place) do if said[key] ~= value then said[key], same = value, false; end end
+    if same then return said.line; end
     local job, sub = conditions.jobs[place.job] or tostring(place.job), conditions.jobs[place.sub_job];
     local words = { job .. ' ' .. tostring(place.level) .. (sub and ' / ' .. sub or ''), in_zone[place.kind] or in_zone.other };
     if place.battlefield then words[#words + 1] = 'in a battlefield'; end
@@ -224,7 +229,8 @@ function conditions.where()
     words[#words + 1] = conditions.group_names[place.group]:lower();
     words[#words + 1] = place.engaged and 'engaged' or 'not engaged';
     words[#words + 1] = place.pet and 'pet out' or 'no pet';
-    return 'Now: ' .. table.concat(words, ', ') .. '.';
+    said.line = 'Now: ' .. table.concat(words, ', ') .. '.';
+    return said.line;
 end
 
 return conditions;

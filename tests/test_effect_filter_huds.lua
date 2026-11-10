@@ -45,7 +45,7 @@ local function ids(entries)
     table.sort(result);
     return table.concat(result, ',');
 end;
-assert(ids(hud.filter_rows(view, settings.panels.self_buffs, 'self_buffs', settings)) == '40');
+assert(ids(hud.filter_rows(view, settings.panels.self_buffs, 'self_buffs', settings)) == '40,56');
 assert(ids(hud.filter_rows(view, settings.panels.self_debuffs, 'self_debuffs', settings)) == '4');
 assert(ids(hud.filter_rows(view, settings.panels.target, 'target', settings)) == '33,40');
 assert(ids(hud.filter_rows(view, settings.panels.spell_recasts, 'spell_recasts', settings)) == '253',
@@ -68,7 +68,7 @@ MOCK.screen, MOCK.content_width = { 2400, 2200 }, 700;
 settings.style.font, settings.style.font_size = 'Ashita', 14;
 settings.party_ui.enabled = true;
 local callbacks = { effect_filters = filters.compile(settings.effect_filters), effect_recipients = recipients };
-local expected = { [1001] = '4,40', [1002] = '4,33', [1003] = '4,33,40', [1007] = '33,40', [1013] = '4,33,40' };
+local expected = { [1001] = '4,40,56', [1002] = '4,33', [1003] = '4,33,40', [1007] = '33,40', [1013] = '4,33,40' };
 local planned;
 local function assert_subjects(selected, label)
     for id, want in pairs(expected) do
@@ -110,7 +110,7 @@ assert_subjects(planned, 'Roster fallback');
 callbacks.effect_recipients = recipients;
 settings.party_ui.preview = true;
 native.draw(roster, subjects, settings.party_ui, 100, callbacks);
-assert(ids(planned[1001].effects) == '4,40' and ids(planned[1002].effects) == '4,33',
+assert(ids(planned[1001].effects) == '4,40,56' and ids(planned[1002].effects) == '4,33',
     'Native samples keep the real roster identities when replacing only their effect samples.');
 settings.party_ui.preview = false;
 assert(equal(settings, runtime_settings), 'Rendering keeps every saved setting and lock unchanged.');
@@ -122,7 +122,7 @@ settings.effect_filters.enabled = false;
 callbacks.effect_filters = filters.compile(settings.effect_filters);
 native.draw(roster, subjects, settings.party_ui, 100, callbacks);
 assert(planned == subjects, 'Disabled shared filtering keeps the original subject map on the fast path.');
-assert(ids(hud.filter_rows(view, settings.panels.self_buffs, 'self_buffs', settings)) == '33,40,253,269');
+assert(ids(hud.filter_rows(view, settings.panels.self_buffs, 'self_buffs', settings)) == '33,40,56,253,269');
 assert(equal(saved_before.effect_filters.rules, settings.effect_filters.rules), 'Compilation never rewrites saved rules.');
 
 settings.effect_filters.enabled = true;
@@ -149,7 +149,7 @@ filters.compile, filters.recipients = compile, recipient_map;
 settings.effect_filters.rules = { rule(33, { name = 'You' }), rule(42, { job = 3 }) };
 local sample = hud.sample(100);
 assert(ids(hud.filter_rows(sample, settings.panels.self_buffs, 'self_buffs', settings)) == '40,41,214,214,251');
-assert(ids(hud.filter_rows(sample, settings.panels.party, 'party', settings)) == '3',
+assert(ids(hud.filter_rows(sample, settings.panels.party, 'party', settings)) == '3,78',
     'Timer samples carry coherent known jobs and player identities.');
 local selected_rows = {};
 local select_rows = hud.filter_rows;

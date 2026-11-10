@@ -524,10 +524,12 @@ function methods:drain_events()
     local result=self.events;self.events={};return result;
 end
 
--- For /vg report: whether item recasts can be read.
+-- For /vg report and the Recasts tab, which asks each frame: whether item recasts can be read. Callers only read it.
+local ITEMS_WAITING={reason='Item recasts load with the first equipped item that has charges.'};
+local ITEMS_ON={available=true,reason='Item recasts are on.'};
 function recasts.item_status()
-    if not item_library_tried then return {available=nil,reason='Item recasts load with the first equipped item that has charges.'}; end;
-    if item_library then return {available=true,reason='Item recasts are on.'}; end;
+    if not item_library_tried then return ITEMS_WAITING; end;
+    if item_library then return ITEMS_ON; end;
     return {available=false,problem=item_library_problem,
         reason='Item recasts are off because the Ashita item data library could not load on this client.'};
 end;

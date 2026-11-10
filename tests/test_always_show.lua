@@ -1,7 +1,8 @@
 -- Always show: Copy Image and Third Eye have a tick of their own on Overhead icons and Party list buffs. Ticked shows the
--- effect whoever cast it, whatever Show says. Unticked hides it. Hide here still hides it, Show only stays an only, and
--- other players and pets, whose would never change, have no tick and treat these effects like any other. Copy Image is one
--- effect, 66, at every count, with the count's icon beside it.
+-- effect whoever cast it, whatever Show says. Unticked hides it, unless it's on Show only, where the other filters decide
+-- as for any effect. Hide here still hides it, Show only stays an only, and other players and pets, whose would never
+-- change, have no tick and treat these effects like any other. Copy Image is one effect, 66, at every count, with the
+-- count's icon beside it.
 local defaults = require('ui.defaults');
 local overhead, layout = require('core.overhead'), require('ui.party_layout');
 local page = require('ui.overhead_settings');
@@ -127,6 +128,10 @@ do
     assert(shown(function(o) o.include = { 33 }; end) == '33', 'While Show only has effects, ticked doesn\'t add to them.');
     assert(shown(function(o) o.include, o.kind = { 66 }, 'debuff'; end) == '66 445', 'On Show only and ticked, it beats Debuffs only.');
     assert(shown(function(o) o.include, o.show_copy_image = { 66 }, false; end) == '66 445', 'An effect on Show only shows unticked.');
+    -- No job ability gives Copy Image, and Third Eye is one.
+    assert(shown(function(o) o.abilities_only = true; end) == '66 67 445', 'Ticked beats Only effects from job abilities.');
+    assert(shown(function(o) o.abilities_only, o.show_copy_image, o.show_third_eye = true, false, false; end) == '',
+        'Unticked hides them with it on too.');
 
     -- A kept selection follows a tick.
     local holder, subject, options = {}, { effects = list }, require('core.store').copy(base);
@@ -135,6 +140,13 @@ do
     options.show_copy_image = false;
     assert(count() == 3, 'A kept selection follows the tick.');
     options.show_copy_image = true;
+    assert(count() == 5, 'And back.');
+    -- And Only effects from job abilities, and what put an effect on.
+    options.abilities_only = true;
+    assert(count() == 3, 'A kept selection follows Only effects from job abilities.');
+    list[4].action_kind = 'abilities';
+    assert(count() == 4, 'And what put an effect on.');
+    list[4].action_kind, options.abilities_only = nil, false;
     assert(count() == 5, 'And back.');
 end;
 

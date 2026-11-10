@@ -483,6 +483,78 @@ local function settle()
     ready, retry_at = any, next_retry
 end
 
+-- A 565 end color's red, green and blue, widened to 8 bits.
+local function widen(value)
+    local r, g, b = math.floor(value / 2048), math.floor(value / 32) % 64, value % 32
+    return r * 8 + math.floor(r / 4), g * 4 + math.floor(g / 16), b * 8 + math.floor(b / 4)
+end
+
+-- weight parts in parts of the second end color, the rest of the first, packed as one number.
+local function blend(first, second, weight, parts)
+    local r0, g0, b0 = widen(first)
+    local r1, g1, b1 = widen(second)
+    local keep = parts - weight
+    local r = math.floor((keep * r0 + weight * r1) / parts + 0.5)
+    local g = math.floor((keep * g0 + weight * g1) / parts + 0.5)
+    local b = math.floor((keep * b0 + weight * b1) / parts + 0.5)
+    return (r * 256 + g) * 256 + b
+end
+
+-- Every texel of a DXT1, DXT3 or DXT5 texture as one number, its color and alpha packed, row by row from the top, as
+-- the formats define their blocks. nil for data too short.
+local function texels(raw)
+    local width, height, dds, format = raw.width, raw.height, raw.dds, raw.format
+    local size, wide = format == 'DXT1' and 8 or 16, math.ceil(width / 4)
+    if type(dds) ~= 'string' or #dds < 128 + wide * math.ceil(height / 4) * size then return nil end
+    local out, colors, alphas = {}, {}, {}
+    for block = 0, wide * math.ceil(height / 4) - 1 do
+        local at = 129 + block * size
+        local color_at = format == 'DXT1' and at or at + 8
+        local c0, c1 = u16(dds, color_at), u16(dds, color_at + 2)
+        -- A DXT1 block whose first end color isn't the greater has three colors, and its fourth index is see-through.
+        local three_colors = format == 'DXT1' and c0 <= c1
+        colors[1], colors[2] = blend(c0, c1, 0, 1), blend(c0, c1, 1, 1)
+        if three_colors then colors[3], colors[4] = blend(c0, c1, 1, 2), 0
+        else colors[3], colors[4] = blend(c0, c1, 1, 3), blend(c0, c1, 2, 3) end
+        if format == 'DXT5' then
+            local a0, a1 = dds:byte(at, at + 1)
+            alphas[0], alphas[1] = a0, a1
+            local steps = a0 > a1 and 7 or 5
+            for i = 1, steps - 1 do alphas[i + 1] = math.floor(((steps - i) * a0 + i * a1) / steps + 0.5) end
+            if steps == 5 then alphas[6], alphas[7] = 0, 255 end
+        end
+        for texel = 0, 15 do
+            local x, y = block % wide * 4 + texel % 4, math.floor(block / wide) * 4 + math.floor(texel / 4)
+            local index = math.floor(dds:byte(color_at + 4 + math.floor(texel / 4)) / 4 ^ (texel % 4)) % 4
+            local alpha = 255
+            if three_colors and index == 3 then alpha = 0
+            elseif format == 'DXT3' then
+                alpha = math.floor(u16(dds, at + math.floor(texel / 4) * 2) / 16 ^ (texel % 4)) % 16 * 17
+            elseif format == 'DXT5' then
+                local half = texel < 8 and at + 2 or at + 5
+                local bits = dds:byte(half) + dds:byte(half + 1) * 256 + dds:byte(half + 2) * 65536
+                alpha = alphas[math.floor(bits / 8 ^ (texel % 8)) % 8]
+            end
+            if x < width and y < height then out[y * width + x + 1] = colors[index + 1] * 256 + alpha end
+        end
+    end
+    return out
+end
+
+-- Whether each row of a texture is one color all the way across, and each column one color all the way down. The skin
+-- draws a frame edge whose art is the same along its length as one stretched piece, which draws what its tiles would.
+local function evenness(raw)
+    local values = texels(raw)
+    if not values then return false, false end
+    local width, across, down = raw.width, true, true
+    for i = 1, #values do
+        local x, y = (i - 1) % width, math.floor((i - 1) / width)
+        across = across and values[i] == values[y * width + 1]
+        down = down and values[i] == values[x + 1]
+    end
+    return across, down
+end
+
 -- Uploads one read kind, whole or not at all, unless it waits for its retry time.
 local function upload_kind(kind, held, now)
     if not held.data or held.available or now < (held.retry_at or 0) then return end
@@ -497,8 +569,11 @@ local function upload_kind(kind, held, now)
             problem = why or 'The client texture could not be uploaded.'; break
         end
         if type(uploaded.release) == 'function' then releases[#releases + 1] = uploaded.release end
+        local across, down
+        if name == aliases.hfr1 or name == aliases.vfr1 then across, down = evenness(raw) end
         textures[name] = { id = uploaded.id, width = raw.width, height = height, format = raw.format,
-            name = name, path = held.path, source = held.source, window_type = held.window_type }
+            name = name, path = held.path, source = held.source, window_type = held.window_type,
+            across = across, down = down }
     end
     if problem then
         for _, release in ipairs(releases) do if type(release) == 'function' then pcall(release) end end
@@ -728,6 +803,18 @@ function assets.release_pixels(kind, name)
     if raw then raw.dds = nil end
 end
 
+-- What a made countdown atlas keeps of its bytes to tell them again: their length and two running sums, so the bytes
+-- themselves can go once it is uploaded.
+local function checksum(bytes)
+    local low, high = 1, 0
+    for at = 1, #bytes, 4 do
+        local a, b, c, d = bytes:byte(at, at + 3)
+        low = (low + a + (b or 0) * 256 + (c or 0) * 65536 + (d or 0) * 16777216) % 4294967291
+        high = (high + low) % 4294967291
+    end
+    return #bytes .. ':' .. low .. ':' .. high
+end
+
 -- Countdown glyphs derive one small atlas from each already loaded client font.
 function assets.derived_texture(kind, name, dds, width, height)
     if (kind ~= 'original_font' and kind ~= 'xiview_font') or name ~= 'countdown_foreground'
@@ -744,7 +831,9 @@ function assets.derived_texture(kind, name, dds, width, height)
     held.derived = held.derived or {}
     local cached = held.derived[name]
     if cached then
-        if cached.dds ~= dds then return nil, 'The countdown font source changed without a texture refresh.' end
+        if cached.dds and cached.dds ~= dds or not cached.dds and cached.sum ~= checksum(dds) then
+            return nil, 'The countdown font source changed without a texture refresh.'
+        end
         if cached.texture then return cached.texture end
         if os.clock() < cached.retry_at then return nil, cached.reason end
     else cached = { dds=dds }; held.derived[name] = cached end
@@ -756,7 +845,7 @@ function assets.derived_texture(kind, name, dds, width, height)
         return nil, cached.reason
     end
     local texture = { id=uploaded.id, width=width, height=height, format='A8R8G8B8' }
-    cached.texture = texture
+    cached.texture, cached.sum, cached.dds = texture, checksum(dds), nil
     if type(uploaded.release) == 'function' then held.releases[#held.releases+1] = uploaded.release end
     return texture
 end
@@ -955,9 +1044,11 @@ function assets.icon_texture(kind, id)
     return held.textures[id]
 end
 
-function assets.icon_status(kind, id)
+-- out, when given, is emptied and filled in place of a new table, for a caller that asks every frame.
+function assets.icon_status(kind, id, out)
+    if out then require('table.clear')(out) else out = {} end
     local held = icon_source(kind)
-    if not held then return { available = false, reason = 'Status icon artwork has not been prepared.' } end
+    if not held then out.available, out.reason = false, 'Status icon artwork has not been prepared.'; return out end
     local available, reason = held.available, held.reason
     if id ~= nil and available then
         local failed = held.failures[id]
@@ -968,9 +1059,9 @@ function assets.icon_status(kind, id)
         local _, failure = next(held.failures)
         if failure then reason = failure.reason .. ' Some status images are using fallback artwork.' end
     end
-    return { available = available, reason = reason, path = held.path,
-        source = held.source,
-        count = held.data and held.data.count or 0, valid = held.data and held.data.valid or 0 }
+    out.available, out.reason, out.path, out.source = available, reason, held.path, held.source
+    out.count, out.valid = held.data and held.data.count or 0, held.data and held.data.valid or 0
+    return out
 end
 
 -- Party icons drawn at a size other than 32 get a texture made at that size (icon_texture_at), so they draw 1:1 instead
@@ -1373,13 +1464,16 @@ function assets.clear_actions()
     action_sources, action_files = nil, nil
 end
 
-function assets.status(kind, window_type)
+-- out, when given, is emptied and filled in place of a new table, for a caller that asks every frame.
+function assets.status(kind, window_type, out)
     assets.prepare()
     load_window(kind, window_type)
+    if out then require('table.clear')(out) else out = {} end
     local held = asset_group(kind, window_type)
-    if not held then return { available = false, reason = 'No client asset group has that name.' } end
-    return { available = held.available, reason = held.reason, path = held.path, source = held.source,
-        window_type = held.window_type }
+    if not held then out.available, out.reason = false, 'No client asset group has that name.'; return out end
+    out.available, out.reason, out.path, out.source = held.available, held.reason, held.path, held.source
+    out.window_type = held.window_type
+    return out
 end
 
 -- Fonts can refresh cached glyph references when uploads recover, without reading files here.

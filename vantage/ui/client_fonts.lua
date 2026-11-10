@@ -126,8 +126,11 @@ local function refresh(name)
         local face, problem = client_fonts.parse(assets.raw(kind, 'moji'), image)
         if face then
             face.foreground=foreground_atlas(face)
+            -- The glyph rows were for the atlas, and the atlas's bytes are for its texture: they go once it is made.
+            for _, glyph in pairs(face.glyphs) do glyph.pixels = nil end
             if assets.derived_texture then
                 face.foreground.image=assets.derived_texture(kind,'countdown_foreground',face.foreground.dds,face.foreground.width,face.foreground.height)
+                if face.foreground.image then face.foreground.dds=nil end
             end
             -- The face keeps what it needs; assets.raw reads the pixels again for anything made later.
             if assets.release_pixels then assets.release_pixels(kind, 'moji') end
@@ -252,6 +255,7 @@ local function countdown_face(name)
     if not atlas.image then
         local assets=require('ui.client_assets')
         if assets.derived_texture then atlas.image=assets.derived_texture(kinds[name],'countdown_foreground',atlas.dds,atlas.width,atlas.height) end
+        if atlas.image then atlas.dds=nil end
     end
     return atlas.image and face or nil
 end
@@ -288,6 +292,7 @@ function client_fonts.measure_countdown(name,text,size,compact)
     return walk(face,text,size)
 end
 
+-- A countdown glyph is an upright box, so AddImage draws it as AddImageQuad would, from two corners instead of four.
 local function draw_foreground_glyph(glyph,dx,dy,factor,list,atlas,x,y,color,compact)
     local code=glyph.code
     local u,v=(code-32)%16*16,math.floor((code-32)/16)*16
@@ -297,18 +302,15 @@ local function draw_foreground_glyph(glyph,dx,dy,factor,list,atlas,x,y,color,com
         local x1,y1=x+dx+pixel(ink[1]*factor),y+dy+pixel(ink[2]*factor)
         local x2,y2=x+dx+pixel(ink[3]*factor),y+dy+pixel(ink[4]*factor)
         if x2<=x1 or y2<=y1 then return end
-        q1[1],q1[2],q2[1],q2[2],q3[1],q3[2],q4[1],q4[2]=x1,y1,x2,y1,x2,y2,x1,y2
-        t1[1],t1[2],t2[1],t2[2]=(u+ink[1])/atlas.width,(v+ink[2])/atlas.height,(u+ink[3])/atlas.width,(v+ink[2])/atlas.height
-        t3[1],t3[2],t4[1],t4[2]=(u+ink[3])/atlas.width,(v+ink[4])/atlas.height,(u+ink[1])/atlas.width,(v+ink[4])/atlas.height
-        list:AddImageQuad(atlas.image.id,q1,q2,q3,q4,t1,t2,t3,t4,color)
+        q1[1],q1[2],q3[1],q3[2]=x1,y1,x2,y2
+        t1[1],t1[2],t3[1],t3[2]=(u+ink[1])/atlas.width,(v+ink[2])/atlas.height,(u+ink[3])/atlas.width,(v+ink[4])/atlas.height
+        list:AddImage(atlas.image.id,q1,q3,t1,t3,color)
         return
     end
     local width,height=pixel(glyph.advance*factor),pixel(16*factor)
-    q1[1],q1[2],q2[1],q2[2]=x+dx,y+dy,x+dx+width,y+dy
-    q3[1],q3[2],q4[1],q4[2]=x+dx+width,y+dy+height,x+dx,y+dy+height
-    t1[1],t1[2],t2[1],t2[2]=u/atlas.width,v/atlas.height,(u+glyph.advance)/atlas.width,v/atlas.height
-    t3[1],t3[2],t4[1],t4[2]=(u+glyph.advance)/atlas.width,(v+16)/atlas.height,u/atlas.width,(v+16)/atlas.height
-    list:AddImageQuad(atlas.image.id,q1,q2,q3,q4,t1,t2,t3,t4,color)
+    q1[1],q1[2],q3[1],q3[2]=x+dx,y+dy,x+dx+width,y+dy+height
+    t1[1],t1[2],t3[1],t3[2]=u/atlas.width,v/atlas.height,(u+glyph.advance)/atlas.width,(v+16)/atlas.height
+    list:AddImage(atlas.image.id,q1,q3,t1,t3,color)
 end
 
 local function draw_foreground(face,list,text,x,y,size,color,compact)
@@ -363,11 +365,9 @@ local function replay_foreground(face,list,text,x,y,size,compact,count,dxs,dys,c
     for pass=1,count do
         local dx,dy,color=dxs[pass],dys[pass],colors[pass]
         for n=1,glyphs do
-            local x1,y1,x2,y2=gx1[n]+dx,gy1[n]+dy,gx2[n]+dx,gy2[n]+dy
-            q1[1],q1[2],q2[1],q2[2],q3[1],q3[2],q4[1],q4[2]=x1,y1,x2,y1,x2,y2,x1,y2
-            t1[1],t1[2],t2[1],t2[2]=gu1[n],gv1[n],gu2[n],gv1[n]
-            t3[1],t3[2],t4[1],t4[2]=gu2[n],gv2[n],gu1[n],gv2[n]
-            list:AddImageQuad(id,q1,q2,q3,q4,t1,t2,t3,t4,color)
+            q1[1],q1[2],q3[1],q3[2]=gx1[n]+dx,gy1[n]+dy,gx2[n]+dx,gy2[n]+dy
+            t1[1],t1[2],t3[1],t3[2]=gu1[n],gv1[n],gu2[n],gv2[n]
+            list:AddImage(id,q1,q3,t1,t3,color)
         end
     end
     return true

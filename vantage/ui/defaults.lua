@@ -54,6 +54,8 @@ local function panel(id, x, y, enabled)
     end
     -- Watched enemies can list the enemies you debuff as well as the ones you watch.
     if id == 'watch' then result.list_debuffed = false end
+    -- Party members' timers can show only what job abilities put on.
+    if id == 'party' then result.abilities_only = false end
     return result
 end
 
@@ -339,6 +341,7 @@ function defaults.tidy(settings)
         end
         if defaults.lit_panels[id] then p.dispel_color = rgba(p.dispel_color, defaults.dispel_color) end
         if id == 'watch' then p.list_debuffed = p.list_debuffed == true end
+        if id == 'party' then p.abilities_only = p.abilities_only == true end
         if id == 'recasts' then
             for _, kind in ipairs({ 'spell', 'ability', 'item' }) do p.recast_categories[kind] = p.recast_categories[kind] == true end
         end

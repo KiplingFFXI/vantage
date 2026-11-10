@@ -271,8 +271,9 @@ local function scrub(value, typed, names, find)
 end
 
 -- Rules that would reach further without a name or id they hold, which a string can't carry: an alert rule for one
--- member by id, and a hide rule that names a character, yours or anyone's.
-local function narrow_rules(data)
+-- member by id, a hide rule that names a character, yours or anyone's, and a duration override only on one of the
+-- characters in names, which scrub would blank to one on everyone. An override on a mob keeps its name.
+local function narrow_rules(data, names)
     local left = 0;
     local function keep(rules, test)
         if type(rules) ~= 'table' then return rules; end
@@ -286,6 +287,8 @@ local function narrow_rules(data)
     if alerts then alerts.rules = keep(alerts.rules, function(rule) return (tonumber(rule.entity_id) or 0) == 0; end); end
     local filters = type(data.effect_filters) == 'table' and data.effect_filters;
     if filters then filters.rules = keep(filters.rules, function(rule) return type(rule.name) ~= 'string' or rule.name == ''; end); end
+    local durations = type(data.durations) == 'table' and data.durations;
+    if durations then durations.overrides = keep(durations.overrides, function(rule) return not named(rule.name, names); end); end
     return left;
 end
 
@@ -355,7 +358,7 @@ function share.export(settings, kind, id, character)
     local data = data_of(settings, kind, id);
     if type(data) ~= 'table' then return nil, 'Choose what to share.'; end
     local names = kind == 'profile' and all_names(character) or private_names(character);
-    local left = narrow_rules(data);
+    local left = narrow_rules(data, names);
     walk(data, template_of(kind, id), '', true);
     local typed = typed_of(kind, id);
     scrub(data, typed, names);
@@ -452,14 +455,42 @@ local function first_frame(settings)
     return { panels = first.panels, alerts = first.alerts, rolls = first.rolls, pet = first.pet };
 end
 
+-- Whether every one of keys still has fresh's value in target, or every one first's, the first frame's, when given.
+local function untouched(target, fresh, keys, first)
+    local same = require('core.profiles').same;
+    local function at(source)
+        for _, key in ipairs(keys) do if not same(target[key], source[key]) then return false; end end
+        return true;
+    end
+    return at(fresh) or type(first) == 'table' and at(first);
+end
+
+-- The two numbers of each spot, which go in together or not at all, so Add never puts a display at your x and the
+-- string's y. A display's anchor goes in whole the same way.
+local SPOTS = { x = 'y', y = 'x', notice_x = 'notice_y', notice_y = 'notice_x', native_x = 'native_y', native_y = 'native_x',
+    detached_x = 'detached_y', detached_y = 'detached_x' };
+local WHOLE = { 'anchor' };
+
 -- Puts each of data's values in target where target still has fresh's value, or first's, the first frame's, when given.
 -- A number is compared to the 14 digits a saved file keeps, so a color read back from one is still fresh's.
 local function fill_unchanged(target, data, fresh, first)
     local same = require('core.profiles').same;
+    -- Each spot is judged before either of its numbers changes.
+    local spot = {};
+    for key, other in pairs(SPOTS) do
+        if data[key] ~= nil and spot[key] == nil then
+            local kept = type(fresh) == 'table' and untouched(target, fresh, { key, other }, first);
+            spot[key], spot[other] = kept, kept;
+        end
+    end
     for key, value in pairs(data) do
         local placed;
         if type(first) == 'table' then placed = first[key]; end
-        if record(value) and record(target[key]) and type(fresh) == 'table' and record(fresh[key]) then
+        if spot[key] ~= nil then
+            if spot[key] then target[key] = copy(value); end
+        elseif key == WHOLE[1] and record(value) then
+            if type(fresh) == 'table' and untouched(target, fresh, WHOLE, first) then target[key] = copy(value); end
+        elseif record(value) and record(target[key]) and type(fresh) == 'table' and record(fresh[key]) then
             fill_unchanged(target[key], value, fresh[key], placed);
         elseif type(fresh) == 'table' and (same(target[key], fresh[key]) or placed ~= nil and same(target[key], placed)) then
             target[key] = copy(value);
@@ -529,16 +560,6 @@ local function element_apply(candidate, payload, mode, fresh, first)
     local fresh_root = id == 'notices' and fresh.alerts or element_root(fresh, id);
     if mode == 'replace' then merge_into(root, data, fresh_root);
     else fill_unchanged(root, data, fresh_root, first and (id == 'notices' and first.alerts or element_root(first, id))); end
-end
-
--- Whether every one of keys still has fresh's value in target, or every one first's, the first frame's, when given.
-local function untouched(target, fresh, keys, first)
-    local same = require('core.profiles').same;
-    local function at(source)
-        for _, key in ipairs(keys) do if not same(target[key], source[key]) then return false; end end
-        return true;
-    end
-    return at(fresh) or type(first) == 'table' and at(first);
 end
 
 local function layout_apply(candidate, data, mode, fresh, first)

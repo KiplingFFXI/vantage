@@ -1,4 +1,4 @@
--- Every settings key an export could hold at 1.0, by the table that holds it ('' is the top, '[]' a list's items).
+-- Every settings key an export could hold at 1.0 and since, by the table that holds it ('' is the top, '[]' a list's items).
 -- Written from ui/defaults.make(). Add a key here when one is added. A key on this list stays in fresh settings:
 -- share.read refuses a string that holds a key they don't have, so a string made with it would stop pasting.
 return {
@@ -28,12 +28,12 @@ return {
     ['overhead.types'] = 'alliance mob other other_pet party pet self',
     ['overhead.types.alliance'] = 'buffs_mine_only cleanse_light countdown debuffs_party_only exclude include kinds'
         .. ' layout limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
-        .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
-        .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
+        .. ' show_barspells show_copy_image show_food show_protect_shell show_rolls show_signet show_songs'
+        .. ' show_stances show_third_eye size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.types.mob'] = 'buffs_mine_only cc_slot countdown debuffs_party_only exclude include kinds'
         .. ' layout limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
-        .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
-        .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
+        .. ' show_barspells show_copy_image show_food show_protect_shell show_rolls show_signet show_songs'
+        .. ' show_stances show_third_eye size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.types.other'] = 'buffs_mine_only countdown debuffs_party_only exclude include kinds'
         .. ' layout limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
         .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
@@ -44,16 +44,16 @@ return {
         .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.types.party'] = 'buffs_mine_only cleanse_light countdown debuffs_party_only exclude include kinds'
         .. ' layout limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
-        .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
-        .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
+        .. ' show_barspells show_copy_image show_food show_protect_shell show_rolls show_signet show_songs'
+        .. ' show_stances show_third_eye size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.types.pet'] = 'buffs_mine_only countdown debuffs_party_only exclude include kinds layout'
         .. ' limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
         .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
         .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.types.self'] = 'buffs_mine_only cleanse_light countdown debuffs_party_only exclude include kinds layout'
         .. ' limit line_buffs line_debuffs mine_only name_lift screen_x screen_y shared_rules'
-        .. ' show_barspells show_food show_protect_shell show_rolls show_signet show_songs show_stances'
-        .. ' size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
+        .. ' show_barspells show_copy_image show_food show_protect_shell show_rolls show_signet show_songs'
+        .. ' show_stances show_third_eye size_scale split_buffs split_debuffs swap_lines swap_sides world_offset',
     ['overhead.units'] = 'alliance claimed debuffed other other_pet party pet self subtarget target watched',
     ['panels'] = 'ability_recasts item_recasts party recasts self_buffs self_debuffs spell_recasts target watch',
     ['panels.ability_recasts'] = 'alignment anchor auto_height auto_width bar_style bar_thickness box colors conditions'
@@ -79,8 +79,9 @@ return {
         .. ' warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.item_recasts.anchor'] = 'align dx dy element gap offset point side to',
     ['panels.item_recasts.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
-    ['panels.party'] = 'alignment anchor auto_height auto_width bar_style bar_thickness blink_icons blink_seconds box'
-        .. ' colors conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow direction'
+    ['panels.party'] = 'abilities_only alignment anchor auto_height auto_width bar_style bar_thickness blink_icons'
+        .. ' blink_seconds box colors conditions countdown_bold countdown_outline countdown_outline_color'
+        .. ' countdown_shadow direction'
         .. ' dispel_color dispel_glow dispel_light dock_match_width effect_colors empty enabled exclude'
         .. ' field_alignments field_colors field_dividers field_labels field_newlines field_order field_priority'
         .. ' fill_direction filter gradient group_by groups growth height_limit horizon icon_countdown_gap'
@@ -171,9 +172,9 @@ return {
     ['party_ui'] = 'conditions effects enabled groups include_self locked name_display name_length native preview'
         .. ' show_solo strips style',
     ['party_ui.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
-    ['party_ui.effects'] = 'blink_icons blink_seconds cleanse_light countdown_bold countdown_outline countdown_outline_color'
-        .. ' countdown_shadow exclude fit_all growth icon_countdown_gap icon_countdown_position'
-        .. ' icon_countdown_size icon_size include kind max pinned separate sort timers',
+    ['party_ui.effects'] = 'abilities_only blink_icons blink_seconds cleanse_light countdown_bold countdown_outline'
+        .. ' countdown_outline_color countdown_shadow exclude fit_all growth icon_countdown_gap icon_countdown_position'
+        .. ' icon_countdown_size icon_size include kind max pinned separate show_copy_image show_third_eye sort timers',
     ['party_ui.groups.[]'] = 'detached_height detached_width detached_x detached_y native_detached native_side'
         .. ' native_x native_y order',
     ['party_ui.native'] = 'gap side snap width',

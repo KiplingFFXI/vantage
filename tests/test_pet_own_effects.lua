@@ -64,6 +64,32 @@ fx.step(179);
 assert(fx.row(pet_id, REGEN), 'It stays to its end.');
 fx.step(1.5);
 assert(not fx.row(pet_id, REGEN), 'It leaves on time with nothing to say so.');
+-- Its wear-off message comes after that, within one of Phoenix's ticks, and still says it wore off, so an alert for it
+-- goes off. One that late twice over finds nothing.
+local drain, removed = fx.app.tracker.drain_events, {};
+fx.app.tracker.drain_events = function(self)
+    local events = drain(self);
+    for _, event in ipairs(events) do
+        if event.kind == 'removed' and event.entity_id == pet_id and event.effect == REGEN then removed[#removed + 1] = event; end
+    end
+    return events;
+end;
+fx.step(0.3);
+fx.message(self_id, pet_id, REGEN, 206);
+fx.step();
+assert(#removed == 1 and removed[1].mine and removed[1].reason == require('core.tracker').WEAR_OFF,
+    'The wear-off after its end says it wore off: ' .. #removed);
+fx.message(self_id, pet_id, REGEN, 206);
+fx.step();
+assert(#removed == 1, 'and only once.');
+reward();
+fx.step();
+fx.step(181);
+fx.step(2.5);
+fx.message(self_id, pet_id, REGEN, 206);
+fx.step();
+assert(#removed == 1 and not fx.row(pet_id, REGEN), 'Past two seconds after its end, a wear-off finds nothing.');
+fx.app.tracker.drain_events = nil;
 
 -- A new Reward takes the old Regen off with a message: it can come either side of the action.
 reward();

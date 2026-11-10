@@ -88,15 +88,18 @@ function icons.status_at(id, artwork, size)
 end
 
 -- These lookups go by prepared data and previous upload results. The only file read is XI View's icons, when nothing
--- has asked for them yet.
-function icons.artwork_status(artwork, id)
+-- has asked for them yet. out, when given, is emptied and filled in place of a new table.
+local NONE = {}
+function icons.artwork_status(artwork, id, out)
     artwork = artwork_name(artwork)
     if artwork == 'Client' then
-        return { available = id == nil or loaded[id] ~= false, using = artwork,
-            reason = id ~= nil and loaded[id] == false and 'The client status image is unavailable.' or nil }
+        if out then require('table.clear')(out) else out = {} end
+        out.available, out.using = id == nil or loaded[id] ~= false, artwork
+        out.reason = id ~= nil and loaded[id] == false and 'The client status image is unavailable.' or nil
+        return out
     end
     local assets = require('ui.client_assets')
-    local status = assets.icon_status(artwork_kinds[artwork], id)
+    local status = assets.icon_status(artwork_kinds[artwork], id, out)
     local previous = id ~= nil and resolved[artwork] and resolved[artwork][id]
     if previous then status.using, status.reason = previous.using, previous.reason or status.reason
     elseif status.available then status.using = artwork
@@ -107,7 +110,7 @@ function icons.artwork_status(artwork, id)
     end
     if id == nil and status.available then
         local count, first_id, first = 0
-        for observed_id, observed in pairs(resolved[artwork] or {}) do
+        for observed_id, observed in pairs(resolved[artwork] or NONE) do
             if observed.reason and observed.using ~= artwork then
                 count = count + 1
                 if not first_id or observed_id < first_id then first_id, first = observed_id, observed end
@@ -123,8 +126,10 @@ function icons.artwork_status(artwork, id)
     return status
 end
 
+-- More look and the party list buffs' note ask each frame, so the answer goes through one table.
+local reason_status = {}
 function icons.reason(artwork, id)
-    return icons.artwork_status(artwork, id).reason
+    return icons.artwork_status(artwork, id, reason_status).reason
 end
 
 function icons.clear()

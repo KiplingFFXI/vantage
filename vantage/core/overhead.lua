@@ -310,8 +310,9 @@ local function add(entities, snapshot, config, index, id, reason, level, city)
     if not kind then return; end
     if kind == 'mob' and concealed(id) then return; end
     if not reason then
-        if not config.units[kind] then return; end
-        level = LEVELS[kind];
+        -- A tick with no place in the list, such as units.mob from a hand edit or a newer Vantage, gives no block.
+        level = config.units[kind] and LEVELS[kind];
+        if not level then return; end
     elseif reason ~= 'target' and reason ~= 'subtarget' and reason ~= 'watched' and kind ~= 'mob' then return; end
     if city and not flagged and kind ~= 'party' and kind ~= 'self' then return; end
     -- A party or alliance member with party cooldowns over heads takes a block for that line.
@@ -474,6 +475,21 @@ local function name_point(cache, entities, index, id, actor)
     return nil, 'Reading the name point failed.';
 end
 
+-- Whether a unit's name point, put from its position where the last read this tenth of a second put it, is past the
+-- off-screen margin place uses by more than SWAY yalms, or that far behind the camera. A name point sways far less in
+-- that time, so one well off screen isn't read again until the list is made again.
+local SWAY = 1;
+local function far_off(unit, entities, index, config, ui, kind)
+    local x, y, z = world_point(entities, index, 0);
+    x, y, z = x + unit.np_ox, y + unit.np_oy, z + unit.np_oz;
+    local sx, sy, depth = camera.project(x, y, z);
+    if not sx then return camera.behind(x, y, z, SWAY); end
+    local size = settle(unit.size, overhead.icon_size(unit.player, unit.race, unit.hitbox, unit.name, depth, unit.target,
+        config, ui, kind.size_scale));
+    local margin = size * 4 + SWAY * camera.pixels_per_yalm(depth);
+    return sx < -margin or sx > plan.width + margin or sy < -margin or sy > plan.height + margin;
+end
+
 -- Draw tests, the point it is placed from on screen, the size and the fade for one candidate. Returns whether it
 -- gets a block.
 local function place(unit, entities, config, ui, cap, first_person)
@@ -502,8 +518,12 @@ local function place(unit, entities, config, ui, cap, first_person)
     local px, py, pz;
     unit.path, unit.why = 'guess', false;
     if pointed then
+        if unit.np_seen == generation and far_off(unit, entities, index, config, ui, kind) then return false; end
         px, py, pz = name_point(unit, entities, index, unit.id, actor);
-        if not px then unit.why = py; end
+        if px then
+            local x, y, z = world_point(entities, index, 0);
+            unit.np_ox, unit.np_oy, unit.np_oz, unit.np_seen = px - x, py - y, pz - z, generation;
+        else unit.why = py; end
     elseif plan.above then unit.why = name_anchor.problem() or false; end
     local sx, sy, depth, ndc;
     if px then sx, sy, depth, ndc = camera.project(px, py, pz);
@@ -619,6 +639,7 @@ end
 -- lines on the frame that reads them, for the caller to print and keep in the report.
 function overhead.update(view, settings, snapshot, now, displays_hidden, conditions_hidden)
     plan.count, plan.valid, pointed = 0, false, false;
+    name_anchor.release_pages();
     local config = settings.overhead;
     if not config.enabled and not calibrate_pending then
         clear();
@@ -680,11 +701,13 @@ function overhead.update(view, settings, snapshot, now, displays_hidden, conditi
     local first_person = false;
     if by_id[snapshot.id] and memory.follow then first_person = truth(memory.follow:GetIsFirstPersonCamera()); end
     local stale = false;
+    if pointed then name_anchor.hold_pages(); end
     for i = 1, pool_count do
         local unit = pool[i];
         local shown, moved = place(unit, entities, config, ui, config.distance_cap, first_person);
         unit.visible, stale = shown, stale or moved == true;
     end
+    name_anchor.release_pages();
     -- An index now holds another entity: the list is made again next frame.
     if stale then rebuilt_at = -1; end
     plan.considered, plan.valid = pool_count, true;

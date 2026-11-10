@@ -14,9 +14,11 @@ end
 
 local number = require('ui.numbers').clamp;
 
-local function rgba(value, fallback)
-    local out = {};
-    value = type(value) == 'table' and value or {};
+-- out, when given, is filled and handed back in place of a new table.
+local NO_COLOR = {};
+local function rgba(value, fallback, out)
+    out = out or {};
+    value = type(value) == 'table' and value or NO_COLOR;
     for i = 1, 4 do out[i] = number(value[i], 0, 1, fallback[i]); end
     return out;
 end
@@ -112,33 +114,43 @@ function theme.u32(value, opacity)
         math.floor(red * 255 + 0.5), math.floor(green * 255 + 0.5), math.floor(blue * 255 + 0.5));
 end
 
-function theme.window_paint(look, key)
+-- The client window's own color under Original FFXI's paint: parchment for window type 7, blue for the rest.
+local WHITE, PARCHMENT, BLUE = { 1, 1, 1, 1 }, { 198, 185, 133 }, { 49, 48, 90 };
+
+-- out, when given, is filled and handed back in place of a new table.
+function theme.window_paint(look, key, out)
     local value = look[key];
     if type(value) ~= 'table' then value = look.colors and look.colors[key] or look[key .. '_color']; end
-    value = rgba(value, { 1, 1, 1, 1 });
+    value = rgba(value, WHITE, out);
     if look.theme == 'Original FFXI' and (key == 'background' or key == 'dropdowns') then
-        local base = look.window_type == 7 and { 198, 185, 133 } or { 49, 48, 90 };
-        return { value[1] * base[1] / 255, value[2] * base[2] / 255, value[3] * base[3] / 255, value[4] };
+        local base = look.window_type == 7 and PARCHMENT or BLUE;
+        for i = 1, 3 do value[i] = value[i] * base[i] / 255; end
     end
     return value;
 end
 
-function theme.fallback_background(look)
-    return theme.window_paint(look, 'background');
+function theme.fallback_background(look, out)
+    return theme.window_paint(look, 'background', out);
 end
 
 function theme.panel(list, rect, look)
     return require('ui.client_skin').panel(list, rect, look, look.colors, look.opacity);
 end
 
+-- What a frame hands ImGui, refilled for each call: the binding copies a vector and keeps none, and the paint goes
+-- straight to theme.u32.
+local corner, far_corner, paint = { 0, 0 }, { 0, 0 }, { 0, 0, 0, 0 };
+
 -- A frame's own background and border where no window art paints it; Minimal draws neither. border is the
 -- display's border color. Anything after it goes to AddRect as its flags and thickness.
 function theme.frame_fallback(list, rect, look, border, ...)
-    if look.background and not look.minimal then
-        list:AddRectFilled({ rect.x, rect.y }, { rect.x + rect.width, rect.y + rect.height }, theme.u32(theme.fallback_background(look), look.opacity), look.rounding);
+    if look.minimal then return; end
+    corner[1], corner[2], far_corner[1], far_corner[2] = rect.x, rect.y, rect.x + rect.width, rect.y + rect.height;
+    if look.background then
+        list:AddRectFilled(corner, far_corner, theme.u32(theme.fallback_background(look, paint), look.opacity), look.rounding);
     end
-    if look.border and not look.minimal then
-        list:AddRect({ rect.x, rect.y }, { rect.x + rect.width, rect.y + rect.height }, theme.u32(border, look.opacity), look.rounding, ...);
+    if look.border then
+        list:AddRect(corner, far_corner, theme.u32(border, look.opacity), look.rounding, ...);
     end
 end
 

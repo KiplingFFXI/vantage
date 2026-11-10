@@ -145,6 +145,22 @@ end
 -- (core/observer.lua), for 1, 2, 3, and 4 or more shadows.
 local SHADOW_ICONS = { 66, 444, 445, 446 };
 
+-- A row whose exact length ran out leaves at its deadline (methods:view), and its wear-off message comes after it,
+-- within one of Phoenix's ticks, so for two seconds that message still finds it.
+local function ended_row(entity, observation, now)
+    local list = entity.ended;
+    if not list then return nil; end
+    for i = #list, 1, -1 do
+        local row = list[i];
+        if now - row.ended_at > 2 then table.remove(list, i);
+        elseif key(row.effect) == key(observation.effect)
+            and (not observation.source or not row.source or row.source == observation.source) then
+            table.remove(list, i);
+            return row;
+        end
+    end
+end
+
 -- A zone change, character change or lost snapshot clears everything. Phoenix keeps an effect without
 -- on_zone through a zone change as the same copy, so the player's own rows of effects with one copy leave a note of
 -- who cast them, and the first listing after it gives that back to a copy it lists that nothing recast.
@@ -155,7 +171,7 @@ function methods:clear(reason, now)
         for _, row in ipairs(own.entries) do
             if single(row.effect) and row.source ~= nil and row.present and not row.departing and not self.pending[key(row.effect)] then
                 labels[row.effect] = { source = row.source, source_name = row.source_name, spell = row.spell, tier = row.tier,
-                    mine = row.mine, by_pet = row.by_pet };
+                    mine = row.mine, by_pet = row.by_pet, action_kind = row.action_kind };
             end
         end
         self.carried = { id = self.self_id, labels = labels };
@@ -285,15 +301,15 @@ end
 
 local function credit(self, row, pending)
     row.source, row.source_name, row.spell, row.tier = pending.source, pending.source_name, pending.spell, pending.tier;
-    row.mine, row.by_pet = pending.source == self.self_id, pending.by_pet;
+    row.mine, row.by_pet, row.action_kind = pending.source == self.self_id, pending.by_pet, pending.action_kind;
     row.start = pending.at;
     row.total = row.deadline and math.max(0, row.deadline - row.start) or nil;
 end
 
 -- What a row holds for the cast behind its copy.
-local CAST = { 'source', 'source_name', 'spell', 'tier', 'mine', 'by_pet', 'start', 'total', 'estimated_until', 'duration_min',
-    'instance', 'observed_at' };
-local LABELS = { 'source', 'source_name', 'spell', 'tier', 'mine', 'by_pet', 'start', 'total' };
+local CAST = { 'source', 'source_name', 'spell', 'tier', 'mine', 'by_pet', 'action_kind', 'start', 'total', 'estimated_until',
+    'duration_min', 'instance', 'observed_at' };
+local LABELS = { 'source', 'source_name', 'spell', 'tier', 'mine', 'by_pet', 'action_kind', 'start', 'total' };
 
 -- Whether copy a ends after copy b; on the same timer, whether it has the later slot.
 local function ends_after(a, b)
@@ -439,18 +455,17 @@ local function current(self, cast, timer_revision)
 end
 local function replaced(self, entity, incoming, counts, now, timer_revision)
     local ghost, pin, kept;
-    local function mine(cast) return current(self, cast, timer_revision); end
     for effect, count in pairs(counts) do
         -- Only the player's cast, or for an effect with one copy nothing at all, waiting makes a pair. Songs
         -- have a copy a tier, so more than eight copies is no listing Phoenix sends.
         local own, any = false, false;
         if count > 1 and count <= 8 and (single(effect) or song(effect)) then
             for _, pending in ipairs(self.pending[effect] or EMPTY) do
-                if now - pending.at <= 3 and shown(pending, timer_revision) then any, own = true, own or mine(pending); end
+                if now - pending.at <= 3 and shown(pending, timer_revision) then any, own = true, own or current(self, pending, timer_revision); end
             end
             for _, row in ipairs(entity.entries) do
                 local held = key(row.effect) == effect and row.fresh and row.fresh_pending;
-                if held and now - held.at <= 3 then any, own = true, own or mine(held); end
+                if held and now - held.at <= 3 then any, own = true, own or current(self, held, timer_revision); end
             end
         end
         if own or count > 1 and count <= 8 and not any and single(effect) then
@@ -470,7 +485,7 @@ local function replaced(self, entity, incoming, counts, now, timer_revision)
             end
             if #waiting > 1 then table.sort(waiting, arrival); end
             own = nil;
-            for i, item in ipairs(waiting) do if mine(item.cast) then own = i; end end
+            for i, item in ipairs(waiting) do if current(self, item.cast, timer_revision) then own = i; end end
             local at = {};
             for n, status in ipairs(incoming) do if key(status.effect) == effect then at[#at + 1] = n; end end
             local function reads(row, n) return row.raw_timer ~= nil and same_deadline(row, incoming[n]); end
@@ -625,6 +640,7 @@ local function replaced(self, entity, incoming, counts, now, timer_revision)
                         local cast = waiting[found.label].cast;
                         labels.source, labels.source_name, labels.spell, labels.tier = cast.source, cast.source_name, cast.spell, cast.tier;
                         labels.mine, labels.by_pet, labels.start, labels.instance, labels.observed_at = cast.source == self.self_id, cast.by_pet, cast.at, 1, now;
+                        labels.action_kind = cast.action_kind;
                     elseif found.row then
                         for _, key in ipairs(CAST) do labels[key] = found.row[key]; end
                         labels.first_seen, labels.first_sequence = found.row.first_seen, found.row.first_sequence;
@@ -677,26 +693,32 @@ for key = 0, 7 * 64 + 63 do LEAST[key] = 0; end
 -- their slots, so a copy also keeps its order against the other songs. explains says whether an
 -- application lands on a row, capped whether its caster has a new song waiting, crossing how many other
 -- songs a row would trade places with on a slot.
+-- assign's sort: indexes by the slot of what each names in sort_from, then by index.
+local sort_from;
+local function by_slot(a, b)
+    local x, y = sort_from[a].slot or math.huge, sort_from[b].slot or math.huge;
+    if x ~= y then return x < y; end
+    return a < b;
+end
+-- assign's costs, one list for each listed copy, kept as LEAST is: it only reads the costs it wrote that call.
+local ADDS = {};
+
 local function assign(entries, incoming, rows, statuses, used, matches, explains, capped, crossing)
-    local function by_slot(list, at)
-        table.sort(list, function(a, b)
-            local x, y = at(a).slot or math.huge, at(b).slot or math.huge;
-            if x ~= y then return x < y; end
-            return a < b;
-        end);
-    end
-    by_slot(rows, function(i) return entries[i]; end);
-    by_slot(statuses, function(n) return incoming[n]; end);
+    sort_from = entries;
+    table.sort(rows, by_slot);
+    sort_from = incoming;
+    table.sort(statuses, by_slot);
+    sort_from = nil;
     -- A cost: unpaired slots, rows a 0x037 alone listed kept, renewals, renewals no application explains,
     -- departing rows kept, places traded with other songs (seven a row at most), order changes, rows a cap
     -- may have dropped kept, timers neither of the two a row has read, raw timers that differ. Six copies
     -- make at most 15 order changes and six of anything else, and each count sits in its own digits, so
     -- comparing costs compares those counts in turn. A row only a 0x037 without its 0x063 has listed may be
     -- the old copy of a stray listing; one with a timer is kept before it.
-    local ns, nr, adds = #statuses, #rows, {};
+    local ns, nr, adds = #statuses, #rows, ADDS;
     for s = 1, ns do
         local status = incoming[statuses[s]];
-        adds[s] = {};
+        adds[s] = adds[s] or {};
         for r = 1, nr do
             local row = entries[rows[r]];
             local renewal, raw = renewed(row, status), status.raw_timer;
@@ -841,17 +863,91 @@ local function awaiting_presence(row, entity, now, revision)
         and (not revision or revision <= stamp) and (revision ~= nil or now - row.observed_at <= 3);
 end
 
+-- What a snapshot works out as it pairs a listing with rows, by name, emptied as the next snapshot takes it. A snapshot
+-- never runs inside another and keeps none of these past its end, so a refresh makes no table for them.
+local work = {};
+local function emptied(name)
+    local held = work[name];
+    if held then clear(held); return held; end
+    held = {};
+    work[name] = held;
+    return held;
+end
+
+-- A snapshot's same-ID groups, each its rows, its listed copies and its effect, and its song anchors, each a row's slot,
+-- its copy's slot and its effect. Kept from one refresh to the next like the rest.
+local group_pool, anchor_pool = {}, {};
+local function next_group(groups, effect)
+    local n = #groups + 1;
+    local group = group_pool[n];
+    if not group then group = { {}, {} }; group_pool[n] = group; end
+    clear(group[1]);
+    clear(group[2]);
+    group[3], groups[n] = effect, group;
+    return group;
+end
+local function add_anchor(anchors, row_slot, status_slot, effect)
+    local n = #anchors + 1;
+    local anchor = anchor_pool[n];
+    if not anchor then anchor = {}; anchor_pool[n] = anchor; end
+    anchor[1], anchor[2], anchor[3], anchors[n] = row_slot, status_slot, effect, anchor;
+end
+
+-- What the pairing tests below read of the timed snapshot pairing its rows: the tracker, the time, the timer revision,
+-- the entity and the song anchors. Set before its rows are paired and cleared after.
+local pair_self, pair_now, pair_revision, pair_entity, pair_anchors;
+-- An application a copy listed only by a 0x037 holds is still waiting to be placed.
+local function explains(row)
+    for _, pending in ipairs(pair_self.pending[key(row.effect)] or EMPTY) do
+        if pair_now - pending.at <= 3 and shown(pending, pair_revision) and lands_on(row, pending) then return true; end
+    end
+    for _, other in ipairs(pair_entity.entries) do
+        local pending = other ~= row and key(other.effect) == key(row.effect) and other.fresh and other.fresh_pending;
+        if pending and lands_on(row, pending) then return true; end
+    end
+    return false;
+end
+local function capped(row)
+    if not song(row.effect) or row.source == nil then return false; end
+    for effect, list in pairs(pair_self.pending) do
+        if song(effect) then
+            for _, pending in ipairs(list) do
+                if pending.source == row.source and not (effect == row.effect and same_tier(row, pending))
+                    and pair_now - pending.at <= 3 and shown(pending, pair_revision) then return true; end
+            end
+        end
+    end
+    return false;
+end
+-- A copy only a 0x037 listed has its place from a listing that may hold copies already gone.
+local function crossing(row, status)
+    if not song(row.effect) or row.fresh or not row.slot or not status.slot then return 0; end
+    local flips = 0;
+    for _, anchor in ipairs(pair_anchors) do
+        if anchor[3] ~= row.effect and (row.slot < anchor[1]) ~= (status.slot < anchor[2]) then flips = flips + 1; end
+    end
+    return flips;
+end
+local function none() return 0; end
+
+-- A party row whose removal was seen stays listed only by a newer listing, or for a moment by the one from
+-- before the removal, read again until the next one comes.
+local function stale(row, timed, revision, now)
+    return not timed and row.departing and revision ~= nil and revision == row.departing_revision and now - row.departing_at > 3;
+end
+
 function methods:snapshot(entity, effects, now, timed, revision, complete, timers_pending, timer_revision)
     complete = complete ~= false;
     -- The player's listing changed with no status packet since the last one, its icons no longer matching: the client
     -- cleared an entry itself, as a Confirm on its + menu does.
     local cleared = timed and timers_pending and revision ~= nil and revision == entity.revision;
-    local used, matches, incoming, counts, ambiguous, solved, unsettled = {}, {}, {}, {}, {}, {}, {};
+    local used, matches, incoming, counts = emptied('used'), emptied('matches'), emptied('incoming'), emptied('counts');
+    local ambiguous, solved, unsettled = emptied('ambiguous'), emptied('solved'), emptied('unsettled');
     local stale_presence = entity.pending_presence == true
         and (revision == nil or finite(entity.pending_revision) and revision <= entity.pending_revision);
     if not stale_presence then entity.pending_presence, entity.pending_revision = nil, nil; end
-    local twice, keyed = false, {};
-    for _, status in ipairs(effects or {}) do
+    local twice, keyed = false, emptied('keyed');
+    for _, status in ipairs(effects or EMPTY) do
         if type(status) == 'table' and effect_id(status.effect) and #incoming < 32 then
             incoming[#incoming + 1] = status;
             counts[status.effect] = (counts[status.effect] or 0) + 1;
@@ -894,10 +990,10 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
         end
     end
     relabel_icons(entity, incoming, ghost, pin, kept, timed);
-    local dropped, spare, merged, waiting = {}, {}, {}, {};
+    local dropped, spare, merged, waiting = emptied('dropped'), emptied('spare'), emptied('merged'), emptied('waiting');
     if not timed then
         -- A copy whose removal was seen is the one a listing lacks.
-        local held = {};
+        local held = emptied('held');
         for _, row in ipairs(entity.entries) do
             if not row.departing then held[row.effect] = (held[row.effect] or 0) + 1; end
             waiting[row.effect] = waiting[row.effect] or awaiting_presence(row, entity, now, revision);
@@ -927,7 +1023,7 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
             end
         end
     end
-    local first, tail, following = {}, {}, {};
+    local first, tail, following = emptied('first'), emptied('tail'), emptied('following');
     for i, row in ipairs(entity.entries) do
         if not kept[row] then
             if tail[row.effect] then following[tail[row.effect]] = i;
@@ -936,34 +1032,12 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
         end
     end
     if timed then
-        local held = {};
+        local held = emptied('held');
         for _, row in ipairs(entity.entries) do if not kept[row] then held[row.effect] = (held[row.effect] or 0) + 1; end end
-        -- An application a copy listed only by a 0x037 holds is still waiting to be placed.
-        local function explains(row)
-            for _, pending in ipairs(self.pending[key(row.effect)] or {}) do
-                if now - pending.at <= 3 and shown(pending, timer_revision) and lands_on(row, pending) then return true; end
-            end
-            for _, other in ipairs(entity.entries) do
-                local pending = other ~= row and key(other.effect) == key(row.effect) and other.fresh and other.fresh_pending;
-                if pending and lands_on(row, pending) then return true; end
-            end
-            return false;
-        end
-        local function capped(row)
-            if not song(row.effect) or row.source == nil then return false; end
-            for effect, list in pairs(self.pending) do
-                if song(effect) then
-                    for _, pending in ipairs(list) do
-                        if pending.source == row.source and not (effect == row.effect and same_tier(row, pending))
-                            and now - pending.at <= 3 and shown(pending, timer_revision) then return true; end
-                    end
-                end
-            end
-            return false;
-        end
         -- Single copies first, then same-ID copies once without and once with the order the other songs
         -- keep, taken from the first try.
-        local anchors, groups = {}, {};
+        local anchors, groups = emptied('anchors'), emptied('groups');
+        pair_self, pair_now, pair_revision, pair_entity, pair_anchors = self, now, timer_revision, entity, anchors;
         for n, status in ipairs(incoming) do
             local effect, i = status.effect, not ghost[n] and not pin[n] and first[status.effect];
             if i and not solved[effect] and held[effect] <= 6 and counts[effect] <= 6 then
@@ -972,49 +1046,35 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
                     local row = entity.entries[i];
                     if not stuck(row, renewed(row, status)) then
                         used[i], matches[n] = true, row;
-                        if song(effect) and row.slot then anchors[#anchors + 1] = { row.slot, status.slot, effect }; end
+                        if song(effect) and row.slot then add_anchor(anchors, row.slot, status.slot, effect); end
                     end
                 else
-                    local rows, statuses = {}, {};
+                    local group = next_group(groups, effect);
+                    local rows, statuses = group[1], group[2];
                     while i do rows[#rows + 1] = i; i = following[i]; end
                     for m = n, #incoming do
                         if incoming[m].effect == effect and not ghost[m] and not pin[m] then statuses[#statuses + 1] = m; end
                     end
-                    groups[#groups + 1] = { rows, statuses, effect };
                 end
             end
         end
-        local trial, ignore, songs = {}, {}, 0;
-        local function none() return 0; end
+        local trial, ignore, songs = emptied('trial'), emptied('ignore'), 0;
         for _, group in ipairs(groups) do if song(group[3]) then songs = songs + 1; end end
-        for _, group in ipairs(songs > 1 and groups or {}) do
+        for _, group in ipairs(songs > 1 and groups or EMPTY) do
             if song(group[3]) then
-                local rows, statuses = {}, {};
+                local rows, statuses = emptied('trial_rows'), emptied('trial_statuses');
                 for k, v in ipairs(group[1]) do rows[k] = v; end
                 for k, v in ipairs(group[2]) do statuses[k] = v; end
                 assign(entity.entries, incoming, rows, statuses, ignore, trial, explains, capped, none);
             end
         end
         for n, row in pairs(trial) do
-            if song(row.effect) and row.slot then anchors[#anchors + 1] = { row.slot, incoming[n].slot, row.effect }; end
-        end
-        -- A copy only a 0x037 listed has its place from a listing that may hold copies already gone.
-        local function crossing(row, status)
-            if not song(row.effect) or row.fresh or not row.slot or not status.slot then return 0; end
-            local flips = 0;
-            for _, anchor in ipairs(anchors) do
-                if anchor[3] ~= row.effect and (row.slot < anchor[1]) ~= (status.slot < anchor[2]) then flips = flips + 1; end
-            end
-            return flips;
+            if song(row.effect) and row.slot then add_anchor(anchors, row.slot, incoming[n].slot, row.effect); end
         end
         for _, group in ipairs(groups) do
             assign(entity.entries, incoming, group[1], group[2], used, matches, explains, capped, crossing);
         end
-    end
-    -- A party row whose removal was seen stays listed only by a newer listing, or for a moment by the one from
-    -- before the removal, read again until the next one comes.
-    local function stale(row)
-        return not timed and row.departing and revision ~= nil and revision == row.departing_revision and now - row.departing_at > 3;
+        pair_self, pair_now, pair_revision, pair_entity, pair_anchors = nil, nil, nil, nil, nil;
     end
     -- Party rows and larger groups: match unchanged deadlines before slot order or refreshes, exact timers first,
     -- and rows whose removal was seen last.
@@ -1024,7 +1084,7 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
             while i do
                 local row = entity.entries[i];
                 if not ambiguous[row.effect] and not used[i] and not dropped[row]
-                    and (timed and same_deadline(row, status, pass == 1) or not timed and (pass == 2 or not row.departing) and not stale(row)) then
+                    and (timed and same_deadline(row, status, pass == 1) or not timed and (pass == 2 or not row.departing) and not stale(row, timed, revision, now)) then
                     used[i], matches[n] = true, row;
                     break;
                 end
@@ -1038,7 +1098,7 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
             local i = first[status.effect];
             while i do
                 local row = entity.entries[i];
-                if not ambiguous[row.effect] and not used[i] and not dropped[row] and not stuck(row, renewed(row, status)) and not stale(row) then
+                if not ambiguous[row.effect] and not used[i] and not dropped[row] and not stuck(row, renewed(row, status)) and not stale(row, timed, revision, now) then
                     candidate = candidate or i;
                     if row.slot == status.slot then candidate = i; break; end
                 end
@@ -1084,7 +1144,7 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
             end
         end
     end
-    local listed, credited, queued, moving = {}, {}, {}, {};
+    local listed, credited, queued, moving = emptied('listed'), emptied('credited'), emptied('queued'), emptied('moving');
     for n, row in pairs(matches) do
         listed[row] = true;
         if timed and not row.fresh and renewed(row, incoming[n]) then moving[row] = true; end
@@ -1139,7 +1199,10 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
                 or 'The status is present, but no current timer is available.';
             row.instance, row.observed_at, row.estimated_until, row.duration_min = row.instance + 1, now, nil, nil;
             if cast then credit(self, row, cast);
-            else row.source, row.source_name, row.spell, row.tier, row.mine, row.by_pet, row.start, row.total = nil, nil, nil, nil, nil, nil, nil, nil; end
+            else
+                row.source, row.source_name, row.spell, row.tier, row.mine, row.by_pet, row.start, row.total = nil, nil, nil, nil, nil, nil, nil, nil;
+                row.action_kind = nil;
+            end
             if entity.baseline then queued[#queued + 1] = { 'refresh', row }; end
             credited[row], listed[row] = true, true;
         elseif not suppressed then
@@ -1205,7 +1268,7 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
                 row.instance = row.instance + 1;
                 row.start, row.total = nil, nil;
                 row.departing, row.departing_revision, row.departing_at, row.recast = nil, nil, nil, nil;
-                row.source, row.source_name, row.spell, row.tier, row.mine, row.by_pet = nil, nil, nil, nil, nil, nil;
+                row.source, row.source_name, row.spell, row.tier, row.mine, row.by_pet, row.action_kind = nil, nil, nil, nil, nil, nil, nil;
                 row.observed_at = now;
             end
             row.slot, row.present = status.slot, true;
@@ -1716,6 +1779,9 @@ function methods:observe(observations, now, snapshot)
                             self:erase(entity, at, now, reason);
                         end
                     end
+                elseif #candidates == 0 and observation.reason == tracker.WEAR_OFF then
+                    local gone = ended_row(entity, observation, now);
+                    if gone then self:queue('removed', gone, now, observation.reason); end
                 end
             elseif entity and kind == 'apply' and not refused(entity, observation, scope, now) then
                 if scope == 'self' then
@@ -1780,7 +1846,7 @@ function methods:observe(observations, now, snapshot)
                     if not created and not row.departing and observation.action_category == 6 and row.source ~= observation.source
                         and not observation.exact then
                         row.source, row.source_name, row.spell, row.tier, row.instance_hint, row.mine, row.by_pet = nil, nil, nil, nil, nil, nil, nil;
-                        row.learn_key, row.learn_start = nil, nil;
+                        row.learn_key, row.learn_start, row.action_kind = nil, nil, nil;
                     else
                         row = row or self:create(entity, observation.effect, now);
                         -- A copy whose removal was seen is back.
@@ -1794,7 +1860,7 @@ function methods:observe(observations, now, snapshot)
                         end
                         row.source, row.source_name = observation.source, observation.source_name;
                         row.spell, row.tier, row.instance_hint = observation.spell, observation.tier, observation.instance_hint;
-                        row.mine, row.by_pet = observation.source == snapshot.id, observation.by_pet;
+                        row.mine, row.by_pet, row.action_kind = observation.source == snapshot.id, observation.by_pet, observation.action_kind;
                         -- A length Vantage knows exactly, the copy of yours it ends with, and the sleep a hit doesn't end.
                         row.exact, row.follow, row.follow_spell, row.deep = observation.exact, observation.follow, observation.follow_spell, observation.deep;
                         row.kind = observation.category or row.kind;
@@ -1900,6 +1966,14 @@ function methods:view(now, settings, snapshot)
             local retained_until = math.max(row.observed_at, row.estimated_until or row.observed_at, row.unavailable_at or row.observed_at);
             -- A row a split send held back (present false) waits for its 0x063, however old it is.
             if row.present == nil and (ended or now - retained_until > stale) then
+                if ended then
+                    -- Kept a moment for its wear-off message (ended_row).
+                    local list = entity.ended or {};
+                    if #list >= 8 then table.remove(list, 1); end
+                    row.ended_at = now;
+                    list[#list + 1] = row;
+                    entity.ended = list;
+                end
                 self:erase(entity, i, now, 'The observation is too old.', true);
             end
         end

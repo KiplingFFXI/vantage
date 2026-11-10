@@ -21,7 +21,7 @@ for parent, names in pairs(frozen) do
         assert(node[name] ~= nil, 'Fresh settings keep ' .. path .. '.');
     end;
 end;
-assert(count >= 1519, 'The list holds every key a string could hold at 1.0.');
+assert(count >= 1531, 'The list holds every key a string could hold at 1.0 and since.');
 -- A profile string of fresh settings holds every key a profile carries, and reads back.
 local settings = defaults.tidy(defaults.make());
 local text = assert(share.export(settings, 'profile', nil, 'Tester'));

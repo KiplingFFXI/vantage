@@ -80,7 +80,7 @@ function durations.tidy(value)
             rule.seconds = number(source.seconds, 1, 86400, 60, true);
             rule.offset = number(source.offset, -3600, 3600, 0, true);
             rule.percent = number(source.percent, 1, 1000, 100, true);
-            overrides[#overrides + 1] = rule;
+            overrides[#overrides + 1] = require('core.store').keep_unknown(rule, source);
         end
     end
     value.overrides = overrides;

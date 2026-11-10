@@ -1,5 +1,6 @@
 -- Guarded access to the client's memory for the client, party list and chat readers. Nothing here keeps what it finds,
--- and no reader keeps a page check past the frame it made it in: the client frees memory between frames.
+-- and no reader keeps a page check past the frame it made it in, as the client frees memory between frames. The one
+-- exception is a page of a loaded image, the client's own code and data, which stays as long as the game runs.
 local memory = {};
 
 function memory.address(value)
@@ -7,7 +8,8 @@ function memory.address(value)
 end
 
 -- Page checks through VirtualQuery. valid(ptr, length, writable): the range lies in one committed region with
--- no guard page that can be read, or written with writable, and then where that region starts and stops.
+-- no guard page that can be read, or written with writable, and then where that region starts and stops and whether
+-- it's part of a loaded image.
 -- readable(at, size): the range can be read, across up to 64 regions. Each reader keeps its own rule by which of
 -- these it calls. Errors when this ffi can't query pages; the readers build their platforms under pcall.
 function memory.pages()
@@ -29,13 +31,13 @@ function memory.pages()
             or not writable and (p == 2 or p == 4 or p == 8 or p == 0x20 or p == 0x40 or p == 0x80);
         if not allowed then return nil; end
         local first = tonumber(ffi.cast('uintptr_t', info.BaseAddress));
-        return first + tonumber(info.RegionSize), first;
+        return first + tonumber(info.RegionSize), first, info.Type == 0x1000000;
     end
     return {
         valid = function(ptr, length, writable)
             if not memory.address(ptr) or ptr + length >= 0xFFF00000 then return false; end
-            local stop, first = region_end(ptr, writable);
-            return stop ~= nil and ptr + length <= stop, first, stop;
+            local stop, first, image = region_end(ptr, writable);
+            return stop ~= nil and ptr + length <= stop, first, stop, image == true;
         end,
         readable = function(at, size)
             local finish = at + size;

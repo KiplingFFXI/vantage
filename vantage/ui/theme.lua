@@ -142,12 +142,16 @@ local light_window = {
     on_chips = '66572e', on_chip_text = 'fff4d5', row_picked = 'c4b078', row_hovered = 'ddca98', row_clicked = 'b8a067',
 }
 
--- Background values tint the artwork; the normal renderer needs a dark fallback.
-function theme.window_paint(look, key)
+-- Background values tint the artwork; the normal renderer needs a dark fallback. A tinted color goes into out when it's
+-- given, so a caller that hands it straight to ImGui makes no table.
+function theme.window_paint(look, key, out)
     local value = look[key]
     if look.theme == 'Original FFXI' and (key == 'background' or key == 'dropdowns') then
-        if look.window_type == 7 then return { value[1] * 198 / 255, value[2] * 185 / 255, value[3] * 133 / 255, value[4] } end
-        return { value[1] * 49 / 255, value[2] * 48 / 255, value[3] * 90 / 255, value[4] }
+        out = out or {}
+        if look.window_type == 7 then out[1], out[2], out[3] = value[1] * 198 / 255, value[2] * 185 / 255, value[3] * 133 / 255
+        else out[1], out[2], out[3] = value[1] * 49 / 255, value[2] * 48 / 255, value[3] * 90 / 255 end
+        out[4] = value[4]
+        return out
     end
     return value
 end
@@ -175,10 +179,17 @@ function theme.window_defaults(settings)
     return out
 end
 
+-- What older Vantage builds saved in the window's look before it followed the skin: its own skin, type, font, rounding,
+-- spacing and colors, the tab colors among them. A save loses those and keeps the rest.
+local retired_window = { linked = true, theme = true, window_type = true, window_art = true, font = true, rounding = true,
+    spacing = true, tabs = true, tabs_hovered = true, tabs_unfocused = true, open_tab = true, open_tab_line = true,
+    open_tab_unfocused = true, open_tab_line_unfocused = true }
+for _, entry in ipairs(theme.WINDOW_COLORS) do retired_window[entry.key] = true end
+
 function theme.tidy_window(settings)
     if type(settings) ~= 'table' then return end
     local saved = type(settings.window_style) == 'table' and settings.window_style or {}
-    settings.window_style = { font_size = numeric(saved.font_size, 8, 36, 17) }
+    settings.window_style = require('core.store').keep_unknown({ font_size = numeric(saved.font_size, 8, 36, 17) }, saved, retired_window)
 end
 
 -- The window follows the skin, and writes in the main font at its own saved size.
@@ -205,13 +216,15 @@ function theme.window(settings, revision)
     return kept.look
 end
 
+-- ImGui copies a pushed color during the call, so one table takes each tinted one.
+local pushed = { 0, 0, 0, 0 }
 function theme.push(settings, resolved)
     local imgui = require('imgui')
     local count = 0
     local w = resolved or theme.window(settings)
     for _, entry in ipairs(theme.WINDOW_COLORS) do
         local key = entry.paints and _G['ImGuiCol_' .. entry.paints]
-        if key then imgui.PushStyleColor(key, theme.window_paint(w, entry.key)); count = count + 1 end
+        if key then imgui.PushStyleColor(key, theme.window_paint(w, entry.key, pushed)); count = count + 1 end
         key = entry.also and _G['ImGuiCol_' .. entry.also]
         if key then imgui.PushStyleColor(key, w[entry.key]); count = count + 1 end
     end

@@ -26,6 +26,17 @@ function store.copy(value, seen)
     return result;
 end
 
+-- Puts in out a copy of each key of value that out doesn't have, so a tidy that builds its table anew keeps what a newer
+-- Vantage saved there, as the rest of the settings keep it. retired, when given, holds keys an older Vantage saved there
+-- that nothing reads now, and those are left out. Returns out.
+function store.keep_unknown(out, value, retired)
+    if type(value) ~= 'table' then return out; end
+    for key, child in pairs(value) do
+        if out[key] == nil and not (retired and retired[key]) then out[key] = store.copy(child); end
+    end
+    return out;
+end
+
 local function json_value(value, visiting)
     if type(value) ~= 'table' then return value; end
     visiting = visiting or {};

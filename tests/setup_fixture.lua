@@ -3,7 +3,7 @@ local defaults, appearance, setup = require('ui.defaults'), require('ui.appearan
 local copy = require('core.store').copy;
 local placement={'x','y','locked','anchor','dock_match_width'};
 local selection={'include','exclude','pinned','order','labels','groups','members','filter','mine_only','known_only','recast_categories',
-    'dispel_light','list_debuffed'};
+    'dispel_light','list_debuffed','abilities_only'};
 -- The party list strips keep their switches, their member labels and the sample switch as they are.
 local strip_state={'enabled','preview','strips','locked','name_display','name_length'};
 local font_art={'font','gauge_art','icon_art','recast_icon_art'};

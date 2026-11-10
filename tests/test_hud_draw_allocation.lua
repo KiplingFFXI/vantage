@@ -1,6 +1,7 @@
 -- Drawing the panels makes nothing per frame once running: icons, bars, expanded and text panels of your buffs and
 -- debuffs, the target, the party, the watch list and the recasts, Auto width, two alerts and the samples, their recasts
--- locked and combined. A bars, expanded or text row works its lines out again only when its countdown's text changes,
+-- locked and combined, and a bars panel of several columns. A bars, expanded or text row works its lines out again only
+-- when its countdown's text changes,
 -- at most once a second, never each frame. Measured as test_overhead_draw_allocation.lua does, with the collector
 -- stopped and the compiler off, on an ImGui whose calls keep nothing, after the stack has grown back. A table made ten
 -- times a second shows.
@@ -141,5 +142,24 @@ s.recast_display = 'combined';
 panels('bars', function(p) p.show_icon = false; end);
 still('The combined recast samples with their locks');
 s.preview, s.recast_display = false, 'separate';
+
+-- Your buffs alone in a wide panel of several columns. Rows of two lines are taller than a bar, so once it has measured
+-- them the panel fits fewer rows in a column and lays them out again in narrower columns, every frame. Each row keeps
+-- its lines for both widths.
+for _, id in ipairs(defaults.panel_order) do s.panels[id].enabled = false; end
+local p = s.panels.self_buffs;
+p.enabled, p.mode, p.auto_width, p.auto_height, p.stack_direction = true, 'bars', false, false, 'vertical';
+p.width, p.height_limit, p.field_newlines.time = 1200, 400, true;
+local lines, rooms = fields.lines, {};
+fields.lines = function(entries, width, ...)
+    rooms[width] = true;
+    return lines(entries, width, ...);
+end;
+hud.draw(view, s, 100.3, callbacks);
+fields.lines = lines;
+local widths = 0;
+for _ in pairs(rooms) do widths = widths + 1; end
+assert(widths >= 2, 'Fixture: the panel lays its rows out in more than one width: ' .. widths);
+still('A bars panel of several columns');
 
 return 'Drawing the panels makes nothing per frame';

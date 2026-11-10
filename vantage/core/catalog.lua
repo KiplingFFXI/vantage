@@ -69,6 +69,16 @@ end
 
 function catalog.roll(action) return actions.rolls[action]; end
 
+-- Whether a job ability put this effect on, with blood pacts and rolls counted as abilities. It goes by the action
+-- seen to put it on (core/observer.lua). One that wasn't seen goes by data/ability_effects.lua, which leaves out the
+-- effects a spell gives too.
+local ability_kinds = { abilities = true, pacts = true, rolls = true };
+local ability_effects = require('data.ability_effects');
+function catalog.from_ability(row)
+    if row.action_kind ~= nil then return ability_kinds[row.action_kind] == true; end
+    return ability_effects[row.effect] == true;
+end
+
 local function matching(info, effect)
     if not info then return nil; end
     if info.by_effect then return info.by_effect[effect]; end

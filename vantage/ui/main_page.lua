@@ -60,7 +60,7 @@ end;
 local rows_before = {
     timer('Self buffs', 'self_buffs'), timer('Self debuffs', 'self_debuffs'),
     timer('Target timers', 'target', 'A timer panel for your target.'),
-    timer('Party members\' timers', 'party', 'Timers for party members.'),
+    timer('Party members\' timers', 'party', 'The buffs and debuffs on your party members, with the time left when Vantage knows it. When their abilities are ready again is on Party cooldowns.'),
     timer('Watched enemy timers', 'watch', 'Timers for enemies you watch. Also list enemies I debuff, on its Show tab, adds the ones you debuff.'),
 };
 local recast_row = listed({ text = 'Recasts', edit = 'Edit##main_recasts', edit_help = 'Open the full editor for Recasts.',
@@ -80,7 +80,7 @@ local party_row = display('Party list buffs', 'party_ui', 'Shows buffs and debuf
 
 local rows_after = {
     element('Overhead icons', 'overhead', 'Shows buffs and debuffs above heads in the game world.', 'Display', 'overhead'),
-    display('Party cooldowns', 'party_cooldowns', 'The two-hours and key abilities your party and alliance were seen using, with their estimated time left. Where they show is on its Show tab.',
+    display('Party cooldowns', 'party_cooldowns', 'When your party and alliance can use their two-hours and key abilities again, counted from when Vantage saw them used. Where they show is on its Show tab.',
         function(s) return s.party_cooldowns.enabled; end,
         function(s, on) cooldowns.switch(s, on); end, 'Display', 'cooldown_list'),
     element('Phantom Roll', 'rolls', 'While you or a party member rolls: the total, what it gives, lucky and unlucky numbers, the bust chance and who got it.', 'Display', 'rolls'),

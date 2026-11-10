@@ -202,8 +202,13 @@ local function section(label, description, opened, page)
     return visible
 end
 
+-- The value boxes the controls below hand ImGui, one for each kind, filled for each control. ImGui writes a change
+-- into it during the call, and the control reads it straight after, before the next one draws.
+local check_value, text_value, number_value = { false }, { '' }, { 0 }
+
 local function check(label, object, key, help, setter)
-    local value = { object[key] == true }
+    local value = check_value
+    value[1] = object[key] == true
     local label_width = imgui.CalcTextSize(label:match('^(.-)##') or label)
     if label_width + imgui.GetFrameHeight() + 10 > imgui.GetContentRegionAvail()
         and imgui.GetCursorPosX() > imgui.GetFontSize() then imgui.NewLine() end
@@ -218,7 +223,8 @@ end
 
 local function text(label, object, key, help, length, transient)
     row_label(label, help)
-    local value = { object[key] or '' }
+    local value = text_value
+    value[1] = object[key] or ''
     imgui.SetNextItemWidth(-1)
     if imgui.InputText('##' .. label, value, (length or 80) + 1) then
         local function apply() object[key] = value[1]:gsub('[%c]', ''):gsub('##', '') end
@@ -233,7 +239,8 @@ end
 local function number(label, object, key, low, high, help, integer, setter, options)
     local hint = (help or '') .. ' Ctrl-click the slider to type a value.'
     row_label(label, hint)
-    local value = { tonumber(object[key]) or low }
+    local value = number_value
+    value[1] = tonumber(object[key]) or low
     local top = options and options.slider and math.max(low, math.min(high, options.slider)) or high
     local bottom = options and options.slider_low and math.max(low, math.min(top, options.slider_low)) or low
     imgui.SetNextItemWidth(-1)
@@ -509,10 +516,15 @@ local function effect_picker(label, selected, setter, all, domain, shown)
     end
 end
 
+-- What the Help page's buttons do, made once.
+local function export_report() call('export_report') end
+local function copy_shown() call('copy_shown', frame.panel(settings), false) end
+local function copy_details() call('copy_shown', frame.panel(settings), true) end
+
 local function show_help()
-    button('Export report', function() call('export_report') end, 'Reports include current observations, available client data and a bounded recent event history. They do not send messages or upload files.')
-    imgui.SameLine(); button('Copy shown timers', function() call('copy_shown', frame.panel(settings), false) end)
-    imgui.SameLine(); button('Copy timer details', function() call('copy_shown', frame.panel(settings), true) end)
+    button('Export report', export_report, 'Reports include current observations, available client data and a bounded recent event history. They do not send messages or upload files.')
+    imgui.SameLine(); button('Copy shown timers', copy_shown)
+    imgui.SameLine(); button('Copy timer details', copy_details)
     check('Record recent events', settings.diagnostics, 'record', 'Keeps a bounded recent history for local troubleshooting.')
     if section('Getting started', nil, true) then
         imgui.TextWrapped('Start on the main page. Tick what you want under What to show, and Edit opens that display. How it looks sets the skin, font and size, and More look holds the rest. Moving unlocks the displays. Hidden everywhere holds the effects hidden on every display, and each timer and recast panel has its own Filters tab.')
@@ -688,20 +700,38 @@ window.main_helpers = {
     profile = { apply_starter = function(entry) return call('starter', entry.id, true) ~= false end },
 }
 
+-- What the Timer durations page draws with, made once like the main page's.
+local duration_helpers = {
+    changed = changed, check = check, text = text, query = query, number = number, combo = combo, choice = choice,
+    button = button, section = section, catalog = catalog, catalog_revision = catalog_revision, note = note,
+}
+local function reset_durations() call('reset', 'durations') end
+
 local function draw_current_page()
     local s = settings
     if s.window.tab == 'Home' then
         require('ui.main_page').draw(imgui, s, live_view, callbacks, window.main_helpers)
     elseif s.window.tab == 'Display' then frame.body(imgui, s, live_view, callbacks, window.main_helpers)
     elseif s.window.tab == 'Durations' then
-        require('ui.duration_settings').draw(imgui, s, live_view, callbacks, {
-            changed = changed, check = check, text = text, query = query, number = number, combo = combo, choice = choice,
-            button = button, section = section, catalog = catalog, note = note,
-        })
-        button('Reset this page', function() call('reset', 'durations') end, 'Puts this page back as it started. Undo brings your settings back.')
+        require('ui.duration_settings').draw(imgui, s, live_view, callbacks, duration_helpers)
+        button('Reset this page', reset_durations, 'Puts this page back as it started. Undo brings your settings back.')
     elseif s.window.tab == 'Profiles' then require('ui.profiles_page').draw(imgui, s, live_view, callbacks, window.main_helpers)
     else show_help() end
 end
+
+-- What a frame hands ImGui and keeps for the mouse checks, filled in place. ImGui reads them during the call only, and
+-- a gesture takes copies.
+local limits = { min_width = 560, min_height = 400, max_width = 2400, max_height = 1800 }
+local bounded, kept_bounds, kept_geometry, open = {}, {}, {}, { true }
+local window_pos, window_size, smallest, largest = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }
+local layout_pos, layout_size, cursor_pos = { 0, 0 }, { 0, 0 }, { 0, 0 }
+local results_size, content_size, page_size = { 0, 0 }, { 0, 0 }, { 0, 0 }
+local function fill(rect, x, y, width, height)
+    rect.x, rect.y, rect.width, rect.height = x, y, width, height
+    return rect
+end
+local function undo() call('undo') end
+local function redo() call('redo') end
 
 local function draw_open(s, view, cb)
     imgui, settings, live_view, callbacks = require('imgui'), s, view, cb or {}
@@ -715,7 +745,7 @@ local function draw_open(s, view, cb)
     local typing = (view.context or {}).chat_open or imgui.GetIO().WantTextInput == true
     local mouse_down = imgui.IsMouseDown(ImGuiMouseButton_Left or 0)
     local mx, my = imgui.GetMousePos()
-    local limits = { min_width = 560, min_height = 400, max_width = 2400, max_height = 1800, screen_width = screen.x, screen_height = screen.y }
+    limits.screen_width, limits.screen_height = screen.x, screen.y
     if resize_gesture and resize_gesture.window == s.window and shift and not typing then
         local g = resize_gesture
         local dx, dy = mx - g.mx, my - g.my
@@ -731,25 +761,28 @@ local function draw_open(s, view, cb)
     local width, height = math.min(s.window.width, screen.x), math.min(s.window.height, screen.y)
     local x, y = math.max(0, math.min(s.window.x, screen.x - width)), math.max(0, math.min(s.window.y, screen.y - height))
     local geometry_changed = not same_geometry(window_geometry, s.window)
-    if geometry_changed then window_bounds = { x = x, y = y, width = width, height = height } end
+    if geometry_changed then window_bounds = fill(kept_bounds, x, y, width, height) end
     local bounds = resize_gesture and resize_gesture.rect or window_bounds or { x = x, y = y, width = width, height = height }
-    local bounded = { width = math.max(math.min(560, screen.x), math.min(bounds.width, 2400, screen.x)),
-        height = math.max(math.min(400, screen.y), math.min(bounds.height, 1800, screen.y)) }
+    bounded.width = math.max(math.min(560, screen.x), math.min(bounds.width, 2400, screen.x))
+    bounded.height = math.max(math.min(400, screen.y), math.min(bounds.height, 1800, screen.y))
     bounded.x, bounded.y = math.max(0, math.min(bounds.x, screen.x - bounded.width)), math.max(0, math.min(bounds.y, screen.y - bounded.height))
     local viewport_changed = not same_geometry(bounds, bounded)
     if viewport_changed then bounds = bounded end
     local edge = shift and not typing and resize.grip(bounds, mx, my) or nil
     local condition = (resize_gesture or geometry_changed or viewport_changed) and ImGuiCond_Always or ImGuiCond_Appearing
-    imgui.SetNextWindowPos({ bounds.x, bounds.y }, condition)
-    imgui.SetNextWindowSize({ bounds.width, bounds.height }, condition)
-    imgui.SetNextWindowSizeConstraints({ math.min(560, screen.x), math.min(400, screen.y) }, { math.min(2400, screen.x), math.min(1800, screen.y) })
+    window_pos[1], window_pos[2] = bounds.x, bounds.y
+    imgui.SetNextWindowPos(window_pos, condition)
+    window_size[1], window_size[2] = bounds.width, bounds.height
+    imgui.SetNextWindowSize(window_size, condition)
+    smallest[1], smallest[2], largest[1], largest[2] = math.min(560, screen.x), math.min(400, screen.y), math.min(2400, screen.x), math.min(1800, screen.y)
+    imgui.SetNextWindowSizeConstraints(smallest, largest)
     local look = theme.window(s, callbacks.settings_revision and callbacks.settings_revision())
     local colors = theme.push(s, look)
     menu_look = look
     window.main_helpers.look = look
     fonts.push_window(look.font, look.font_size)
     window_title_height = imgui.GetFrameHeight()
-    local open = { true }
+    open[1] = true
     local popup = imgui.IsPopupOpen and imgui.IsPopupOpen('', ImGuiPopupFlags_AnyPopup or 0) or false
     local header = shift and not typing and title_point(bounds, mx, my)
     -- See-through with the button down, it stays so for that whole press: what's under it is being dragged. That still
@@ -775,7 +808,7 @@ local function draw_open(s, view, cb)
         end
         local wx, wy = imgui.GetWindowPos()
         local ww, wh = imgui.GetWindowSize()
-        window_bounds = { x = wx, y = wy, width = ww, height = wh }
+        window_bounds = fill(kept_bounds, wx, wy, ww, wh)
         width, height = ww, wh
         edge = shift and not typing and resize.grip(window_bounds, mx, my) or nil
         local hovered = imgui.IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows or 0)
@@ -795,22 +828,23 @@ local function draw_open(s, view, cb)
             changed(function() s.window.x, s.window.y, s.window.width, s.window.height = wx, wy, ww, wh end, true,
                 resized and 'Settings window size' or 'Settings window position', resized)
         end
-        window_geometry = geometry_copy(s.window)
+        window_geometry = fill(kept_geometry, s.window.x, s.window.y, s.window.width, s.window.height)
         if capture then
-            local cx, cy = imgui.GetCursorScreenPos()
-            imgui.SetCursorScreenPos({ wx, wy })
-            imgui.InvisibleButton('##settings_shift_layout', { ww, wh })
-            imgui.SetCursorScreenPos({ cx, cy })
+            cursor_pos[1], cursor_pos[2] = imgui.GetCursorScreenPos()
+            layout_pos[1], layout_pos[2], layout_size[1], layout_size[2] = wx, wy, ww, wh
+            imgui.SetCursorScreenPos(layout_pos)
+            imgui.InvisibleButton('##settings_shift_layout', layout_size)
+            imgui.SetCursorScreenPos(cursor_pos)
             if imgui.BeginDisabled then imgui.BeginDisabled(true) end
             open[1] = true
         end
         local history = callbacks.history_status and callbacks.history_status() or { undo = 0, redo = 0 }
         if imgui.BeginDisabled then imgui.BeginDisabled((history.undo or 0) == 0) end
-        button('Undo', function() call('undo') end, history.undo_label or 'Restore the previous settings change.')
+        button('Undo', undo, history.undo_label or 'Restore the previous settings change.')
         if imgui.EndDisabled then imgui.EndDisabled() end
         imgui.SameLine()
         if imgui.BeginDisabled then imgui.BeginDisabled((history.redo or 0) == 0) end
-        button('Redo', function() call('redo') end, history.redo_label or 'Restore the change most recently undone.')
+        button('Redo', redo, history.redo_label or 'Restore the change most recently undone.')
         if imgui.EndDisabled then imgui.EndDisabled() end
         imgui.SameLine()
         local tools_width = 0
@@ -833,7 +867,8 @@ local function draw_open(s, view, cb)
                 imgui.TextUnformatted(('%d of %d matching controls on this page'):format(selected_match, previous_matches))
             end
             if #found == 0 then imgui.TextUnformatted('No matching settings. Try one word, such as alert or font.') end
-            if imgui.BeginChild('##search_results', { 0, math.min(8, #found) * 23 + 6 }, 0) then
+            results_size[2] = math.min(8, #found) * 23 + 6
+            if imgui.BeginChild('##search_results', results_size, 0) then
                 for _, result in ipairs(found) do
                     if imgui.Selectable(result.label .. '  /  ' .. (result.where or page_labels[result.tab] or result.tab)) then window.open_result(result) end
                 end
@@ -847,14 +882,15 @@ local function draw_open(s, view, cb)
             if look[message_kind] then imgui.PopStyleColor() end
         end
         local _, available_height = imgui.GetContentRegionAvail()
-        local content_visible = imgui.BeginChild('##settings_content', { 0, math.max(120, available_height) }, 0, ImGuiWindowFlags_NoSavedSettings or 0)
+        content_size[2] = math.max(120, available_height)
+        local content_visible = imgui.BeginChild('##settings_content', content_size, 0, ImGuiWindowFlags_NoSavedSettings or 0)
         if content_visible then
         if search_page ~= s.window.tab then selected_match, scroll_match, search_page = 1, true, s.window.tab; window.search_memo.pick = true end
         matches_this_frame, in_page = 0, true
         local _, controls_height = imgui.GetContentRegionAvail()
         local scroll_controls = controls_height < (s.window.tab == 'Display' and 6 or 4) * imgui.GetFrameHeight() + 100
         if not scroll_controls then display_controls() end
-        if imgui.BeginChild('##settings_page', { 0, 0 }, 0, ImGuiWindowFlags_NoSavedSettings or 0) then
+        if imgui.BeginChild('##settings_page', page_size, 0, ImGuiWindowFlags_NoSavedSettings or 0) then
             start_at_top()
             if scroll_controls then display_controls() end
             draw_current_page()

@@ -136,7 +136,7 @@ class PackageTests(unittest.TestCase):
                 names = archive.namelist()
                 for name in names:
                     self.assertIsNone(package.private_marker(archive.read(name)), name)
-        self.assertEqual(path.name, 'vantage-1.0.0-addon.zip')
+        self.assertEqual(path.name, 'vantage-1.1.0-addon.zip')
         self.assertEqual(count, len(package.REQUIRED) + 5)
         self.assertIn('docs/INSTALL.md', names)
 

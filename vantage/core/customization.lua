@@ -124,6 +124,7 @@ function customization.reset(settings, section)
             panel.filter, panel.mine_only = '', false;
         end
         settings.panels.watch.list_debuffed = false;
+        settings.panels.party.abilities_only = false;
     elseif section == 'party_ui' then
         settings.party_ui = fresh.party_ui;
     elseif section == 'overhead' then
@@ -225,6 +226,12 @@ function customization.set(settings, path, text)
     if (path == 'rolls.preview' or path == 'pet.preview') and value then candidate[path:match('^(%w+)')].enabled = true; end
     if path == 'style.theme' then
         if not require('ui.theme').apply(candidate,value) then return nil,'That theme was not found.'; end
+    end
+    -- A display can't move with one that moves with it back, as the Size and place tab never offers that, so a loop is
+    -- refused here rather than tidied away.
+    local read, loop = pcall(require('ui.elements').loop, candidate);
+    if read and loop then
+        return nil, loop .. ' would move with a display that moves with it. Change what one of them moves with first. No settings changed.';
     end
     local ok, tidy = pcall(defaults.tidy, candidate);
     if not ok then return nil, 'That value is not valid for this setting.'; end

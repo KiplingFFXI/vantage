@@ -43,6 +43,14 @@ for _, entry in ipairs(starters.list) do
     assert(type(entry.about) == 'string' and entry.about:find('^For '), entry.name .. ' says who it suits.');
 end;
 
+-- Each turns off Only effects from job abilities, so the party displays show what the chart says.
+for _, entry in ipairs(starters.list) do
+    local s = fresh();
+    s.panels.party.abilities_only, s.party_ui.effects.abilities_only = true, true;
+    s = starters.apply(s, entry.name);
+    assert(s.panels.party.abilities_only == false and s.party_ui.effects.abilities_only == false, entry.name .. ' turns it off.');
+end;
+
 -- Pet makes sure every part of its display is on. The others leave those ticks alone.
 local parts = fresh();
 for _, key in ipairs({ 'show_vitals', 'show_charm', 'show_effects', 'show_countdowns', 'show_recasts' }) do parts.pet[key] = false; end;
@@ -71,9 +79,10 @@ assert(starters.apply(fresh(), nil) == nil);
 -- Everything a starter doesn't own stays: the settings of a varied save, walked key by key.
 local owned = { 'enabled', 'preview', 'panels.self_buffs.enabled', 'panels.self_debuffs.enabled', 'panels.self_debuffs.dispel_light',
     'panels.target.enabled', 'panels.target.dispel_light', 'panels.party.enabled', 'panels.party.mine_only', 'panels.party.dispel_light',
+    'panels.party.abilities_only',
     'panels.watch.enabled', 'panels.watch.mine_only', 'panels.watch.dispel_light', 'panels.watch.list_debuffed',
     'panels.spell_recasts.enabled', 'panels.ability_recasts.enabled', 'party_ui.enabled', 'party_ui.preview', 'party_ui.effects.kind',
-    'party_ui.effects.cleanse_light', 'overhead.enabled', 'overhead.preview', 'overhead.units.target', 'overhead.units.subtarget',
+    'party_ui.effects.cleanse_light', 'party_ui.effects.abilities_only', 'overhead.enabled', 'overhead.preview', 'overhead.units.target', 'overhead.units.subtarget',
     'overhead.units.claimed', 'overhead.units.watched', 'overhead.units.debuffed', 'overhead.units.party', 'overhead.units.alliance',
     'overhead.units.pet', 'overhead.types.party.show_protect_shell', 'overhead.types.party.cleanse_light', 'overhead.types.alliance.cleanse_light',
     'overhead.types.self.cleanse_light', 'overhead.types.pet.buffs_mine_only', 'overhead.types.pet.show_protect_shell', 'overhead.types.pet.show_food',
@@ -100,6 +109,7 @@ local function varied()
     s.panels.target.y, s.panels.watch.mode, s.panels.party.sort = 222, 'icons', 'name';
     s.panels.item_recasts.enabled = true;
     s.party_ui.effects.timers, s.party_ui.locked = true, false;
+    s.panels.party.abilities_only, s.party_ui.effects.abilities_only = true, true;
     s.overhead.units.other, s.overhead.units.other_pet, s.overhead.units.self = true, true, true;
     s.overhead.types.party.limit, s.overhead.types.mob.layout = 5, 'lines';
     s.effect_filters.rules[1] = { enabled = true, effect = 33, scope = 'all' };

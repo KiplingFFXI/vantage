@@ -367,10 +367,12 @@ local chosen_part = 'name';
 local function part() return chosen_part; end;
 
 -- Whether two shown parts meet: on a line and lined up the same, as ui/fields.lua places them, or with a break or wrapping
--- that goes by their order. Otherwise a divider has nothing to sit between and moving a part changes nothing.
+-- that goes by their order. Otherwise a divider has nothing to sit between and moving a part changes nothing. The Look
+-- tab asks each frame, so the lanes seen go in one table.
+local lanes = {};
 local function parts_meet(c)
     if c.p.wrap then return true; end;
-    local lanes = {};
+    require('table.clear')(lanes);
     for _, key in ipairs(defaults.field_ids) do
         if offered(c, key) and part_shown(c, key) then
             local lane = c.p.field_alignments[key] or (key == 'time' and 'right' or c.p.alignment);
@@ -697,6 +699,10 @@ local function clear_filters(c)
     c.changed(function() p.include, p.exclude, p.groups, p.filter = {}, {}, {}, ''; end, true, 'Clear this display\'s filters');
 end;
 
+-- Only effects from job abilities, on Party members' timers and Party list buffs (core/catalog.lua from_ability).
+page.abilities_help = 'Shows only the effects job abilities put on. Rolls, maneuvers and blood pacts count. If Vantage didn\'t see what put an effect on, it shows when only job abilities give that effect.';
+page.abilities_words = 'Only job abilities Abilities only two-hours rolls maneuvers blood pacts';
+
 -- recast has no Only effects I cast, as every recast is your own, and no kinds of effect. Its rows say recast.
 function page.filter_rows(recast)
     local rows = {};
@@ -710,6 +716,8 @@ function page.filter_rows(recast)
         add(page.list_paused());
         add(frame.button('Edit the list', 'Open the Hidden everywhere list.', function(c) c.open_page('Filters'); end, { alias = 'Shared effect filters' }));
         add(frame.tick('Only effects I cast', 'mine_only', 'Effects with no named caster do not count as yours.', { alias = 'Only effects I applied' }));
+        add(frame.tick('Only effects from job abilities', 'abilities_only', page.abilities_help, {
+            only = only_on('party'), alias = page.abilities_words }));
     end;
     add(frame.tick('Only ' .. noun .. 's with a known time', 'known_only', 'Hides rows without a countdown from this panel. It does not mean those ' .. (recast and 'recasts are ready.' or 'effects ended.'), { alias = 'Only timers with a known duration' }));
     add(frame.text('Show only names containing', 'filter', recast and 'Keeps only recasts with this in their name.' or 'Matches the effect, who it is on and who cast it.', { alias = 'Filter by text' }));

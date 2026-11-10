@@ -8,7 +8,7 @@ local p = s.panels.self_buffs
 assert(#hud.filter_rows(view, p, 'self_buffs', s) == 6)
 assert(#hud.filter_rows(view, s.panels.self_debuffs, 'self_debuffs', s) == 2)
 assert(#hud.filter_rows(view, s.panels.target, 'target', s) == 2)
-assert(#hud.filter_rows(view, s.panels.party, 'party', s) == 2)
+assert(#hud.filter_rows(view, s.panels.party, 'party', s) == 3)
 s.watch_ids = {16781313}
 assert(#hud.filter_rows(view, s.panels.watch, 'watch', s) == 2)
 s.watch_ids = {['16781313'] = true}

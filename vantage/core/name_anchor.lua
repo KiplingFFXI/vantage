@@ -3,7 +3,8 @@
 -- patterns through core/patterns.lua: one warmup step for each pattern and one for the offsets
 -- (anchor.warmup_steps), or all at once the first time overhead icons are on. A pattern that is missing, found twice
 -- or gives an offset out of range turns this off for every unit, and the blocks keep the guessed heights. Every range
--- is page checked before it is read, nothing is written and a frame makes nothing. docs/OVERHEAD.md.
+-- is page checked before it is read, each region once while overhead.update places its units, nothing is written and a
+-- frame makes nothing. docs/OVERHEAD.md.
 local anchor = {};
 local bit = require('bit');
 local memory = require('core.memory');
@@ -81,14 +82,42 @@ for i = 1, 32 do scene_copy[i] = 0; end
 local address = memory.address;
 local function finite(value) return value == value and value > -1e6 and value < 1e6; end
 
--- Page checks through core/memory.lua, made once.
+-- Page checks through core/memory.lua, made once. While overhead.update places its units (anchor.hold_pages to
+-- anchor.release_pages), each region found readable is kept as first and stop pairs, so the units whose actors share
+-- a region check it once. The client frees nothing while a frame is drawn, and nothing is kept past that loop.
+local held, held_count, holding, HELD = {}, 0, false, 8;
 local function readable(at, size)
     if pages == nil then
         local ok, value = pcall(memory.pages);
         pages = ok and type(value) == 'table' and value.valid or false;
     end
-    return pages ~= false and address(at) and pages(at, size, false) == true;
+    if pages == false or not address(at) then return false; end
+    local stop = at + size;
+    if holding then
+        for k = 1, held_count * 2, 2 do
+            if at >= held[k] and stop <= held[k + 1] then return true; end
+        end
+    end
+    local ok, first, last = pages(at, size, false);
+    if ok ~= true then return false; end
+    if holding and type(first) == 'number' and type(last) == 'number' then
+        -- The region starts at the page checked, so one reached again from a lower page grows down.
+        for k = 1, held_count * 2, 2 do
+            if held[k + 1] == last then
+                if first < held[k] then held[k] = first; end
+                return true;
+            end
+        end
+        if held_count < HELD then
+            held_count = held_count + 1;
+            held[held_count * 2 - 1], held[held_count * 2] = first, last;
+        end
+    end
+    return true;
 end
+
+function anchor.hold_pages() holding, held_count = true, 0; end
+function anchor.release_pages() holding, held_count = false, 0; end
 
 -- The one match inside the client module, as core/clock.lua finds its own.
 local RULE = { unique = true, within = true };
@@ -424,6 +453,7 @@ end
 -- Everything point reads for one unit, fresh, for /vg report: a table, with x, y, z when it gives a point and
 -- reason when not, the flags its icon is picked from and, with the patterns found, the reads at fixed offsets.
 function anchor.detail(entities, index, id, actor)
+    anchor.release_pages();
     local detail, cache = {}, { np_gen = -1 };
     local x, y, z = point(cache, entities, index, id, actor, -1, detail);
     if x then detail.x, detail.y, detail.z = x, y, z; else detail.reason = y; end
@@ -688,6 +718,7 @@ if VANTAGE_TEST_MODE then
         check.loaded, check.usable, check.problem = false, false, nil;
         arrows.generation, arrows.full, arrows.a, arrows.b = -1, false, 0, 0;
         scene_taken, scene_calls = false, 0;
+        holding, held_count = false, 0;
     end
     anchor._patterns, anchor._check_patterns, anchor._offsets, anchor._check = patterns, check_patterns, off, check;
 end

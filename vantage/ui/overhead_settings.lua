@@ -230,7 +230,7 @@ local filter_rows = {
     -- While a kind shows debuffs only they keep their values, aren't listed and decide nothing (core/overhead.lua).
     rows.columns('##overhead_switches', 'Show these effects:', 'Ticked shows, unticked hides. Effects on Show only show either way. The other filters still apply.', switch_ticks, {
         shown_by = SHOW_ROW, alias = 'Leave out the usual long effects', only = shows_buffs }),
-    frame.line('Always show', 'Ticked shows it whoever cast it, even with Only buffs I cast or Debuffs only on. Unticked hides it.', always_ticks, {
+    frame.line('Always show', 'Ticked shows it whoever cast it, even with Only buffs I cast or Debuffs only on. Unticked hides it unless it\'s on Show only, where the other filters decide as they do for any effect.', always_ticks, {
         shown_by = KIND_ROW, only = function() return overhead_defaults.always_for[selection.kind]; end }),
 };
 for _, item in ipairs(rows.effect_lists({

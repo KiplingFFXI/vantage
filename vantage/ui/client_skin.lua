@@ -7,30 +7,44 @@ local finite = require('ui.numbers').finite
 
 -- Every piece fills these before it draws. The binding copies a vector when it is called and keeps none.
 local p1, p2, t1, t2 = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }
+-- The clip a menu paint draws in (paint, below). ImGui sends a piece wholly outside its clip all the same, so the
+-- skin leaves such a piece out. Anywhere else it is the whole screen.
+local cull = { -math.huge, -math.huge, math.huge, math.huge }
 
 local function image(list, texture, x, y, w, h, u, v, uw, vh, color)
-    if w <= 0 or h <= 0 then return end
+    if w <= 0 or h <= 0 or x >= cull[3] or y >= cull[4] or x + w <= cull[1] or y + h <= cull[2] then return end
     p1[1], p1[2], p2[1], p2[2] = x, y, x + w, y + h
     t1[1], t1[2], t2[1], t2[2] = u / texture.width, v / texture.height, (u + uw) / texture.width, (v + vh) / texture.height
     list:AddImage(texture.id, p1, p2, t1, t2, color)
 end
 
+-- Tiles in rows and columns from x, y, starting at the first row and column the clip reaches.
 local function tile(list, texture, x, y, w, h, u, v, uw, vh, scale, color)
     if w <= 0 or h <= 0 then return end
     local step_x, step_y = uw * scale, vh * scale
-    for top = y, y + h - 0.01, step_y do
-        for left = x, x + w - 0.01, step_x do
+    local first_x = x + math.max(0, math.floor((cull[1] - x) / step_x)) * step_x
+    local first_y = y + math.max(0, math.floor((cull[2] - y) / step_y)) * step_y
+    for top = first_y, math.min(y + h, cull[4]) - 0.01, step_y do
+        for left = first_x, math.min(x + w, cull[3]) - 0.01, step_x do
             local tw, th = math.min(step_x, x + w - left), math.min(step_y, y + h - top)
             image(list, texture, left, top, tw, th, u, v, tw / scale, th / scale, color)
         end
     end
 end
 
+-- A frame edge. Where its art is the same all along its length (the texture's across or down, client_assets.lua),
+-- one stretched piece draws what its tiles would. Anywhere else it is tiled at its own size.
+local function edge(list, texture, even, x, y, w, h, u, v, uw, vh, scale, color)
+    if even then image(list, texture, x, y, w, h, u, v, uw, vh, color)
+    else tile(list, texture, x, y, w, h, u, v, uw, vh, scale, color) end
+end
+
 function skin.active(style)
     return style.theme == 'Original FFXI'
 end
 
--- Keep texture pieces at their own size, including partial tiles at the edges.
+-- Keep texture pieces at their own size, including partial tiles at the edges. An edge whose art is the same all along
+-- its length is one piece (edge, above).
 -- background and border, when given, replace style.background and style.border for this box.
 function skin.panel(list, rect, style, colors, opacity, background, border)
     if not skin.active(style) or style.minimal then return false end
@@ -53,10 +67,10 @@ function skin.panel(list, rect, style, colors, opacity, background, border)
         image(list, corner, x + w - c, y, c, c, 16, 0, 16, 16, tint)
         image(list, corner, x, y + h - c, c, c, 0, 16, 16, 16, tint)
         image(list, corner, x + w - c, y + h - c, c, c, 16, 16, 16, 16, tint)
-        tile(list, horizontal, x + c, y, w - 2 * c, c, 0, 0, 32, 16, c / 16, tint)
-        tile(list, horizontal, x + c, y + h - c, w - 2 * c, c, 0, 16, 32, 16, c / 16, tint)
-        tile(list, vertical, x, y + c, c, h - 2 * c, 0, 0, 16, 32, c / 16, tint)
-        tile(list, vertical, x + w - c, y + c, c, h - 2 * c, 16, 0, 16, 32, c / 16, tint)
+        edge(list, horizontal, horizontal.across, x + c, y, w - 2 * c, c, 0, 0, 32, 16, c / 16, tint)
+        edge(list, horizontal, horizontal.across, x + c, y + h - c, w - 2 * c, c, 0, 16, 32, 16, c / 16, tint)
+        edge(list, vertical, vertical.down, x, y + c, c, h - 2 * c, 0, 0, 16, 32, c / 16, tint)
+        edge(list, vertical, vertical.down, x + w - c, y + c, c, h - 2 * c, 16, 0, 16, 32, c / 16, tint)
     end
     return true
 end
@@ -101,6 +115,7 @@ end
 -- copies a vector when it is called and keeps none, and skin.panel keeps neither the box nor the style.
 local menu_box, menu_style = { x = 0, y = 0, width = 0, height = 0 }, { scale = 1, opacity = 1, background = true, border = true }
 local clip_min, clip_max, point_a, point_b, point_c, no_colors = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, {}
+local fallback_color = { 0, 0, 0, 0 }
 
 local function clip_bounds(draw)
     local a, b = draw:GetClipRectMin()
@@ -126,7 +141,7 @@ local function fill(list, look, kind, fallback)
     if fallback then
         point_a[1], point_a[2] = menu_box.x, menu_box.y
         point_b[1], point_b[2] = menu_box.x + menu_box.width, menu_box.y + menu_box.height
-        list:AddRectFilled(point_a, point_b, theme.u32(theme.window_paint(look, kind == 'window' and 'background' or 'dropdowns')), 0)
+        list:AddRectFilled(point_a, point_b, theme.u32(theme.window_paint(look, kind == 'window' and 'background' or 'dropdowns', fallback_color)), 0)
         return true
     end
     return skin.panel(list, menu_box, menu_style, no_colors)
@@ -136,8 +151,10 @@ end
 local function paint(list, look, kind, fallback, x1, y1, x2, y2)
     if x2 <= x1 or y2 <= y1 then return false end
     clip_min[1], clip_min[2], clip_max[1], clip_max[2] = x1, y1, x2, y2
+    cull[1], cull[2], cull[3], cull[4] = x1, y1, x2, y2
     list:PushClipRect(clip_min, clip_max, true)
     local success, result = pcall(fill, list, look, kind, fallback)
+    cull[1], cull[2], cull[3], cull[4] = -math.huge, -math.huge, math.huge, math.huge
     list:PopClipRect()
     if not success then error(result) end
     return result
@@ -248,8 +265,10 @@ function skin.fallback_background(style, override)
     return style.background_color
 end
 
+-- More look asks each frame, so the answer goes through one table.
+local window_status = {}
 function skin.window_reason(window_type)
-    local status = assets.status('window', window_type)
+    local status = assets.status('window', window_type, window_status)
     return not status.available and status.reason or nil
 end
 

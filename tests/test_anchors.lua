@@ -73,6 +73,28 @@ circle.rolls.anchor = { to = 'element', element = 'pet', side = 'below', align =
 circle.pet.anchor = { to = 'element', element = 'rolls', side = 'below', align = 'start', gap = 4, offset = 0 };
 circle = defaults.tidy(circle);
 assert((circle.rolls.anchor.to == 'none') ~= (circle.pet.anchor.to == 'none'), 'A circle of anchors is broken once.');
+-- One that only follows into a circle of others isn't in it, so it keeps its anchor.
+circle = defaults.make();
+circle.rolls.anchor = { to = 'element', element = 'pet', side = 'below', align = 'start', gap = 4, offset = 0 };
+circle.pet.anchor = { to = 'element', element = 'rolls', side = 'below', align = 'start', gap = 4, offset = 0 };
+circle.panels.target.anchor = { to = 'element', element = 'rolls', side = 'below', align = 'start', gap = 4, offset = 0 };
+assert(elements.circular(circle, 'rolls') and not elements.circular(circle, 'target'), 'Only the circle is circular.');
+circle = defaults.tidy(circle);
+assert(circle.panels.target.anchor.to == 'element' and circle.panels.target.anchor.element == 'rolls'
+    and (circle.rolls.anchor.to == 'none') ~= (circle.pet.anchor.to == 'none'), 'One that follows into it keeps its anchor.');
+-- /vg set refuses a circle, as the Size and place tab never offers one, rather than tidying it away unseen.
+local custom = require('core.customization');
+local base = defaults.make();
+base.pet.anchor = { to = 'element', element = 'rolls', side = 'below', align = 'start', gap = 4, offset = 0, point = 'top_left', dx = 0, dy = 0 };
+base.panels.target.anchor = { to = 'element', element = 'pet', side = 'below', align = 'start', gap = 4, offset = 0, point = 'top_left', dx = 0, dy = 0 };
+base = defaults.tidy(base);
+local made, why = custom.set(base, 'rolls.anchor',
+    '{"to":"element","element":"pet","side":"below","align":"start","gap":4,"offset":0,"point":"top_left","dx":0,"dy":0}');
+assert(not made and why:find('would move with a display that moves with it', 1, true), '/vg set refuses a circle: ' .. tostring(why));
+made, why = custom.set(base, 'rolls.anchor.element', 'pet');
+assert(made and made.rolls.anchor.to == 'none' and made.panels.target.anchor.element == 'pet', 'A name alone makes no circle: ' .. tostring(why));
+made, why = custom.set(made, 'rolls.anchor.to', 'element');
+assert(not made and why:find('would move with a display that moves with it', 1, true), 'and so is a switch that would make one: ' .. tostring(why));
 
 -- Drawing: the displays put where their anchors say, through hud.draw.
 local function frame(settings, callbacks, notices)

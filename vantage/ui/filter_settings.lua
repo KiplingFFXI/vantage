@@ -6,7 +6,7 @@ local frame = require('ui.panel_frame');
 local status = require('ui.status_panel');
 local page = {};
 local ctx = frame.ctx;
-local catalog_source, catalog_snapshot, catalog_entries;
+local catalog_source, catalog_snapshot, catalog_entries, catalog_revision, catalog_count;
 local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM',
     'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
 local job_ids, job_labels = { 0 }, { [0] = 'Any main job' };
@@ -45,9 +45,15 @@ function page.hide(rules, effect)
     return #rules;
 end;
 
-local function status_catalog(entries)
-    if catalog_source ~= entries or not effects.same_catalog(entries, catalog_snapshot) then
-        catalog_source, catalog_snapshot, catalog_entries = entries, effects.catalog_snapshot(entries), {};
+-- revision, when given, is the window's catalog revision, which changes whenever the entries do, so they aren't walked
+-- each frame to find out. Without one they are compared with what they were.
+local function status_catalog(entries, revision)
+    local same = catalog_source == entries;
+    if same and revision ~= nil then same = catalog_revision == revision and catalog_count == #entries;
+    elseif same then same = effects.same_catalog(entries, catalog_snapshot); end;
+    if not same then
+        catalog_source, catalog_revision, catalog_count = entries, revision, #entries;
+        catalog_snapshot, catalog_entries = revision == nil and effects.catalog_snapshot(entries) or nil, {};
         for _, entry in ipairs(entries) do
             -- Zero is Any effect in hide rules, not the client's KO entry.
             if entry.id > 0 and entry.id <= 1023 then catalog_entries[#catalog_entries + 1] = entry; end;
@@ -87,7 +93,8 @@ local function hide(c, effect)
 end;
 
 local function refresh_finder()
-    effects.selection(status_catalog(status.named(ctx)), finder);
+    local revision = status.named_revision(ctx);
+    effects.selection(status_catalog(status.named(ctx), revision), finder, revision);
 end;
 
 local hidden_list = status.list_line('Hidden everywhere', 'Remove takes it off the list, and it shows again.', any_listed, function(c)
@@ -166,7 +173,8 @@ local rule_memo = { memo = {}, say = function(c)
 end };
 
 local function refresh_rule_finder()
-    effects.selection(status_catalog(status.named(ctx)), rule_finder);
+    local revision = status.named_revision(ctx);
+    effects.selection(status_catalog(status.named(ctx), revision), rule_finder, revision);
 end;
 
 -- Any effect, then what the finder above it found. It is built only while its menu is open.

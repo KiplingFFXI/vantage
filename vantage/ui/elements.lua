@@ -144,7 +144,8 @@ function elements.moves_with(settings, id)
     return names[element.strip and not config.native_detached and 'party' or 'none'];
 end
 
--- Whether following from id comes back to it.
+-- Whether following from id comes back to it. One that only follows into a loop of others isn't in it: past as many
+-- steps as there are displays, the chain never comes back.
 function elements.circular(settings, id)
     local at = follows(settings, id);
     for _ = 1, #elements.list do
@@ -152,20 +153,33 @@ function elements.circular(settings, id)
         if at == id then return true; end
         at = follows(settings, at);
     end
-    return true;
+    return false;
+end
+
+-- The name of a display whose Moves with comes back round to it, or nil when none does.
+function elements.loop(settings)
+    for _, element in ipairs(elements.list) do
+        if element.anchor and elements.circular(settings, element.id) then return element.label; end
+    end
+end
+
+-- Where id's anchor puts a width x height display, beside a target drawn this Present or the one before, which can be
+-- past the screen's edge. Returns x, y, or nothing when it has no anchor or the target isn't there.
+function elements.spot(settings, id, width, height, screen_width, screen_height, target)
+    local anchor = elements.anchor(settings, id);
+    if not anchors.active(anchor) then return; end
+    if anchor.to == 'element' then
+        if elements.circular(settings, id) then return; end
+        target = target or elements.drawn(anchor.element);
+    elseif anchor.to == 'party' then target = elements.party_list;
+    elseif anchor.to == 'chat' then target = elements.chat; end
+    return anchors.position(anchor, width, height, target, screen_width, screen_height);
 end
 
 -- Puts rect where id's anchor puts it, beside a target drawn this Present or the one before. Returns true when the
 -- anchor placed it; otherwise rect keeps its fallback spot. The caller keeps it on the screen.
 function elements.place(settings, id, rect, screen_width, screen_height, target)
-    local anchor = elements.anchor(settings, id);
-    if not anchors.active(anchor) then return false; end
-    if anchor.to == 'element' then
-        if elements.circular(settings, id) then return false; end
-        target = target or elements.drawn(anchor.element);
-    elseif anchor.to == 'party' then target = elements.party_list;
-    elseif anchor.to == 'chat' then target = elements.chat; end
-    local x, y = anchors.position(anchor, rect.width, rect.height, target, screen_width, screen_height);
+    local x, y = elements.spot(settings, id, rect.width, rect.height, screen_width, screen_height, target);
     if not x then return false; end
     rect.x, rect.y = x, y;
     placed[id] = frame;

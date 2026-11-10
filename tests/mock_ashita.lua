@@ -172,6 +172,8 @@ package.preload['core.chat'] = function ()
             MOCK.chat_reads = (MOCK.chat_reads or 0) + 1;
             return MOCK.chat, MOCK.chat == nil and 'Chat fixture unavailable.' or nil;
         end,
+        -- No read here gives the menu size, as before the real reader's first.
+        menu_size = function () return nil; end,
     };
 end
 package.loaded.ffi = {

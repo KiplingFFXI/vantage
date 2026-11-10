@@ -84,3 +84,29 @@ do -- Section: a display still where the first frame put it takes the export's p
         assert(candidate.panels.self_buffs.x == 222, 'One display on ' .. on .. ': the panel you placed stays.');
     end
 end; -- end of section
+
+do -- Section: a spot goes in whole. A display you moved only across keeps both its numbers, and so does its anchor.
+    local yours, theirs = fresh(), fresh();
+    local start = defaults.make();
+    yours.panels.self_buffs.x = start.panels.self_buffs.x + 40;
+    yours.rolls.y = start.rolls.y + 30;
+    yours.panels.self_debuffs.anchor.to, yours.panels.self_debuffs.anchor.point = 'screen', 'top_right';
+    theirs.panels.self_buffs.x, theirs.panels.self_buffs.y = 111, 222;
+    theirs.rolls.x, theirs.rolls.y = 333, 444;
+    theirs.panels.self_debuffs.anchor.to, theirs.panels.self_debuffs.anchor.side = 'chat', 'above';
+    theirs.panels.self_debuffs.anchor.dx, theirs.panels.self_debuffs.anchor.gap = 7, 9;
+    for _, kind in ipairs({ 'profile', 'element' }) do
+        local candidate = assert(share.candidate(yours, export(theirs, kind, kind == 'element' and 'self_buffs' or nil), 'add'));
+        local panel = candidate.panels.self_buffs;
+        assert(panel.x == start.panels.self_buffs.x + 40 and panel.y == start.panels.self_buffs.y,
+            kind .. ': a display you moved across keeps your spot, never your x and their y: ' .. panel.x .. ', ' .. panel.y);
+    end
+    local candidate = assert(share.candidate(yours, export(theirs, 'profile'), 'add'));
+    assert(candidate.rolls.x == start.rolls.x and candidate.rolls.y == start.rolls.y + 30, 'and one you moved down.');
+    local anchor = candidate.panels.self_debuffs.anchor;
+    assert(anchor.to == 'screen' and anchor.point == 'top_right' and anchor.dx == 0 and anchor.gap == start.panels.self_debuffs.anchor.gap,
+        'An anchor you changed stays whole: ' .. tostring(anchor.to) .. ' ' .. tostring(anchor.dx) .. ' ' .. tostring(anchor.gap));
+    yours.panels.self_buffs.x = start.panels.self_buffs.x;
+    candidate = assert(share.candidate(yours, export(theirs, 'element', 'self_buffs'), 'add'));
+    assert(candidate.panels.self_buffs.x == 111 and candidate.panels.self_buffs.y == 222, 'One you never moved takes their spot whole.');
+end; -- end of section

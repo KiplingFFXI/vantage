@@ -215,6 +215,8 @@ local function action_events(action, snapshot, now)
         if sample==nil and action.actor==snapshot.id then sample=client.sample_modifiers(snapshot); end;
         local entry = event(snapshot, 'apply', row.target, effect, action.actor);
         entry.action_category, entry.spell = action.category, action_id;
+        -- The kind of action that put it on, which Only effects from job abilities goes by.
+        entry.action_kind = rule;
         if sample then sample.target_self = row.target == snapshot.id; end
         entry.duration, entry.duration_min, entry.basis, entry.metadata = catalog.duration(rule, action_id, effect, sample);
         entry.tier = entry.metadata and entry.metadata.tier;
@@ -349,6 +351,7 @@ local function action_events(action, snapshot, now)
                 if entry then
                     entry.duration, entry.duration_min = catalog.bust_duration(sample);
                     entry.basis = 'Bust duration depends on merits';
+                    entry.action_kind = 'rolls';
                 end
             end
         elseif message == 309 and action.category == 4 and raises[action.id] and row.target ~= 0 then

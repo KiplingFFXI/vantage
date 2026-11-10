@@ -108,14 +108,17 @@ local function memory()
 end
 
 -- Every raw read checks its pages first, so memory the client has freed reads as nothing instead of faulting
--- the game. A run of reads checks its whole range once and reads it with checked.
+-- the game. A run of reads checks its whole range once and reads it with checked. readable also says whether the
+-- range lies in a loaded image, the client's own code and data, whose pages stay as long as the game runs.
 local pages;
 local function readable(address, size)
     if pages == nil then
         local ok, value = pcall(require('core.memory').pages);
         pages = ok and type(value) == 'table' and value.valid or false;
     end
-    return pages ~= false and pages(address, size, false) == true;
+    if pages == false then return false; end
+    local ok, _, _, image = pages(address, size, false);
+    return ok == true, image == true;
 end
 
 local function native_read(name, address, checked)
@@ -123,6 +126,19 @@ local function native_read(name, address, checked)
     if not checked and not readable(address, name == 'read_uint8' and 1 or 4) then return nil; end
     local ok, value = pcall(ashita.memory[name], address);
     return ok and value or nil;
+end
+
+-- A read at a fixed address the client's code holds, such as a flag: once its page is found in the client's image,
+-- it is read with no check again. Anywhere else each read checks it.
+local in_image = {};
+local function image_read(name, address)
+    if not in_image[address] then
+        if not positive(address) then return nil; end
+        local ok, image = readable(address, name == 'read_uint8' and 1 or 4);
+        if not ok then return nil; end
+        in_image[address] = image or nil;
+    end
+    return native_read(name, address, true);
 end
 
 -- The first match of the pattern, with no second search, and the address its operand holds; 0 without one.
@@ -362,9 +378,9 @@ end
 -- The client's hide-UI flag, event flag and whether the map is the focused menu, as read. Each is nil when it
 -- can't be read (hidden and event also when their address wasn't found); map is false while no menu has focus.
 local function window_flags()
-    local hidden = interface ~= 0 and native_read('read_uint8', interface + 0xB4) or nil;
-    local event = event_flag ~= 0 and native_read('read_uint8', event_flag) or nil;
-    local menu = native_read('read_uint32', focus_slot);
+    local hidden = interface ~= 0 and image_read('read_uint8', interface + 0xB4) or nil;
+    local event = event_flag ~= 0 and image_read('read_uint8', event_flag) or nil;
+    local menu = image_read('read_uint32', focus_slot);
     if menu == 0 then return hidden, event, false; end
     local header = menu and native_read('read_uint32', menu + 4);
     local title = header and header ~= 0 and native_read('read_uint32', header + 0x4E);
@@ -727,7 +743,7 @@ end
 
 if VANTAGE_TEST_MODE then
     -- valid(address, size, writable) stands in for the page check, as core.memory's does in the game.
-    function client._set_pages(valid) pages = valid or nil; end
+    function client._set_pages(valid) pages, in_image = valid or nil, {}; end
 end
 
 return client;

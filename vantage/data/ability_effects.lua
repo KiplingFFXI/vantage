@@ -1,0 +1,101 @@
+-- The status effects job abilities put on players. Blood pacts, rolls and maneuvers count. When the party panels'
+-- "Only effects from job abilities" tick meets a timer whose action it didn't see land, it keeps the timer if its
+-- effect is here. Built at Phoenix revision 071c401048 from every era ability in sql/abilities.sql
+-- (tools/export_catalog.py), its script in scripts/actions/abilities (pets/ for blood pacts) and the job_utils it calls,
+-- with their modules/era overrides. It comes out the same at ed41f351f6 (phoenix/live). Left out are effects a spell
+-- gives too, like Chakra's Regen, Mantra's Max HP Boost (Drain II) and what Hastega or Ecliptic Howl give, effects only
+-- a pet gets, ones that land on the enemy and ones that can't exist on Phoenix. The name after each id is its name in
+-- data/status_effects.yaml, then the ability that gives it.
+return {
+    [32] = true, -- flee, Flee
+    [44] = true, -- mighty_strikes, Mighty Strikes
+    [45] = true, -- boost, Boost
+    [46] = true, -- hundred_fists, Hundred Fists
+    [47] = true, -- manafont, Manafont
+    [48] = true, -- chainspell, Chainspell
+    [49] = true, -- perfect_dodge, Perfect Dodge
+    [50] = true, -- invincible, Invincible
+    [51] = true, -- blood_weapon, Blood Weapon
+    [52] = true, -- soul_voice, Soul Voice
+    [54] = true, -- meikyo_shisui, Meikyo Shisui
+    [55] = true, -- astral_flow, Astral Flow
+    [56] = true, -- berserk, Berserk
+    [57] = true, -- defender, Defender
+    [58] = true, -- aggressor, Aggressor
+    [59] = true, -- focus, Focus
+    [60] = true, -- dodge, Dodge
+    [61] = true, -- counterstance, Counterstance
+    [62] = true, -- sentinel, Sentinel
+    [63] = true, -- souleater, Souleater
+    [64] = true, -- last_resort, Last Resort
+    [65] = true, -- sneak_attack, Sneak Attack
+    [67] = true, -- third_eye, Third Eye
+    [68] = true, -- warcry, Warcry and Crimson Howl
+    [72] = true, -- sharpshot, Sharpshot
+    [73] = true, -- barrage, Barrage
+    [74] = true, -- holy_circle, Holy Circle
+    [75] = true, -- arcane_circle, Arcane Circle
+    [76] = true, -- hide, Hide
+    [77] = true, -- camouflage, Camouflage
+    [78] = true, -- divine_seal, Divine Seal
+    [79] = true, -- elemental_seal, Elemental Seal
+    [87] = true, -- trick_attack, Trick Attack
+    [114] = true, -- cover, Cover
+    [115] = true, -- unlimited_shot, Unlimited Shot
+    [117] = true, -- warding_circle, Warding Circle
+    [118] = true, -- ancient_circle, Ancient Circle
+    [126] = true, -- spirit_surge, Spirit Surge
+    [154] = true, -- shining_ruby, Shining Ruby
+    [163] = true, -- azure_lore, Azure Lore
+    [164] = true, -- chain_affinity, Chain Affinity
+    [165] = true, -- burst_affinity, Burst Affinity
+    [166] = true, -- overdrive, Overdrive
+    [299] = true, -- overload, the maneuvers
+    [300] = true, -- fire_maneuver, Fire Maneuver
+    [301] = true, -- ice_maneuver, Ice Maneuver
+    [302] = true, -- wind_maneuver, Wind Maneuver
+    [303] = true, -- earth_maneuver, Earth Maneuver
+    [304] = true, -- thunder_maneuver, Thunder Maneuver
+    [305] = true, -- water_maneuver, Water Maneuver
+    [306] = true, -- light_maneuver, Light Maneuver
+    [307] = true, -- dark_maneuver, Dark Maneuver
+    [308] = true, -- double_up_chance, the rolls
+    [309] = true, -- bust, Double-Up
+    [310] = true, -- fighters_roll, Fighter's Roll
+    [311] = true, -- monks_roll, Monk's Roll
+    [312] = true, -- healers_roll, Healer's Roll
+    [313] = true, -- wizards_roll, Wizard's Roll
+    [314] = true, -- warlocks_roll, Warlock's Roll
+    [315] = true, -- rogues_roll, Rogue's Roll
+    [316] = true, -- gallants_roll, Gallant's Roll
+    [317] = true, -- chaos_roll, Chaos Roll
+    [318] = true, -- beast_roll, Beast Roll
+    [319] = true, -- choral_roll, Choral Roll
+    [320] = true, -- hunters_roll, Hunter's Roll
+    [321] = true, -- samurai_roll, Samurai Roll
+    [322] = true, -- ninja_roll, Ninja Roll
+    [323] = true, -- drachen_roll, Drachen Roll
+    [324] = true, -- evokers_roll, Evoker's Roll
+    [325] = true, -- maguss_roll, Magus's Roll
+    [326] = true, -- corsairs_roll, Corsair's Roll
+    [327] = true, -- puppet_roll, Puppet Roll
+    [340] = true, -- warriors_charge, Warrior's Charge
+    [341] = true, -- formless_strikes, Formless Strikes
+    [342] = true, -- assassins_charge, Assassin's Charge
+    [343] = true, -- feint, Feint
+    [344] = true, -- fealty, Fealty
+    [345] = true, -- dark_seal, Dark Seal
+    [346] = true, -- diabolic_eye, Diabolic Eye
+    [347] = true, -- nightingale, Nightingale
+    [348] = true, -- troubadour, Troubadour
+    [349] = true, -- killer_instinct, Killer Instinct
+    [350] = true, -- stealth_shot, Stealth Shot
+    [351] = true, -- flashy_shot, Flashy Shot
+    [352] = true, -- sange, Sange
+    [353] = true, -- hasso, Hasso
+    [354] = true, -- seigan, Seigan
+    [355] = true, -- convergence, Convergence
+    [356] = true, -- diffusion, Diffusion
+    [357] = true, -- snake_eye, Snake Eye
+    [623] = true, -- rampart, Rampart
+};

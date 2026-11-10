@@ -416,6 +416,36 @@ assert(debuffs.anchor.to == 'chat' and debuffs.anchor.gap == 5 and docked.x == d
     'An arrow moves it from where it was drawn and it keeps following: ' .. docked.x .. ', ' .. docked.y);
 settle();
 assert(steps() == count + 1, 'as one Undo step.');
+-- One its anchor puts past the screen's edge is drawn at the edge. A move starts from there, so an arrow away from the
+-- edge moves it at once, and a drag stops at the edge, so the way back has no stretch where nothing moves.
+local screen_width = require('imgui').GetIO().DisplaySize.x;
+debuffs.anchor = { to = 'screen', point = 'top_right', dx = 50, dy = 40, element = '', side = 'below', align = 'start', gap = 4, offset = 0 };
+frame(); frame();
+local edge = elements.drawn('self_debuffs');
+local edge_x = edge.x;
+assert(elements.anchored('self_debuffs') and edge_x + edge.width == screen_width, 'Fixture: its anchor puts it past the right edge.');
+count = steps();
+pressed[ImGuiKey_LeftArrow] = true; frame(); pressed[ImGuiKey_LeftArrow] = nil;
+frame();
+assert(debuffs.anchor.dx == -1 and elements.drawn('self_debuffs').x == edge_x - 1,
+    'An arrow away from the edge moves it at once: ' .. debuffs.anchor.dx);
+settle();
+assert(steps() == count + 1, 'as one Undo step.');
+debuffs.anchor.dx = -20;
+frame(); frame();
+local near = elements.drawn('self_debuffs');
+local near_x, near_y = near.x, near.y;
+count = steps();
+MOCK.key_shift, MOCK.mouse_down, MOCK.mouse_x, MOCK.mouse_y = true, true, near_x + 10, near_y + 10;
+activate = 'self_debuffs'; frame();
+MOCK.mouse_x = near_x + 110; frame();
+assert(debuffs.anchor.dx == 0, 'A drag past the edge stops at it: ' .. debuffs.anchor.dx);
+MOCK.mouse_x = near_x; frame(); frame();
+assert(debuffs.anchor.dx == -30 and elements.drawn('self_debuffs').x == near_x - 10,
+    'and moves back at once: ' .. debuffs.anchor.dx);
+settle();
+MOCK.key_shift = false;
+assert(steps() == count + 1, 'as one Undo step.');
 -- Undo steps are counted from none from here, as Undo keeps the last 20.
 app.state.history, app.state.redo = {}, {};
 debuffs.locked, debuffs.anchor = true, anchors.make();
@@ -527,6 +557,19 @@ local strip_from = edit._capture(s, 'strip_1', { x = 1500, y = 800, width = 180,
 assert(strip_from.kind == 'strip', 'A strip beside the game\'s party list moves by its offset.');
 assert(edit._apply(s, strip_from, -12, 7, { x = 1600, y = 900 }) and s.party_ui.groups[1].native_x == -12 and s.party_ui.groups[1].native_y == 7,
     'Its offset moves.');
+
+-- The Escape that closes the bar's Pick a display list ends nothing else. ImGui closes the list on that Escape before
+-- edit mode sees the key, so it was open the frame before.
+local open_list, begin_combo = false, imgui.BeginCombo;
+rawset(imgui, 'BeginCombo', function(label, ...)
+    if label == '##edit_pick' and open_list then return true; end
+    return begin_combo(label, ...);
+end);
+focused, open_list = true, true; frame();
+open_list, pressed[ImGuiKey_Escape] = false, true; frame(); pressed[ImGuiKey_Escape] = nil;
+assert(edit.active(), 'The Escape that closes the list leaves edit mode on.');
+frame();
+rawset(imgui, 'BeginCombo', begin_combo);
 
 -- Escape while it has focus ends it, leaving every display where it is.
 local kept = store.copy(s);

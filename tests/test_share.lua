@@ -52,6 +52,12 @@ private.alerts.rules = { rule, plain };
 private.effect_filters.rules = { { enabled = true, effect = 33, kind = 'all', name = NAME, job = 0, scope = 'all' },
     { enabled = true, effect = 40, kind = 'all', name = FRIEND, job = 0, scope = 'party' },
     { enabled = true, effect = 253, kind = 'all', name = '', job = 0, scope = 'all' } };
+local override = require('core.durations').override;
+local mine, crab, everyone = override(), override(), override();
+mine.id, mine.name, mine.seconds = 57, NAME, 180;
+crab.id, crab.name, crab.seconds = 253, 'Crab', 30;
+everyone.id, everyone.seconds = 43, 90;
+private.durations.overrides = { mine, crab, everyone };
 private = defaults.tidy(private);
 for _, kind in ipairs(share.kinds) do
     local exported, note = share.export(private, kind, 'party', NAME);
@@ -71,6 +77,11 @@ assert(#kept == 1 and kept[1].effect == 253, 'The hide rules that named you and 
 assert(select(2, share.export(private, 'filters', nil, NAME)) == '2 rules that name one character were left out.', 'The page says how many.');
 local alerts = json.decode(share.export(private, 'alerts', nil, NAME):match('^VG:1:%x+:(.+)$')).data.rules;
 assert(#alerts == 1 and alerts[1].id == 'rule_2' and alerts[1].name == '', 'The rule for one member by id is left out, and a name that holds yours is blanked.');
+-- A duration override only on one of your characters is left out whole too, as a blank name would put it on everyone.
+-- One on a mob keeps its name.
+local overrides = json.decode(share.export(private, 'profile', nil, NAME):match('^VG:1:%x+:(.+)$')).data.durations.overrides;
+assert(#overrides == 2 and overrides[1].name == 'Crab' and overrides[2].name == '' and overrides[2].id == 43,
+    'A duration override only on you is left out, never widened to everyone: ' .. #overrides);
 -- Your name is looked for in text you typed, never in the settings' own keys or a choice from a list: a character
 -- named Party keeps the party list buffs and party cooldowns in a whole profile, one named Style the looks, and one
 -- named Mint the Mint theme. A title that holds the name is still blanked.

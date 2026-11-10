@@ -43,6 +43,11 @@ command('/vantage watch'); command('/vg watch');
 assert(#app.state.settings.watch_ids==1 and app.state.settings.watch_ids[1]==16781313);
 assert(app.state.settings.panels.watch.enabled);
 command('/vg unwatch'); assert(#app.state.settings.watch_ids==0);
+-- An ID that isn't a number is no ID, and never your target.
+local printed=#MOCK.printed;
+command('/vg watch 12x'); command('/vg unwatch 12x');
+assert(#app.state.settings.watch_ids==0 and #MOCK.printed==printed+2 and MOCK.printed[printed+1]:find('12x is not an entity ID',1,true),
+    "A typed ID that isn't a number watches nothing: "..tostring(MOCK.printed[printed+1]));
 command('/vg profile save "Healer bars"');
 assert(app.callbacks.profile_list()[1]=='Healer bars');
 app.callbacks.changed('before'); app.state.settings.panels.self_buffs.width=480; app.callbacks.changed('after');

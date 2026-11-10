@@ -1,6 +1,6 @@
 addon.name = 'vantage';
 addon.author = 'Kipling';
-addon.version = '1.0.0';
+addon.version = '1.1.0';
 addon.desc = 'Customizable buff, debuff and recast timers, with buffs beside the game party list, for Phoenix.';
 addon.link = 'https://github.com/KiplingFFXI/vantage';
 
@@ -28,7 +28,7 @@ imgui_scopes.install(imgui);
 -- n closes the game. Doubled, it prints as itself.
 for _,name in ipairs({'TextWrapped','BulletText','SetTooltip'}) do
     local draw=imgui[name];
-    imgui[name]=function(text) return draw(type(text)=='string' and text:gsub('%%','%%%%') or text); end;
+    imgui[name]=function(text) return draw(type(text)=='string' and text:find('%',1,true) and text:gsub('%%','%%%%') or text); end;
 end;
 local defaults = require('ui.defaults');
 local store = require('core.store');
@@ -300,8 +300,9 @@ local function save()
         if state.publish_pending then publish(); end
         return true;
     end
-    -- Before a character loads there is no file to save to, and its saved settings replace these when it does.
-    if not state.path then problem(before_load); return true; end
+    -- Before a character loads there is no file to save to, and its saved settings replace these when it does, so
+    -- nothing is left waiting to be saved.
+    if not state.path then state.dirty,state.navigation_dirty=false,false; problem(before_load); return true; end
     -- The saved file couldn't be read when these settings loaded, so they began as defaults: they never replace
     -- it, or the shared layout. It is read again until it can be.
     if state.unread==state.path then
@@ -602,10 +603,14 @@ end
 function callbacks.undo() return step('history','redo','There is no earlier change to restore.'); end
 function callbacks.redo() return step('redo','history','There is no change to redo.'); end
 
+-- The settings window asks each frame, so the answer is one table filled in place. Read it before the next call.
+local history_status={};
 function callbacks.history_status()
-    return {undo=#state.history,redo=#state.redo,
-        undo_label=state.history[#state.history] and state.history[#state.history].label,
-        redo_label=state.redo[#state.redo] and state.redo[#state.redo].label};
+    local status=history_status;
+    status.undo,status.redo=#state.history,#state.redo;
+    status.undo_label=state.history[#state.history] and state.history[#state.history].label;
+    status.redo_label=state.redo[#state.redo] and state.redo[#state.redo].label;
+    return status;
 end
 
 function callbacks.reset(section)
@@ -1164,9 +1169,12 @@ local function party_panel_open()
     return frame ~= nil and frame.opened() == 'party_ui';
 end
 
+-- Whether a refresh reads the party list (core/roster.lua). Party cooldowns need its jobs, as a member who changes
+-- job loses that job's abilities.
 local function needs_party_roster()
     local s = state.settings;
-    return s.party_ui.enabled or s.window.open and s.window.tab == 'Display' and party_panel_open()
+    return s.party_ui.enabled or s.party_cooldowns.enabled
+        or s.window.open and s.window.tab == 'Display' and party_panel_open()
         or effect_filters.compile(s.effect_filters).needs_jobs or wants_party_list(s);
 end
 
@@ -1304,7 +1312,7 @@ refresh = function(t, force_roster)
         if warmup.need('party') then
             state.party_list_waits=true;
         else
-            local geometry=native_party.geometry(state.roster,math.floor(screen.x),math.floor(screen.y));
+            local geometry=native_hud.party_list(state.roster,math.floor(screen.x),math.floor(screen.y));
             party_window=geometry and geometry.available and geometry.groups[1] or nil;
         end;
     end;
@@ -1931,12 +1939,14 @@ local function run_command(e)
         callbacks.edit_mode(on);
         say(edit_mode.active() and 'Edit mode is on. Click a display to pick it; hold Shift and drag to move it. Esc or /vg edit ends it.'
             or 'Edit mode is off. Every display stays where it is.');
-    elseif command=='watch' then
-        local id=tonumber(args[3]) or (state.snapshot.target and state.snapshot.target.id);
-        local ok,why=callbacks.watch(id); if not ok then say(why); end
-    elseif command=='unwatch' then
-        local id=tonumber(args[3]) or (state.snapshot.target and state.snapshot.target.id);
-        local ok,why=callbacks.unwatch(id); if not ok then say(why); end
+    elseif command=='watch' or command=='unwatch' then
+        -- An ID typed goes by that ID alone. One that isn't a number never falls back to your target.
+        local id=tonumber(args[3]);
+        if args[3]~=nil and not id then say(args[3]..' is not an entity ID. Type its number, or nothing for your target.');
+        else
+            id=id or (state.snapshot.target and state.snapshot.target.id);
+            local ok,why=callbacks[command](id); if not ok then say(why); end
+        end
     elseif command=='undo' or command=='redo' then
         local ok,why=callbacks[command](); if not ok then say(why); end
     elseif command=='get' or command=='set' then

@@ -145,7 +145,9 @@ local filter_rows = {
     frame.note('Effects on the Hidden everywhere list are hidden here too.', { only = status.list_used }),
     frame.button('Edit the list', 'Open the Hidden everywhere list.', function(c) c.open_page('Filters'); end, { alias = 'Shared effect filters' }),
     status.list_paused(),
-    frame.line('Always show', 'Ticked shows it even with Debuffs only on. Unticked hides it.', always_ticks, { only = effects_shown, shown_by = 'Show buffs or debuffs' }),
+    frame.tick('Only effects from job abilities', 'abilities_only', status.abilities_help, {
+        of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = status.abilities_words }),
+    frame.line('Always show', 'Ticked shows it even with Debuffs only or Only effects from job abilities on. Unticked hides it unless it\'s on Show only, where the other settings decide as they do for any effect.', always_ticks, { only = effects_shown, shown_by = 'Show buffs or debuffs' }),
 };
 for _, item in ipairs(rows.effect_lists({
     of = effects, find = 'Find an effect', effect = 'Effect', show = 'Show only', hide = 'Hide here', pin = 'Pin first',

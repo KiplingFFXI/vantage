@@ -65,7 +65,8 @@ for _,kind in ipairs({'original_font','xiview_font'}) do
         'Embedded black shading and adjacent-cell bleed cannot survive a shadow-off countdown.');
 end;
 local calls={};
-local list={AddImageQuad=function(_,...)calls[#calls+1]=MOCK.copy_arguments('image',...);end,
+local list={AddImage=function(_,...)calls[#calls+1]=MOCK.copy_arguments('image',...);end,
+    AddImageQuad=function(_,...)calls[#calls+1]=MOCK.copy_arguments('quad',...);end,
     AddText=function(_,...)calls[#calls+1]=MOCK.copy_arguments('text',...);end};
 for _,name in ipairs({'Original FFXI','XI View','Agave'}) do
     for _,size in ipairs({8,16,32,48}) do
@@ -81,9 +82,10 @@ for _,name in ipairs({'Original FFXI','XI View','Agave'}) do
             assert(w==base+l+r and h==size+t+b,'Measurement reserves all selected effect extents.');
             for _,call in ipairs(calls) do
                 local first,last,color;
+                assert(call[1]~='quad','A countdown glyph is drawn as an upright box.');
                 if call[1]=='image' then
                     assert(call[2]==(name=='Original FFXI' and 456 or 789));
-                    first,last,color=call[3],call[5],call[11];
+                    first,last,color=call[3],call[4],call[7];
                 else
                     assert(call[3]==size);first,last,color=call[4],{call[4][1]+base,call[4][2]+size},call[5];
                 end;
@@ -92,7 +94,7 @@ for _,name in ipairs({'Original FFXI','XI View','Agave'}) do
                 local alpha=math.floor(color/16777216)%256;
                 assert(alpha==128 or outline and alpha==64,'Shadow and outline respect the foreground opacity.');
             end;
-            local last=calls[#calls];assert(last[1]=='image' and last[11]==0x80402010 or last[1]=='text' and last[5]==0x80402010);
+            local last=calls[#calls];assert(last[1]=='image' and last[7]==0x80402010 or last[1]=='text' and last[5]==0x80402010);
         end;
     end;
 end;
@@ -102,8 +104,8 @@ local function compact_box(name,text,size)
     calls={};assert(client.draw_countdown(list,name,text,10.2,20.3,size,0x80402010,true));
     local left,top,right,bottom;
     for _,call in ipairs(calls) do
-        assert(call[1]=='image' and call[11]==0x80402010);
-        local a,b=call[3],call[5];
+        assert(call[1]=='image' and call[7]==0x80402010);
+        local a,b=call[3],call[4];
         assert(a[1]%1==0 and a[2]%1==0 and b[1]%1==0 and b[2]%1==0,
             'Compact countdown edges remain aligned to whole pixels.');
         left,top=math.min(left or a[1],a[1]),math.min(top or a[2],a[2]);

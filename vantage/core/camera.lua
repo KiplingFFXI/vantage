@@ -234,6 +234,12 @@ end
 -- Screen pixels per yalm at view depth w.
 function camera.pixels_per_yalm(w) return status.good_p22 * status.height * 0.5 / w; end
 
+-- Whether a render-space point is more than by yalms behind the nearest point camera.project takes.
+function camera.behind(x, y, z, by)
+    local m = matrix;
+    return x * m[4] + y * m[8] + z * m[12] + m[16] < NEAR - by;
+end
+
 -- The camera the last read view puts in render space, checked or not, for calibrate.
 function camera.eye() return eye(view); end
 

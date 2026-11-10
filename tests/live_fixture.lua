@@ -119,14 +119,19 @@ function L.entity(id, index, claimer)
     MOCK.put(bytes, 4, 4, id); MOCK.put(bytes, 8, 2, index); bytes[0x0A] = 0x02; MOCK.put(bytes, 0x2C, 4, claimer or 0);
     return L.receive(0x00E, bytes);
 end
--- 0x076: a row of 48 bytes for each member listed ({ id, index, effects }), each effect a byte from 16 on.
+-- 0x076: a row of 48 bytes for each member listed ({ id, index, effects }), each effect's low byte from 16 on and its
+-- top two bits from 8, four to a byte.
 function L.listing(rows)
     local bytes = MOCK.bytes(244);
     for r, row in ipairs(rows) do
         local start = 4 + (r - 1) * 48;
         MOCK.put(bytes, start, 4, row[1]); MOCK.put(bytes, start + 4, 2, row[2]);
         for i = 0, 31 do bytes[start + 16 + i] = 255; end
-        for i, effect in ipairs(row[3]) do bytes[start + 16 + i - 1] = effect; end
+        for i, effect in ipairs(row[3]) do
+            local slot, high = i - 1, start + 8 + math.floor((i - 1) / 4);
+            bytes[start + 16 + slot] = effect % 256;
+            bytes[high] = bytes[high] + math.floor(effect / 256) * 2 ^ ((slot % 4) * 2);
+        end
     end
     return L.receive(0x076, bytes);
 end

@@ -1,5 +1,6 @@
 -- Every raw read the client reader makes checks its page first: an address on a page that can't be read is
--- never read, and reads as nothing. Without a page check at all, nothing is read.
+-- never read, and reads as nothing. A flag whose page is part of the client's image is checked once, as that page
+-- stays while the game runs. Without a page check at all, nothing is read.
 local event_scan,interface_scan,focus_scan=0x110000,0x120000,0x130000;
 local interface,event_flag,menu,header=0x210000,0x220000,0x230000,0x240000;
 local memory={[event_scan+1]=event_flag,[interface_scan+10]=interface,[focus_scan]=interface+0x54,
@@ -50,6 +51,28 @@ unreadable[interface_scan+10]=true;
 client=fresh(pages);
 assert(not client.capabilities().hidden,'An unreadable pointer is not taken for an address.');
 unreadable={};
+
+-- The three flags sit in the client's image, so each is checked on its first read only. The menu they point at is
+-- checked on every read, and so is a flag outside an image.
+local flags={interface+0xB4,event_flag,interface+0x54};
+local function counted(image)
+    local count={};
+    return function(at,size,writable)
+        assert(writable==false,'The client reader only reads.');
+        count[at]=(count[at] or 0)+1;
+        return true,at,at+size,image;
+    end,count;
+end;
+for _,image in ipairs({true,false}) do
+    local valid,count=counted(image);
+    client=fresh(valid);
+    for _=1,4 do assert(client.visibility(snapshot),'Fixture: the flags read.'); end;
+    for _,at in ipairs(flags) do
+        local want=image and 1 or 4;
+        assert(count[at]==want,string.format('The flag at 0x%X should be checked in %d of 4 reads, not %s.',at,want,tostring(count[at])));
+    end;
+    assert(count[menu+4]==4 and count[header+0x4E]==4,'The menu is checked on every read.');
+end;
 
 -- No page check at all: nothing is read.
 reads={};

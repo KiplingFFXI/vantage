@@ -51,7 +51,7 @@ function anchors.tidy(value, own, ids)
     out.align = choice(value.align, anchors.aligns, fresh.align);
     out.gap = number(value.gap, -300, 300, fresh.gap);
     out.offset = number(value.offset, -2000, 2000, 0);
-    return out;
+    return require('core.store').keep_unknown(out, value);
 end
 
 -- movable is the displays a move can tick for Grid mode (ui/elements.lua elements.movable): the list keeps each of

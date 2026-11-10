@@ -110,46 +110,53 @@ local function clear(label, x, y, width, height)
     return true;
 end;
 
--- Above the display, or below it or inside its top edge where the space above is another display's.
-local function beside(rect, label)
-    return function(width, height, screen)
-        local x = clamp(rect.x, 2, screen.x - width - 2);
-        for _, y in ipairs({ rect.y - height - 3, rect.y + rect.height + 3, rect.y + 3 }) do
-            if y >= 2 and y + height <= screen.y - 2 and clear(label, x, y, width, height) then return x, y; end;
-        end;
-        local y = rect.y - height - 3;
-        if y < 2 then y = rect.y + rect.height + 3; end;
-        return x, y;
+-- Where a note width by height goes beside the display at rect: above it, or below it or inside its top edge where the
+-- space above is another display's.
+local function beside(rect, label, width, height, screen)
+    local x = clamp(rect.x, 2, screen.x - width - 2);
+    for try = 1, 3 do
+        local y = try == 1 and rect.y - height - 3 or try == 2 and rect.y + rect.height + 3 or rect.y + 3;
+        if y >= 2 and y + height <= screen.y - 2 and clear(label, x, y, width, height) then return x, y; end;
     end;
+    local y = rect.y - height - 3;
+    if y < 2 then y = rect.y + rect.height + 3; end;
+    return x, y;
 end;
 
--- A small dark box of text lines for the display at rect, which has to be on screen. place(width, height, screen)
--- gives its corner.
-local function note(list, rect, text, look, place)
+-- What a note hands ImGui, refilled for each call as the binding copies it, and the font its lines are measured in.
+local note_min, note_max, note_at = { 0, 0 }, { 0, 0 }, { 0, 0 };
+local note_font, note_size;
+local function note_width(value) return require('ui.text_metrics').width(note_font, value, note_size); end;
+
+-- A small dark box of text lines for the display at rect, which has to be on screen, placed beside it.
+local function note(list, rect, text, look, label)
     local imgui, fonts = require('imgui'), require('ui.fonts');
     local metrics = require('ui.text_metrics');
     local screen = imgui.GetIO().DisplaySize;
     if screen.x < 32 or screen.y < 32 or rect.x >= screen.x or rect.y >= screen.y
         or rect.x + rect.width <= 0 or rect.y + rect.height <= 0 then return; end;
-    look = look or {};
-    local font, size = look.font or 'Agave', clamp(look.font_size or 16, 16, 20);
-    local measure = function(value) return metrics.width(font, value, size); end;
-    local lines = metrics.lines(text, math.min(320, screen.x - 4) - 12, measure, metrics.token(font, size));
+    local font, size = look and look.font or 'Agave', clamp(look and look.font_size or 16, 16, 20);
+    note_font, note_size = font, size;
+    local lines = metrics.lines(text, math.min(320, screen.x - 4) - 12, note_width, metrics.token(font, size));
     local width, height = 0, math.min(screen.y - 4, #lines * (size + 2) + 8);
-    for _, line in ipairs(lines) do width = math.max(width, measure(line)); end;
+    for _, line in ipairs(lines) do width = math.max(width, note_width(line)); end;
     width = math.min(screen.x - 4, width + 12);
-    local x, y = place(width, height, screen);
+    local x, y = beside(rect, label, width, height, screen);
     x, y = math.floor(clamp(x, 2, screen.x - width - 2)), math.floor(clamp(y, 2, screen.y - height - 2));
     -- Draw outside the panel without adding another mouse target.
-    list:PushClipRect({0, 0}, {screen.x, screen.y}, false);
-    list:AddRectFilled({x, y}, {x + width, y + height}, 0xFA171717, 3);
-    list:AddRect({x, y}, {x + width, y + height}, 0xFFE6D5A8, 3, 0, 1);
-    list:PushClipRect({x + 4, y + 2}, {x + width - 4, y + height - 2}, true);
+    note_min[1], note_min[2], note_max[1], note_max[2] = 0, 0, screen.x, screen.y;
+    list:PushClipRect(note_min, note_max, false);
+    note_min[1], note_min[2], note_max[1], note_max[2] = x, y, x + width, y + height;
+    list:AddRectFilled(note_min, note_max, 0xFA171717, 3);
+    list:AddRect(note_min, note_max, 0xFFE6D5A8, 3, 0, 1);
+    note_min[1], note_min[2], note_max[1], note_max[2] = x + 4, y + 2, x + width - 4, y + height - 2;
+    list:PushClipRect(note_min, note_max, true);
     fonts.push(font, size);
     for index, line in ipairs(lines) do
         local top = y + 4 + (index - 1) * (size + 2);
         if not fonts.draw(list, font, line, x + 6, top, size, 0xFFFFFFFF) then
-            list:AddText(imgui.GetFont(), size, {x + 6, top}, 0xFFFFFFFF, line);
+            note_at[1], note_at[2] = x + 6, top;
+            list:AddText(imgui.GetFont(), size, note_at, 0xFFFFFFFF, line);
         end;
     end;
     fonts.pop();
@@ -162,7 +169,7 @@ end;
 function resize.label(list, rect, label, look)
     if not label or label == '' then return; end;
     local dimensions = ('%d x %d px'):format(math.floor(rect.width + 0.5), math.floor(rect.height + 0.5));
-    note(list, rect, label .. '\n' .. dimensions, look, beside(rect, label));
+    note(list, rect, label .. '\n' .. dimensions, look, label);
 end;
 
 -- While Shift is held with the pointer on a locked display, a note says where to unlock it, placed like a size
@@ -172,7 +179,7 @@ function resize.locked(list, rect, look, label)
     local mx, my = require('imgui').GetMousePos();
     if type(mx) ~= 'number' or type(my) ~= 'number' or mx < rect.x or my < rect.y
         or mx >= rect.x + rect.width or my >= rect.y + rect.height then return; end;
-    note(list, rect, 'Locked: unlock it on the main page', look, beside(rect, label));
+    note(list, rect, 'Locked: unlock it on the main page', look, label);
 end;
 
 -- The SAMPLE tag a previewed display wears at its top right corner. Inside it covers the frame's empty corner;
@@ -283,6 +290,12 @@ function resize.sample_list(imgui, over, rect, mx, my, tagged)
     return top, true;
 end;
 
+-- What a hint hands ImGui, refilled for each call as the binding copies it.
+local hint_min, hint_max = { 0, 0 }, { 0, 0 };
+local function edge_line(list, x1, y1, x2, y2)
+    hint_min[1], hint_min[2], hint_max[1], hint_max[2] = x1, y1, x2, y2;
+    list:AddLine(hint_min, hint_max, 0xFFFFFFFF, 2);
+end;
 -- move_only leaves out the handles on the edges and corners, for a display that moves but can't be resized.
 function resize.hint(list, rect, color, edge, label, look, move_only)
     if rect.width <= 0 or rect.height <= 0 then return; end;
@@ -293,24 +306,26 @@ function resize.hint(list, rect, color, edge, label, look, move_only)
     local bx, by = bands(rect);
     local width, height = math.min(8, bx), math.min(8, by);
     local inset = math.min(1, rect.width / 4, rect.height / 4);
-    list:AddRect({ rect.x + inset, rect.y + inset }, { rect.x + rect.width - inset, rect.y + rect.height - inset }, 0xFF000000, 0, 0, 3);
-    list:AddRect({ rect.x + inset, rect.y + inset }, { rect.x + rect.width - inset, rect.y + rect.height - inset }, color, 0, 0, 1);
+    hint_min[1], hint_min[2] = rect.x + inset, rect.y + inset;
+    hint_max[1], hint_max[2] = rect.x + rect.width - inset, rect.y + rect.height - inset;
+    list:AddRect(hint_min, hint_max, 0xFF000000, 0, 0, 3);
+    list:AddRect(hint_min, hint_max, color, 0, 0, 1);
     for _, handle in ipairs(move_only and no_handles or handles) do
         local x = rect.x + bx / 2 + (rect.width - bx) * handle[2];
         local y = rect.y + by / 2 + (rect.height - by) * handle[3];
         local active = edge == handle[1];
-        local a, b = { math.max(rect.x, x - width / 2), math.max(rect.y, y - height / 2) },
-            { math.min(rect.x + rect.width, x + width / 2), math.min(rect.y + rect.height, y + height / 2) };
-        list:AddRectFilled(a, b, active and 0xFFFFFFFF or color);
-        list:AddRect(a, b, 0xFF000000, 0, 0, active and 2 or 1);
+        hint_min[1], hint_min[2] = math.max(rect.x, x - width / 2), math.max(rect.y, y - height / 2);
+        hint_max[1], hint_max[2] = math.min(rect.x + rect.width, x + width / 2), math.min(rect.y + rect.height, y + height / 2);
+        list:AddRectFilled(hint_min, hint_max, active and 0xFFFFFFFF or color);
+        list:AddRect(hint_min, hint_max, 0xFF000000, 0, 0, active and 2 or 1);
     end;
     if edge then
         local left, right = rect.x + bx / 2, rect.x + rect.width - bx / 2;
         local top, bottom = rect.y + by / 2, rect.y + rect.height - by / 2;
-        if edge:find('left', 1, true) then list:AddLine({left,top},{left,bottom},0xFFFFFFFF,2); end;
-        if edge:find('right', 1, true) then list:AddLine({right,top},{right,bottom},0xFFFFFFFF,2); end;
-        if edge:find('top', 1, true) then list:AddLine({left,top},{right,top},0xFFFFFFFF,2); end;
-        if edge:find('bottom', 1, true) then list:AddLine({left,bottom},{right,bottom},0xFFFFFFFF,2); end;
+        if edge:find('left', 1, true) then edge_line(list, left, top, left, bottom); end;
+        if edge:find('right', 1, true) then edge_line(list, right, top, right, bottom); end;
+        if edge:find('top', 1, true) then edge_line(list, left, top, right, top); end;
+        if edge:find('bottom', 1, true) then edge_line(list, left, bottom, right, bottom); end;
     end
     resize.label(list, rect, label, look);
 end

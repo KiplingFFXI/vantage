@@ -39,7 +39,7 @@ local imgui=require('imgui');
 imgui.CalcTextSize=function(text)return #text*imgui.GetFontSize()/2,imgui.GetFontSize();end;
 local calls={};
 local physical={
-    AddImageQuad=function(_,...)calls[#calls+1]=MOCK.copy_arguments('image',...);end,
+    AddImage=function(_,...)calls[#calls+1]=MOCK.copy_arguments('image',...);end,
     AddText=function(_,...)calls[#calls+1]=MOCK.copy_arguments('text',...);end,
 };
 local function near(a,b)assert(math.abs(a-b)<0.000001);end;
@@ -53,7 +53,7 @@ local function check(name,scale,options,text,icon_size)
     for _,call in ipairs(calls) do
         local first,last;
         if call[1]=='image' then
-            first,last=call[3],call[5];
+            first,last=call[3],call[4];
             assert(first[1]%1==0 and first[2]%1==0 and last[1]%1==0 and last[2]%1==0,
                 'Scaled bitmap glyphs retain physical pixel alignment.');
         else

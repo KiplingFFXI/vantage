@@ -112,7 +112,10 @@ cache of its traces wouldn't fit vantage.lua's machine code limit.
 test_draw_digest.py checks that every draw call of that look stays the same,
 and skips without the client. test_frame_shut_cost.py checks that with the
 settings window shut a frame makes no more than it did with the window loaded,
-and skips without the client.
+and skips without the client. test_frame_window_cost.py checks that with the
+window open its own draw makes nothing a frame once warm, on each page and
+display tab but Timer durations, Profiles and the Place tab of Party list
+buffs, and skips without the client.
 Run python tests/benchmark_recasts.py for the bounded cooldown reader and
 projection measurements. See docs/RECASTS.md for timer contracts and readiness
 evidence.

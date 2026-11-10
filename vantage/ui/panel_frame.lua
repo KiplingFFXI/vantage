@@ -694,13 +694,27 @@ end;
 
 local page_ids = { Recasts = 'recasts', ['Party & alliance'] = 'party_ui', Filters = 'hidden' };
 
+-- Whether a display has destination, a tab's key or a row's name, or with none, whether it has tabs at all.
+local function holds(display, destination)
+    if display.plain then return false; end;
+    if destination == nil then return true; end;
+    if destination == 'Filters' then return display.tabs.filters ~= nil; end;
+    if tab_names[destination] then return display.tabs[destination] ~= nil; end;
+    return display.named[destination] ~= nil;
+end;
+
 -- Where a link or a command opens: the display, then the tab, by a tab's key or the name of a row on it. Returns the fold
 -- to go to, if the row is in one.
 function frame.route(page, panel, destination)
     load_displays();
     local id = panel or page_ids[page] or open_id or displays[1].id;
-    -- A link to a display's tab, with no display named, wants one with tabs.
-    if page == 'Display' and not panel and by_id[owner[id]].plain then id = displays[1].id; end;
+    -- A link to a display's tab or row, with no display named, wants one that has it: the one open, or else the first.
+    if page == 'Display' and not panel and not holds(by_id[owner[id]], destination) then
+        id = displays[1].id;
+        for _, display in ipairs(displays) do
+            if holds(display, destination) then id = display.id; break; end;
+        end;
+    end;
     frame.open(id);
     local display = by_id[open_id];
     if not destination then return nil; end;

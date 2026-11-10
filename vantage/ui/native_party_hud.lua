@@ -14,6 +14,14 @@ local gesture;
 -- Each strip's name on its size label, lock note and place, as edit mode names them.
 local strip_labels = { 'Your party', 'Alliance 1', 'Alliance 2' };
 local unavailable_reason = 'Effect information is unavailable. A blank list does not confirm that this member has no effects.';
+-- The vectors the window and its paint hand ImGui, refilled for each call: the binding copies them and keeps none.
+local ZERO, ONE, corner, far_corner, extent = { 0, 0 }, { 1, 1 }, { 0, 0 }, { 0, 0 }, { 0, 0 };
+local clip_min, clip_max = { 0, 0 }, { 0, 0 };
+-- What a draw hands back when there's nothing, the same empty table each time: no caller adds to it.
+local NONE = {};
+-- What a draw works out for its rows and cells. party_layout tells one draw from the next by this table, so two are
+-- taken in turn, each emptied as its draw starts, and a draw still brings a cache the last one didn't have.
+local effect_caches, cache_turn = { {}, {} }, 1;
 
 local function clamp(value, low, high)
     return math.max(low, math.min(high, value));
@@ -35,7 +43,8 @@ end
 local function caption(imgui, list, look, value, x, y, width, rgba)
     if width <= 0 then return; end;
     local ink = theme.u32(rgba or look.colors.text, look.opacity);
-    list:PushClipRect({x,y}, {x+width,y+look.font_size+3}, true);
+    clip_min[1], clip_min[2], clip_max[1], clip_max[2] = x, y, x + width, y + look.font_size + 3;
+    list:PushClipRect(clip_min, clip_max, true);
     local ok, err = pcall(paint_caption, imgui, list, look, value, x, y, ink);
     list:PopClipRect();
     if not ok then error(err, 0); end;
@@ -45,6 +54,8 @@ end
 -- the one-entry lists the samples hand the first sample members.
 local show_cooldowns = false;
 local sample_cooldowns = { {}, {}, {}, {}, {} };
+-- The sample members' effects, made once and moved to each frame's time, and the map of them by member each frame.
+local sample_subjects, shown_samples = nil, {};
 -- Where a row's party cooldown cells go: count cells of size px across width from x, nearest the game's window
 -- first. Kept on the row from frame to frame.
 local function cooldown_cells(item, x, y, width, size, count, align_right)
@@ -394,7 +405,8 @@ end
 local last = {};
 
 -- The game's party windows, read again only for another roster or screen size. The host makes a new roster at each
--- refresh, ten times a second and as soon as the party changes, so they are read then and not every frame.
+-- refresh, ten times a second and as soon as the party changes, so they are read then and not every frame. The host
+-- reads them here too for the displays that move with the party list, so a refresh reads them once.
 local listed = {};
 local function party_list(roster, width, height)
     if listed.roster ~= roster or listed.width ~= width or listed.height ~= height then
@@ -403,6 +415,7 @@ local function party_list(roster, width, height)
     end;
     return listed.geometry;
 end
+overlay.party_list = party_list;
 
 -- store is what the draw keeps from frame to frame; without one every table is new.
 function overlay.plan(roster, subjects, config, geometry, width, height, cache, global_style, store, revision)
@@ -425,11 +438,150 @@ function overlay.panel_size(config, group, width, screen_width, screen_height, g
     return plan.width, plan.content_height;
 end
 
+-- One strip's paint, inside its window, refilled into strip and handed to paint_strip so no closure is made a frame.
+-- It gives back list and on_top as soon as it has them, for the caller to pop the clip even when the paint fails,
+-- and the hovered effect, member, subject, label and cooldown, which carry over from one strip to the next.
+local strip = {};
+local function paint_strip(c)
+    if not c.visible then return; end;
+    local imgui, config, callbacks, roster, subjects, now, plan, look = c.imgui, c.config, c.callbacks, c.roster, c.subjects,
+        c.now, c.plan, c.look;
+    local mx, my, movable, blocked, screen, label = c.mx, c.my, c.movable, c.blocked, c.screen, c.label;
+    local effect_cache, removable, light = c.effect_cache, c.removable, c.light;
+    local hovered, hovered_member, hovered_subject, hovered_label, hovered_cooldown = c.hovered, c.hovered_member,
+        c.hovered_subject, c.hovered_label, c.hovered_cooldown;
+    local list, on_top;
+    -- Samples go over an open settings window.
+    list, on_top = resize.sample_list(imgui, config.preview and callbacks.samples_over, plan, mx, my);
+    c.list, c.on_top = list, on_top;
+    local scroll = plan.detached and imgui.GetScrollY and imgui.GetScrollY() or 0;
+    if plan.detached then
+        theme.frame(list, plan, look, look.colors.border);
+    end;
+    local hover = not callbacks.shift and not movable and not roster.typing and not callbacks.input_blocked and layout.inside(plan,mx,my)
+        and (plan.detached or not blocked);
+    for _, item in ipairs(plan.rows) do
+        local subject = subjects[item.member.id];
+        local unavailable = not subject or subject.known == false;
+        local area, from = item.drawn_area or {}, item.area;
+        area.x, area.y, area.width, area.height, area.align_right = from.x, from.y-scroll, from.width, from.height, from.align_right;
+        item.drawn_area = area;
+        if plan.detached then
+            for line,value in ipairs(item.label_lines) do
+                local y = item.label_y-scroll+(line-1)*(look.font_size+2);
+                if y+look.font_size >= plan.y and y < plan.y+plan.height then
+                    caption(imgui,list,look,value,area.x,y,area.width);
+                    if hover and my >= y and my < y+look.font_size then
+                        hovered_label=item.member;
+                        if unavailable then
+                            hovered={unknown_subject=true,reason=unavailable_reason};
+                            hovered_member,hovered_subject=item.member,subject;
+                        end;
+                    end;
+                end;
+            end;
+        end;
+        if area.height >= 10 and area.y+area.height > plan.y and area.y < plan.y+plan.height then
+            local effect = party_hud.paint_effects(list, look, subject, item.options, area,
+                hover and mx or nil, my, effect_cache, now, item.effects, item.cells, removable, light);
+            if effect then hovered, hovered_member, hovered_subject = effect, item.member, subject;
+            elseif unavailable and hover and layout.inside(area,mx,my) then
+                hovered={unknown_subject=true,reason=unavailable_reason};
+                hovered_member,hovered_subject=item.member,subject;
+            end;
+        end;
+        local cells = item.cooldowns and item.cooldown_area;
+        if cells and cells.cell >= 10 and cells.y-scroll+cells.cell > plan.y and cells.y-scroll < plan.y+plan.height then
+            local hit = party_hud.paint_cooldowns(list, look, item.options, item.cooldowns, cells, now, hover and mx or nil, my,
+                callbacks.global_style, scroll);
+            if hit then hovered_cooldown, hovered_member = hit, item.member; end;
+        end;
+    end;
+    if config.preview or movable then
+        corner[1], corner[2], far_corner[1], far_corner[2] = plan.x, plan.y, plan.x + plan.width, plan.y + plan.height;
+        list:AddRect(corner, far_corner, 0xFFFFFFFF);
+    end;
+    if not movable and callbacks.shift and not roster.typing and config.locked and not callbacks.input_blocked then
+        resize.locked(list, plan, look, label);
+    end;
+    if movable then
+        corner[1], corner[2], extent[1], extent[2] = plan.x, plan.y, plan.width, plan.height;
+        imgui.SetCursorScreenPos(corner);
+        imgui.InvisibleButton('##native_move_' .. plan.group, extent);
+        local saved = config.groups[plan.group];
+        -- A strip beside the game's rows only moves, from its edges too. A panel of its own also resizes from
+        -- its edges; the strip becomes one only from its switch in the settings.
+        if imgui.IsItemActivated() and not gesture then
+            -- A move starts from the offsets the strip is drawn at, which a save past the screen's edge isn't.
+            local from_x, from_y = drawn_offsets(plan, saved.native_x or 0, saved.native_y or 0);
+            gesture = { config = config, group = plan.group, callbacks = callbacks, mx = mx, my = my,
+                x = from_x, y = from_y, plan = held_plan(plan), side = config.native.side,
+                resize = plan.detached and resize.grip(plan, mx, my) or nil,
+                screen_width = screen.x, screen_height = screen.y };
+        end;
+        if gesture and gesture.group == plan.group and imgui.IsItemActive() then
+            resize.cursor(imgui, gesture.resize);
+            local dx, dy = mx - gesture.mx, my - gesture.my;
+            local horizontal,vertical = resize.axes(gesture.resize);
+            -- A move snaps as edit mode's does, and a resize the edge being pulled, when the caller gives the settings
+            -- and the strip is ticked for Grid mode while it is on.
+            local settings, id = callbacks.settings, 'strip_' .. plan.group;
+            if gesture.dirty or horizontal and dx ~= 0 or vertical and dy ~= 0 or not gesture.resize and (dx ~= 0 or dy ~= 0) then
+                gesture.active_edge = resize.active_edge(gesture.resize,dx,dy,gesture.active_edge);
+                local updates = {};
+                local shift_x, shift_y = 0, 0;
+                if settings and not gesture.resize then
+                    shift_x, shift_y = snap.move(settings,id,gesture.plan.x+dx,gesture.plan.y+dy,gesture.plan.width,gesture.plan.height,screen.x,screen.y);
+                end;
+                if gesture.plan.detached then
+                    local limits = {min_width=gesture.plan.min_width or 40,min_height=40,max_width=900,max_height=16000,
+                        screen_width=screen.x,screen_height=screen.y};
+                    local rect = settings and gesture.resize and snap.resize(settings,id,gesture.plan,gesture.active_edge,dx,dy,limits)
+                        or resize.rect(gesture.plan,gesture.active_edge,dx,dy,limits);
+                    if not gesture.resize then
+                        rect.x,rect.y = clamp(gesture.plan.x+dx+shift_x,0,screen.x-rect.width),clamp(gesture.plan.y+dy+shift_y,0,screen.y-rect.height);
+                    end;
+                    updates.native_detached = true;
+                    updates.detached_x,updates.detached_y = math.floor(rect.x),math.floor(rect.y);
+                    -- A move keeps the saved size, which a small screen can draw smaller; only a resize saves one.
+                    if gesture.resize then
+                        updates.detached_width,updates.detached_height = math.floor(rect.width),math.floor(rect.height);
+                    end;
+                else
+                    updates.native_x,updates.native_y = drawn_offsets(gesture.plan,gesture.x+dx+shift_x,gesture.y+dy+shift_y);
+                end;
+                local changed = false;
+                for key,value in pairs(updates) do if saved[key] ~= value then changed=true; end; end;
+                if changed then
+                    if not gesture.started and gesture.callbacks.begin_edit then gesture.callbacks.begin_edit(); end;
+                    gesture.started,gesture.dirty = true,true;
+                    for key,value in pairs(updates) do saved[key]=value; end;
+                end;
+            end;
+            -- The strip is drawn this frame where the last step put it, so its line shows once it is drawn on it.
+            if settings then snap.show(settings, id, screen.x, screen.y, plan); end;
+        end;
+        local grip;
+        if gesture and gesture.group == plan.group then grip = gesture.resize;
+        elseif not gesture and plan.detached and imgui.IsItemHovered() then grip = resize.grip(plan,mx,my); end;
+        resize.hint(list,plan,theme.u32(look.colors.title,look.opacity),grip,label,look,not plan.detached);
+        if not gesture and imgui.IsItemHovered() then resize.cursor(imgui, plan.detached and resize.grip(plan, mx, my) or nil); end;
+    end;
+    -- A panel of its own draws on its draw list, which ImGui doesn't count, so this empty item gives the window its
+    -- scroll range. It stops 18 px short of the window's width, to stay clear of the scrollbar.
+    if plan.detached then
+        extent[1], extent[2] = math.max(1, plan.width - 18), plan.content_height;
+        imgui.SetCursorPos(ZERO); imgui.Dummy(extent);
+    end;
+    c.hovered, c.hovered_member, c.hovered_subject, c.hovered_label, c.hovered_cooldown = hovered, hovered_member,
+        hovered_subject, hovered_label, hovered_cooldown;
+end
+
 function overlay.draw(roster, subjects, config, now, callbacks)
     callbacks = callbacks or {};
     local imgui, bit = require('imgui'), require('bit');
     if not config.enabled or not roster or not roster.valid or roster.hidden or roster.map or roster.in_event
-        or not config.show_solo and #roster.members <= 1 then overlay.cancel_layout_gesture(); return false, {}; end;
+        or not config.show_solo and #roster.members <= 1 then overlay.cancel_layout_gesture(); return false, NONE; end;
     local movable = callbacks.shift and not roster.typing and not config.locked and not callbacks.input_blocked;
     local watch = callbacks.cooldowns;
     show_cooldowns = type(watch) == 'table' and watch.enabled == true and watch.strips == true;
@@ -440,19 +592,19 @@ function overlay.draw(roster, subjects, config, now, callbacks)
         light = callbacks.settings.overhead;
     end;
     if config.preview then
-        local _, samples = party_hud.sample(18, now);
+        if not sample_subjects then sample_subjects = select(2, party_hud.sample(18, now)); end;
+        party_hud.sample_time(sample_subjects, now);
         -- The party cooldown samples are made for the first sample members, by name, one each.
         local estimates = show_cooldowns and require('core.party_cooldowns').samples(now);
-        subjects = {};
+        for id in pairs(shown_samples) do shown_samples[id] = nil; end;
         for _, member in ipairs(roster.members) do
-            local subject, estimate = samples[1001 + member.slot], estimates and estimates[member.slot + 1];
-            if estimate then
-                local own = sample_cooldowns[member.slot + 1];
-                own[1] = estimate;
-                subject.cooldowns = own;
-            end;
-            subjects[member.id] = subject;
+            local subject, estimate = sample_subjects[1001 + member.slot], estimates and estimates[member.slot + 1];
+            local own = estimate and sample_cooldowns[member.slot + 1];
+            if own then own[1] = estimate; end;
+            if subject then subject.cooldowns = own or nil; end;
+            shown_samples[member.id] = subject;
         end;
+        subjects = shown_samples;
     end;
     local filters = effect_filters.compile(callbacks.effect_filters);
     if filters.active then
@@ -460,10 +612,12 @@ function overlay.draw(roster, subjects, config, now, callbacks)
         subjects = effect_filters.subjects(filters, subjects, recipients);
     end;
     local screen = imgui.GetIO().DisplaySize;
-    if screen.x <= 0 or screen.y <= 0 then overlay.cancel_layout_gesture(); return false, {}; end;
+    if screen.x <= 0 or screen.y <= 0 then overlay.cancel_layout_gesture(); return false, NONE; end;
     if gesture and (gesture.screen_width ~= screen.x or gesture.screen_height ~= screen.y or gesture.side ~= config.native.side) then overlay.cancel_layout_gesture(); end;
     local geometry = callbacks.native_geometry or party_list(roster, math.floor(screen.x), math.floor(screen.y));
-    local effect_cache = {};
+    cache_turn = 3 - cache_turn;
+    local effect_cache = effect_caches[cache_turn];
+    for key in pairs(effect_cache) do effect_cache[key] = nil; end;
     local plans = overlay.plan(roster, subjects, config, geometry, screen.x, screen.y, effect_cache, callbacks.global_style, kept, callbacks.revision);
     if gesture and (gesture.config ~= config or not movable or not imgui.IsMouseDown(0)) then
         if gesture.config == config and movable and not imgui.IsMouseDown(0) and gesture.dirty and not gesture.resize then
@@ -476,7 +630,7 @@ function overlay.draw(roster, subjects, config, now, callbacks)
         end;
         overlay.cancel_layout_gesture();
     end;
-    if #plans == 0 then overlay.cancel_layout_gesture(); return false, {}, geometry.available and geometry.groups or {}; end;
+    if #plans == 0 then overlay.cancel_layout_gesture(); return false, NONE, geometry.available and geometry.groups or NONE; end;
     if gesture then
         local found;
         for _, plan in ipairs(plans) do if plan.group == gesture.group then found = true; break; end end;
@@ -484,19 +638,23 @@ function overlay.draw(roster, subjects, config, now, callbacks)
     end;
     local mx, my = imgui.GetMousePos();
     local flags = require('ui.frame_policy').overlay_flags();
-    local hovered, hovered_member, hovered_subject, hovered_label, hovered_cooldown;
     local blocked = callbacks.input_blocked or imgui.IsWindowHovered and imgui.IsWindowHovered(ImGuiHoveredFlags_AnyWindow or 0);
+    strip.imgui, strip.config, strip.callbacks, strip.roster, strip.subjects, strip.now = imgui, config, callbacks, roster, subjects, now;
+    strip.mx, strip.my, strip.movable, strip.blocked, strip.screen = mx, my, movable, blocked, screen;
+    strip.effect_cache, strip.light = effect_cache, light;
+    strip.hovered, strip.hovered_member, strip.hovered_subject, strip.hovered_label, strip.hovered_cooldown = nil, nil, nil, nil, nil;
     for _, plan in ipairs(plans) do
         local look = plan.look;
         local removable = near and (plan.group == 1 and near or far);
         local scrolling = plan.detached and plan.content_height > plan.height and not roster.typing and not callbacks.input_blocked;
         local panel_flags = (not plan.detached or movable) and bit.bor(flags, ImGuiWindowFlags_NoScrollbar, ImGuiWindowFlags_NoScrollWithMouse or 0) or flags;
         if not movable and not scrolling then panel_flags = bit.bor(panel_flags, ImGuiWindowFlags_NoInputs); end;
-        imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
-        imgui.PushStyleVar(ImGuiStyleVar_WindowMinSize, { 1, 1 });
+        imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, ZERO);
+        imgui.PushStyleVar(ImGuiStyleVar_WindowMinSize, ONE);
         imgui.PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
-        imgui.SetNextWindowPos({ plan.x, plan.y }, ImGuiCond_Always);
-        imgui.SetNextWindowSize({ plan.width, plan.height }, ImGuiCond_Always);
+        corner[1], corner[2], extent[1], extent[2] = plan.x, plan.y, plan.width, plan.height;
+        imgui.SetNextWindowPos(corner, ImGuiCond_Always);
+        imgui.SetNextWindowSize(extent, ImGuiCond_Always);
         local label = strip_labels[plan.group];
         resize.occupy(label, plan, 'party');
         -- Edit mode finds each strip where it was drawn.
@@ -505,128 +663,19 @@ function overlay.draw(roster, subjects, config, now, callbacks)
         if visible then elements.opened('strip_' .. plan.group, imgui.GetWindowDrawList()); end
         fonts.push(look.font, look.font_size);
         -- The clip a sample over the settings window pushes comes off after the paint, even one that failed.
-        local list, on_top;
-        local ok, err = pcall(function()
-            if not visible then return; end;
-            -- Samples go over an open settings window.
-            list, on_top = resize.sample_list(imgui, config.preview and callbacks.samples_over, plan, mx, my);
-            local scroll = plan.detached and imgui.GetScrollY and imgui.GetScrollY() or 0;
-            if plan.detached then
-                theme.frame(list, plan, look, look.colors.border);
-            end;
-            local hover = not callbacks.shift and not movable and not roster.typing and not callbacks.input_blocked and layout.inside(plan,mx,my)
-                and (plan.detached or not blocked);
-            for _, item in ipairs(plan.rows) do
-                local subject = subjects[item.member.id];
-                local unavailable = not subject or subject.known == false;
-                local area, from = item.drawn_area or {}, item.area;
-                area.x, area.y, area.width, area.height, area.align_right = from.x, from.y-scroll, from.width, from.height, from.align_right;
-                item.drawn_area = area;
-                if plan.detached then
-                    for line,value in ipairs(item.label_lines) do
-                        local y = item.label_y-scroll+(line-1)*(look.font_size+2);
-                        if y+look.font_size >= plan.y and y < plan.y+plan.height then
-                            caption(imgui,list,look,value,area.x,y,area.width);
-                            if hover and my >= y and my < y+look.font_size then
-                                hovered_label=item.member;
-                                if unavailable then
-                                    hovered={unknown_subject=true,reason=unavailable_reason};
-                                    hovered_member,hovered_subject=item.member,subject;
-                                end;
-                            end;
-                        end;
-                    end;
-                end;
-                if area.height >= 10 and area.y+area.height > plan.y and area.y < plan.y+plan.height then
-                    local effect = party_hud.paint_effects(list, look, subject, item.options, area,
-                        hover and mx or nil, my, effect_cache, now, item.effects, item.cells, removable, light);
-                    if effect then hovered, hovered_member, hovered_subject = effect, item.member, subject;
-                    elseif unavailable and hover and layout.inside(area,mx,my) then
-                        hovered={unknown_subject=true,reason=unavailable_reason};
-                        hovered_member,hovered_subject=item.member,subject;
-                    end;
-                end;
-                local cells = item.cooldowns and item.cooldown_area;
-                if cells and cells.cell >= 10 and cells.y-scroll+cells.cell > plan.y and cells.y-scroll < plan.y+plan.height then
-                    local hit = party_hud.paint_cooldowns(list, look, item.options, item.cooldowns, cells, now, hover and mx or nil, my,
-                        callbacks.global_style, scroll);
-                    if hit then hovered_cooldown, hovered_member = hit, item.member; end;
-                end;
-            end;
-            if config.preview or movable then list:AddRect({ plan.x, plan.y }, { plan.x + plan.width, plan.y + plan.height }, 0xFFFFFFFF); end;
-            if not movable and callbacks.shift and not roster.typing and config.locked and not callbacks.input_blocked then
-                resize.locked(list, plan, look, label);
-            end;
-            if movable then
-                imgui.SetCursorScreenPos({ plan.x, plan.y });
-                imgui.InvisibleButton('##native_move_' .. plan.group, { plan.width, plan.height });
-                local saved = config.groups[plan.group];
-                -- A strip beside the game's rows only moves, from its edges too. A panel of its own also resizes from
-                -- its edges; the strip becomes one only from its switch in the settings.
-                if imgui.IsItemActivated() and not gesture then
-                    -- A move starts from the offsets the strip is drawn at, which a save past the screen's edge isn't.
-                    local from_x, from_y = drawn_offsets(plan, saved.native_x or 0, saved.native_y or 0);
-                    gesture = { config = config, group = plan.group, callbacks = callbacks, mx = mx, my = my,
-                        x = from_x, y = from_y, plan = held_plan(plan), side = config.native.side,
-                        resize = plan.detached and resize.grip(plan, mx, my) or nil,
-                        screen_width = screen.x, screen_height = screen.y };
-                end;
-                if gesture and gesture.group == plan.group and imgui.IsItemActive() then
-                    resize.cursor(imgui, gesture.resize);
-                    local dx, dy = mx - gesture.mx, my - gesture.my;
-                    local horizontal,vertical = resize.axes(gesture.resize);
-                    -- A move snaps as edit mode's does, and a resize the edge being pulled, when the caller gives the settings
-                    -- and the strip is ticked for Grid mode while it is on.
-                    local settings, id = callbacks.settings, 'strip_' .. plan.group;
-                    if gesture.dirty or horizontal and dx ~= 0 or vertical and dy ~= 0 or not gesture.resize and (dx ~= 0 or dy ~= 0) then
-                        gesture.active_edge = resize.active_edge(gesture.resize,dx,dy,gesture.active_edge);
-                        local updates = {};
-                        local shift_x, shift_y = 0, 0;
-                        if settings and not gesture.resize then
-                            shift_x, shift_y = snap.move(settings,id,gesture.plan.x+dx,gesture.plan.y+dy,gesture.plan.width,gesture.plan.height,screen.x,screen.y);
-                        end;
-                        if gesture.plan.detached then
-                            local limits = {min_width=gesture.plan.min_width or 40,min_height=40,max_width=900,max_height=16000,
-                                screen_width=screen.x,screen_height=screen.y};
-                            local rect = settings and gesture.resize and snap.resize(settings,id,gesture.plan,gesture.active_edge,dx,dy,limits)
-                                or resize.rect(gesture.plan,gesture.active_edge,dx,dy,limits);
-                            if not gesture.resize then
-                                rect.x,rect.y = clamp(gesture.plan.x+dx+shift_x,0,screen.x-rect.width),clamp(gesture.plan.y+dy+shift_y,0,screen.y-rect.height);
-                            end;
-                            updates.native_detached = true;
-                            updates.detached_x,updates.detached_y = math.floor(rect.x),math.floor(rect.y);
-                            -- A move keeps the saved size, which a small screen can draw smaller; only a resize saves one.
-                            if gesture.resize then
-                                updates.detached_width,updates.detached_height = math.floor(rect.width),math.floor(rect.height);
-                            end;
-                        else
-                            updates.native_x,updates.native_y = drawn_offsets(gesture.plan,gesture.x+dx+shift_x,gesture.y+dy+shift_y);
-                        end;
-                        local changed = false;
-                        for key,value in pairs(updates) do if saved[key] ~= value then changed=true; end; end;
-                        if changed then
-                            if not gesture.started and gesture.callbacks.begin_edit then gesture.callbacks.begin_edit(); end;
-                            gesture.started,gesture.dirty = true,true;
-                            for key,value in pairs(updates) do saved[key]=value; end;
-                        end;
-                    end;
-                    -- The strip is drawn this frame where the last step put it, so its line shows once it is drawn on it.
-                    if settings then snap.show(settings, id, screen.x, screen.y, plan); end;
-                end;
-                local grip;
-                if gesture and gesture.group == plan.group then grip = gesture.resize;
-                elseif not gesture and plan.detached and imgui.IsItemHovered() then grip = resize.grip(plan,mx,my); end;
-                resize.hint(list,plan,theme.u32(look.colors.title,look.opacity),grip,label,look,not plan.detached);
-                if not gesture and imgui.IsItemHovered() then resize.cursor(imgui, plan.detached and resize.grip(plan, mx, my) or nil); end;
-            end;
-            -- A panel of its own draws on its draw list, which ImGui doesn't count, so this empty item gives the window its
-            -- scroll range. It stops 18 px short of the window's width, to stay clear of the scrollbar.
-            if plan.detached then imgui.SetCursorPos({0,0}); imgui.Dummy({math.max(1,plan.width-18),plan.content_height}); end;
-        end);
+        strip.visible, strip.plan, strip.look, strip.label, strip.removable = visible, plan, look, label, removable;
+        strip.list, strip.on_top = nil, nil;
+        local ok, err = pcall(paint_strip, strip);
+        local list, on_top = strip.list, strip.on_top;
         if on_top then list:PopClipRect(); end;
         fonts.pop(); imgui.End(); imgui.PopStyleVar(3);
         if not ok then overlay.cancel_layout_gesture(); error(err, 0); end;
     end;
+    local hovered, hovered_member, hovered_subject, hovered_label, hovered_cooldown = strip.hovered, strip.hovered_member,
+        strip.hovered_subject, strip.hovered_label, strip.hovered_cooldown;
+    -- Nothing of this frame is kept past it.
+    strip.subjects, strip.roster, strip.plan, strip.hovered, strip.hovered_member, strip.hovered_subject = nil, nil, nil, nil, nil, nil;
+    strip.hovered_label, strip.hovered_cooldown, strip.list = nil, nil, nil;
     if hovered_cooldown and not imgui.IsMouseDown(0) then
         imgui.BeginTooltip(); imgui.PushTextWrapPos(360);
         imgui.TextUnformatted(require('core.party_cooldowns').details(hovered_cooldown, now));
@@ -635,7 +684,7 @@ function overlay.draw(roster, subjects, config, now, callbacks)
     elseif hovered_label and not imgui.IsMouseDown(0) then
         imgui.BeginTooltip(); imgui.TextUnformatted(hovered_label.name or 'Member'); imgui.EndTooltip();
     end;
-    return false, {}, geometry.available and geometry.groups or {};
+    return false, NONE, geometry.available and geometry.groups or NONE;
 end
 
 if VANTAGE_TEST_MODE then
