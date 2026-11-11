@@ -1,5 +1,6 @@
--- The Profiles summary re-reads profiles.json four times a second while it is shown, but works out whether the
--- active profile is Modified again only when the file text, the active profile or the settings changed.
+-- The Profiles summary re-reads profiles.json every 2 seconds while it is shown, and at once after your own changes,
+-- but works out whether the active profile is Modified again only when the file text, the active profile or the
+-- settings changed.
 local store = require('core.store');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
 package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
@@ -56,8 +57,8 @@ app.callbacks.changed('after');
 app.state.mouse_held = false;
 value, work = counted();
 assert(work > 0 and value.status.modified == true, 'A change made during a drag is checked.');
--- The shown summary is the 250 ms one, refreshed from the kept check.
-MOCK.now = MOCK.now + 1;
+-- The shown summary is the 2 second one, refreshed from the kept check.
+MOCK.now = MOCK.now + 3;
 local shown = app.callbacks.profile_summary();
 assert(shown.status.modified == true, 'The page shows the kept check.');
 defaults.tidy = tidy;

@@ -1,11 +1,10 @@
 -- The status effects job abilities put on players. Blood pacts, rolls and maneuvers count. When the party panels'
 -- "Only effects from job abilities" tick meets a timer whose action it didn't see land, it keeps the timer if its
--- effect is here. Built at Phoenix revision 071c401048 from every era ability in sql/abilities.sql
+-- effect is here. Read at Phoenix revision ed41f351f6 (phoenix/live) from every era ability in sql/abilities.sql
 -- (tools/export_catalog.py), its script in scripts/actions/abilities (pets/ for blood pacts) and the job_utils it calls,
--- with their modules/era overrides. It comes out the same at ed41f351f6 (phoenix/live). Left out are effects a spell
--- gives too, like Chakra's Regen, Mantra's Max HP Boost (Drain II) and what Hastega or Ecliptic Howl give, effects only
--- a pet gets, ones that land on the enemy and ones that can't exist on Phoenix. The name after each id is its name in
--- data/status_effects.yaml, then the ability that gives it.
+-- with their modules/era overrides. Left out are effects a spell gives too, like Chakra's Regen, Mantra's Max HP Boost
+-- (Drain II) and what Hastega or Ecliptic Howl give, effects only a pet gets, ones that land on the enemy and ones that
+-- can't exist on Phoenix. The name after each id is its name in data/status_effects.yaml, then the ability that gives it.
 return {
     [32] = true, -- flee, Flee
     [44] = true, -- mighty_strikes, Mighty Strikes

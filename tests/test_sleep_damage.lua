@@ -1,7 +1,7 @@
 -- A hit for more than 0 that Vantage sees takes a mob's Sleep, Sleep II and Lullaby off, as every Phoenix damage
 -- path does, skillchains and counters included. Bind stays but loses its time, since Phoenix breaks it at 95 hits in
--- 100. Spikes are no hit. Nothing else changes, and only a mob's or a pet's effects: the player and the party are
--- read from their listings. Real 0x028s through observer.read.
+-- 100. Spikes are no hit, so they leave both. Nothing else changes, and only a mob's or a pet's effects: the player and
+-- the party are read from their listings. Real 0x028s through observer.read.
 local observer = require('core.observer');
 local hud = require('ui.hud');
 local SELF, ALLY, MOB, PET = 1001, 1002, 0x1000123, 0x1000124;
@@ -9,9 +9,10 @@ local SELF, ALLY, MOB, PET = 1001, 1002, 0x1000123, 0x1000124;
 AshitaCore.GetResourceManager = function() return { GetString = function(_, kind, id)
     return kind == 'buffs.names' and ({ [19] = 'sleep', [193] = 'lullaby' })[id] or nil;
 end }; end;
-local function snapshot()
+-- The party member's listing, when a test gives one.
+local function snapshot(listed)
     return { valid = true, id = SELF, name = 'Tester', zone = 102, job = 4, level = 75, self_known = true, self_revision = 1,
-        self_timer_revision = 1, self_effects = {}, party = { { id = ALLY, name = 'Ally', scope = 'party' } },
+        self_timer_revision = 1, self_effects = {}, party = { { id = ALLY, name = 'Ally', scope = 'party', effects = listed } },
         entities = { [SELF] = { id = SELF, name = 'Tester', kind = 'player' }, [ALLY] = { id = ALLY, name = 'Ally', kind = 'player' },
             [MOB] = { id = MOB, name = 'Goblin', kind = 'monster' }, [PET] = { id = PET, name = 'Carbuncle', kind = 'pet' } },
         target = { id = MOB, name = 'Goblin', kind = 'monster' } };
@@ -85,18 +86,20 @@ local bitten = observer.read(action(MOB, 1, 0, { { PET, 1, 40 } }), 1, snapshot(
 assert(hits(bitten) == 1 and bitten[1].entity_id == PET and bitten[1].scope == 'pet', 'A hit on a pet is counted.');
 assert(hits(observer.read(action(MOB, 1, 0, { { PET, 1, 0 } }), 1, snapshot())) == 0, 'A hit on a pet for 0 is not.');
 -- A counter hits the mob that attacked (message 33 in the reaction slot, battle_entity.cpp :3781-3783), at more than
--- 0. Spikes (44) deal their damage without waking or breaking Bind (CBattleEntity::takeDamage), and a mob's counter
--- on you is left to your listing.
+-- 0. Spikes (44) deal their damage without waking or breaking Bind (CBattleEntity::takeDamage), so the mob's damage from a
+-- party member's Blaze Spikes comes marked as spikes only, and a mob's counter on you is left to your listing.
 local countered = observer.read(action(MOB, 1, 0, { { ALLY, 15, 0, nil, nil, 33, 20 } }), 1, snapshot());
 assert(hits(countered) == 1 and countered[1].entity_id == MOB and countered[1].source == ALLY, 'A counter is a hit on the mob.');
 assert(hits(observer.read(action(MOB, 1, 0, { { ALLY, 15, 0, nil, nil, 33, 0 } }), 1, snapshot())) == 0, 'A counter for 0 is no hit.');
-assert(hits(observer.read(action(MOB, 1, 0, { { ALLY, 1, 30, nil, nil, 44, 20 } }), 1, snapshot())) == 0, 'Spikes are no hit.');
+local BLAZE = { { effect = 34, slot = 0 } };
+local spiked = observer.read(action(MOB, 1, 0, { { ALLY, 1, 30, nil, nil, 44, 20 } }), 1, snapshot(BLAZE));
+assert(hits(spiked) == 1 and spiked[1].entity_id == MOB and spiked[1].spikes_only, 'Spikes are no hit.');
 assert(hits(observer.read(action(SELF, 1, 0, { { MOB, 15, 0, nil, nil, 33, 20 } }), 1, snapshot())) == 0, "A mob's counter on you is not counted.");
 
 -- The tracker: your Sleep II, Paralyze and Bind on the mob, then the hits.
 local tracker = require('core.tracker').new();
-local function step(now, packets)
-    local snap, observations = snapshot(), {};
+local function step(now, packets, listed)
+    local snap, observations = snapshot(listed), {};
     for _, packet in ipairs(packets) do for _, o in ipairs(observer.read(packet, now, snap)) do observations[#observations + 1] = o; end end
     tracker:observe(observations, now, snap); tracker:reconcile(snap, now);
     local rows = {};
@@ -129,6 +132,11 @@ rows = step(14, { action(SELF, 4, 258, { { MOB, 236, 11 } }) });
 assert(rows[11] and rows[11].deadline, 'Fixture: Bind again, with a time.');
 rows = step(15, { action(MOB, 1, 0, { { ALLY, 15, 0, nil, nil, 33, 20 } }) });
 assert(rows[11] and rows[11].deadline == nil, 'Bind loses its time at a counter.');
+-- A new Sleep and Bind keep their time when the mob's only damage is from a party member's Blaze Spikes.
+rows = step(16, { action(SELF, 4, 253, { { MOB, 236, 2 } }), action(SELF, 4, 258, { { MOB, 236, 11 } }) });
+assert(rows[2] and rows[11] and rows[11].deadline, 'Fixture: Sleep and Bind again, with a time.');
+rows, events = step(17, { action(MOB, 1, 0, { { ALLY, 1, 30, nil, nil, 44, 20 } }) }, BLAZE);
+assert(rows[2] and rows[11] and rows[11].deadline and not removed(events, 2), 'Spikes leave both.');
 -- A hit, then a new Sleep in the same row as an added effect: Phoenix deals the damage first, so the new Sleep stays.
 rows = step(20, { action(SELF, 4, 253, { { MOB, 236, 2 } }) });
 assert(rows[2], 'Fixture: Sleep again.');

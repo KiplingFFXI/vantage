@@ -1,6 +1,6 @@
--- Effects seen in action messages, with Phoenix durations before resists.
+-- Action effects, with Phoenix durations before resists.
 -- An absent duration stays untimed. by_effect names each status of a move with several.
--- Built from phoenix/live 071c401048 by tools/export_catalog.py.
+-- Built from phoenix/live ed41f351f6 by tools/export_catalog.py.
 -- It assumes RESTRICT_CONTENT on, rotz cop toau on, the rest off.
 -- Don't edit this file by hand.
 return {
@@ -183,10 +183,21 @@ return {
     },
     -- Spell IDs, filtered by enabled content.
     spells = {
+        [1] = { effect = 37, seconds = 25 },  -- cure
+        [2] = { effect = 37, seconds = 25 },  -- cure_ii
+        [3] = { effect = 37, seconds = 25 },  -- cure_iii
+        [4] = { effect = 37, seconds = 25 },  -- cure_iv
+        [5] = { effect = 37, seconds = 25 },  -- cure_v
         [23] = { effect = 134, tier = 1, seconds = 60 },  -- dia
         [24] = { effect = 134, tier = 3, seconds = 120 },  -- dia_ii
         [25] = { effect = 134, tier = 5, merit = 'dia_iii' },  -- dia_iii
+        [26] = { effect = 134, seconds = 180 },  -- dia_iv
+        [27] = { effect = 134, seconds = 180 },  -- dia_v
         [33] = { effect = 134, tier = 1, seconds = 60 },  -- diaga
+        [34] = { effect = 134, seconds = 120 },  -- diaga_ii
+        [35] = { effect = 134, seconds = 180 },  -- diaga_iii
+        [36] = { effect = 134, seconds = 180 },  -- diaga_iv
+        [37] = { effect = 134, seconds = 180 },  -- diaga_v
         [43] = { effect = 40, seconds = 1800, tier = 1 },  -- protect
         [44] = { effect = 40, seconds = 1800, tier = 2 },  -- protect_ii
         [45] = { effect = 40, seconds = 1800, tier = 3 },  -- protect_iii
@@ -261,9 +272,12 @@ return {
         [132] = { effect = 41, seconds = 1800, tier = 3 },  -- shellra_iii
         [133] = { effect = 41, seconds = 1800, tier = 4 },  -- shellra_iv
         [134] = { effect = 41, seconds = 1800, tier = 5 },  -- shellra_v
+        [135] = { effect = 113, seconds = 3600 },  -- reraise
         [136] = { effect = 69, seconds = 30, tier = 1, top = 300 },  -- invisible
         [137] = { effect = 71, seconds = 30, tier = 1, top = 300 },  -- sneak
         [138] = { effect = 70, seconds = 30, tier = 1, top = 300 },  -- deodorize
+        [141] = { effect = 113, seconds = 3600 },  -- reraise_ii
+        [142] = { effect = 113, seconds = 3600 },  -- reraise_iii
         [216] = { effect = 12, seconds = 120, tier = 1 },  -- gravity
         [220] = { effect = 3, seconds = 30, tier = 1 },  -- poison
         [221] = { effect = 3, seconds = 120, tier = 2 },  -- poison_ii
@@ -274,6 +288,8 @@ return {
         [230] = { effect = 135, tier = 2, seconds = 60 },  -- bio
         [231] = { effect = 135, tier = 4, seconds = 120 },  -- bio_ii
         [232] = { effect = 135, tier = 6, merit = 'bio_iii' },  -- bio_iii
+        [233] = { effect = 135, seconds = 180 },  -- bio_iv
+        [234] = { effect = 135, seconds = 180 },  -- bio_v
         [235] = { effect = 128, seconds = 90, tier = 1 },  -- burn
         [236] = { effect = 129, seconds = 90, tier = 1 },  -- frost
         [237] = { effect = 130, seconds = 90, tier = 1 },  -- choke
@@ -290,6 +306,13 @@ return {
         [257] = { effect = 9, seconds = 300, tier = 1 },  -- curse
         [258] = { effect = 11, seconds = 13, tier = 1, top = 60 },  -- bind
         [259] = { effect = 2, seconds = 90, tier = 2 },  -- sleep_ii
+        [266] = { effect = 136, seconds = 90 },  -- absorb_str
+        [267] = { effect = 137, seconds = 90 },  -- absorb_dex
+        [268] = { effect = 138, seconds = 90 },  -- absorb_vit
+        [269] = { effect = 139, seconds = 90 },  -- absorb_agi
+        [270] = { effect = 140, seconds = 90 },  -- absorb_int
+        [271] = { effect = 141, seconds = 90 },  -- absorb_mnd
+        [272] = { effect = 142, seconds = 90 },  -- absorb_chr
         [273] = { effect = 2, seconds = 60, tier = 1 },  -- sleepga
         [274] = { effect = 2, seconds = 90, tier = 2 },  -- sleepga_ii
         [276] = { effect = 5, seconds = 80, tier = 3, top = 300 },  -- blind_ii
@@ -399,6 +422,113 @@ return {
         [467] = { effect = 219, seconds = 120, tier = 1 },  -- raptor_mazurka
         [468] = { effect = 220, seconds = 120, tier = 1 },  -- foe_sirvente
         [469] = { effect = 221, seconds = 120, tier = 1 },  -- adventurers_dirge
+        [513] = { effect = 3, seconds = 60 },  -- venom_shell
+        [515] = { effect = 136, seconds = 60 },  -- maelstrom
+        [517] = { effect = 37 },  -- metallic_body
+        [524] = { effect = 146, seconds = 60 },  -- sandspin
+        [530] = { effect = 33 },  -- refueling
+        [531] = { effect = 11, seconds = 30 },  -- ice_break
+        [532] = { effect = 10, seconds = 5 },  -- blitzstrahl
+        [533] = { effect = 1, seconds = 300 },  -- self-destruct
+        [534] = { effect = 12, seconds = 60 },  -- mysterious_light
+        [536] = { effect = 3, seconds = 60 },  -- poison_breath
+        [537] = { effect = 138, seconds = 60 },  -- stinking_gas
+        [538] = { effect = 190 },  -- memento_mori
+        [539] = { effect = 147, seconds = 60 },  -- terror_touch
+        [547] = { effect = 93 },  -- cocoon
+        [548] = { effect = 13, seconds = 90 },  -- filamented_hold
+        [555] = { effect = 12, seconds = 60 },  -- magnetite_cloud
+        [561] = { effect = 149, seconds = 180 },  -- frightful_roar
+        [563] = { effect = 5, seconds = 60 },  -- hecatomb_wave
+        [565] = { -- radiant_breath
+            effect = 6,
+            seconds = 60,
+            by_effect = {
+                [6] = { effect = 6, seconds = 60 },
+                [13] = { effect = 13, seconds = 60 },
+            },
+        },
+        [572] = { effect = 140, seconds = 30 },  -- sound_blast
+        [574] = { effect = 92 },  -- feather_barrier
+        [575] = { effect = 28, seconds = 5 },  -- jettatura
+        [576] = { effect = 2, seconds = 90 },  -- yawn
+        [582] = { effect = 6, seconds = 120 },  -- chaotic_eye
+        [584] = { effect = 2, seconds = 60 },  -- sheep_song
+        [588] = { effect = 31, seconds = 60 },  -- lowing
+        [596] = { effect = 2 },  -- pinecone_bomb
+        [597] = { effect = 13 },  -- sprout_smack
+        [598] = { effect = 2, seconds = 90 },  -- soporific
+        [599] = { effect = 3 },  -- queasyshroom
+        [603] = { effect = 138 },  -- wild_oats
+        [604] = { -- bad_breath
+            effect = 3,
+            seconds = 60,
+            by_effect = {
+                [3] = { effect = 3, seconds = 60 },
+                [4] = { effect = 4, seconds = 60 },
+                [5] = { effect = 5, seconds = 60 },
+                [6] = { effect = 6, seconds = 60 },
+                [11] = { effect = 11, seconds = 60 },
+                [12] = { effect = 12, seconds = 60 },
+                [13] = { effect = 13, seconds = 60 },
+            },
+        },
+        [606] = { effect = 136, seconds = 30 },  -- awful_eye
+        [608] = { effect = 4, seconds = 60 },  -- frost_breath
+        [610] = { effect = 148, seconds = 60 },  -- infrasonics
+        [611] = { effect = 3, seconds = 180 },  -- disseverment
+        [612] = { effect = 156, seconds = 16 },  -- actinic_burst
+        [613] = { effect = 35, by_effect = { [93] = { effect = 93 }, [35] = { effect = 35 } } },  -- reactor_cool
+        [614] = { effect = 191 },  -- saline_coat
+        [615] = { effect = 38 },  -- plasma_charge
+        [616] = { effect = 10, seconds = 5 },  -- temporal_shift
+        [618] = { effect = 11, seconds = 30 },  -- blastbomb
+        [620] = { effect = 137 },  -- battle_dance
+        [621] = { effect = 5, seconds = 120 },  -- sandspray
+        [623] = { effect = 10, seconds = 8, top = 8 },  -- head_butt
+        [628] = { effect = 10, seconds = 5 },  -- frypan
+        [632] = { effect = 37 },  -- diamondhide
+        [633] = { -- enervation
+            effect = 149,
+            seconds = 30,
+            by_effect = {
+                [149] = { effect = 149, seconds = 30 },
+                [167] = { effect = 167, seconds = 30 },
+            },
+        },
+        [634] = { -- light_of_penance
+            effect = 5,
+            seconds = 30,
+            by_effect = {
+                [5] = { effect = 5, seconds = 30 },
+                [11] = { effect = 11, seconds = 30 },
+            },
+        },
+        [636] = { effect = 90, by_effect = { [90] = { effect = 90 }, [92] = { effect = 92 } } },  -- warm-up
+        [638] = { effect = 3 },  -- feather_storm
+        [640] = { effect = 10, seconds = 5 },  -- tail_slap
+        [642] = { -- amplification
+            effect = 190,
+            by_effect = {
+                [190] = { effect = 190 },
+                [191] = { effect = 191 },
+            },
+        },
+        [644] = { effect = 4, seconds = 90 },  -- mind_blast
+        [647] = { effect = 36 },  -- zephyr_mantle
+        [648] = { effect = 11, seconds = 30 },  -- regurgitation
+        [650] = { effect = 149, seconds = 120 },  -- seedspray
+        [651] = { -- corrosive_ooze
+            effect = 147,
+            seconds = 90,
+            by_effect = {
+                [147] = { effect = 147, seconds = 90 },
+                [149] = { effect = 149, seconds = 90 },
+            },
+        },
+        [652] = { effect = 146, seconds = 60 },  -- spiral_spin
+        [654] = { effect = 4, seconds = 180 },  -- sub-zero_smash
+        [655] = { effect = 91 },  -- triumphant_roar
         [885] = { effect = 186, seconds = 30, tier = 2 },  -- geohelix_ii
         [886] = { effect = 186, seconds = 30, tier = 2 },  -- hydrohelix_ii
         [887] = { effect = 186, seconds = 30, tier = 2 },  -- anemohelix_ii
@@ -410,9 +540,237 @@ return {
     },
     -- Player ability IDs.
     abilities = {
+        [16] = { effect = 44, seconds = 45 },  -- mighty_strikes
+        [17] = { effect = 46 },  -- hundred_fists
+        [19] = { effect = 47, seconds = 60 },  -- manafont
+        [20] = { effect = 48, seconds = 60 },  -- chainspell
+        [21] = { effect = 49 },  -- perfect_dodge
+        [22] = { effect = 50, seconds = 30 },  -- invincible
+        [23] = { effect = 51 },  -- blood_weapon
+        [25] = { effect = 52, seconds = 180 },  -- soul_voice
+        [27] = { effect = 54, seconds = 30 },  -- meikyo_shisui
+        [29] = { effect = 126, seconds = 60 },  -- spirit_surge
+        [30] = { effect = 55, seconds = 180 },  -- astral_flow
+        [31] = { effect = 56 },  -- berserk
+        [32] = { effect = 68 },  -- warcry
+        [33] = { effect = 57 },  -- defender
+        [34] = { effect = 58 },  -- aggressor
+        [36] = { effect = 59, seconds = 120 },  -- focus
+        [37] = { effect = 60, seconds = 120 },  -- dodge
+        [38] = { effect = 42 },  -- chakra
+        [39] = { effect = 45, seconds = 180 },  -- boost
+        [40] = { effect = 61 },  -- counterstance
+        [42] = { effect = 32 },  -- flee
+        [43] = { effect = 76 },  -- hide
+        [44] = { effect = 65, seconds = 60 },  -- sneak_attack
+        [46] = { effect = 10, seconds = 8, top = 8 },  -- shield_bash
+        [47] = { effect = 74 },  -- holy_circle
+        [48] = { effect = 62 },  -- sentinel
+        [49] = { effect = 63 },  -- souleater
+        [50] = { effect = 75 },  -- arcane_circle
+        [51] = { effect = 64, seconds = 30 },  -- last_resort
+        [52] = { effect = 11, seconds = 5 },  -- charm
         [57] = { effect = 11, seconds = 30, gear = 'shadowbind' },  -- Shadowbind
+        [58] = { effect = 77 },  -- camouflage
+        [59] = { effect = 72, seconds = 60 },  -- sharpshot
+        [60] = { effect = 73, seconds = 60 },  -- barrage
+        [62] = { effect = 67, seconds = 30 },  -- third_eye
+        [64] = { effect = 117 },  -- warding_circle
+        [65] = { effect = 118 },  -- ancient_circle
+        [66] = { -- jump
+            effect = 149,
+            seconds = 60,
+        },
+        [74] = { effect = 78, seconds = 60 },  -- divine_seal
+        [75] = { effect = 79, seconds = 60 },  -- elemental_seal
+        [76] = { effect = 87, seconds = 60 },  -- trick_attack
+        [77] = { effect = 10, seconds = 8, top = 8 },  -- weapon_bash
+        [78] = { effect = 42, seconds = 180 },  -- reward
+        [79] = { effect = 114 },  -- cover
+        [82] = { -- chi_blast
+            effect = 168,
+            merit = 'penance',
+        },
+        [92] = { effect = 623 },  -- rampart
+        [93] = { effect = 163, seconds = 30 },  -- azure_lore
+        [94] = { effect = 164, seconds = 30 },  -- chain_affinity
+        [95] = { effect = 165, seconds = 30 },  -- burst_affinity
+        [98] = { -- fighters_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [99] = { -- monks_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [100] = { -- healers_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [101] = { -- wizards_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [102] = { -- warlocks_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [103] = { -- rogues_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [104] = { -- gallants_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [105] = { -- chaos_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [106] = { -- beast_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [107] = { -- choral_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [108] = { -- hunters_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [109] = { -- samurai_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [110] = { -- ninja_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [111] = { -- drachen_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [112] = { -- evokers_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [113] = { -- maguss_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [114] = { -- corsairs_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [115] = { -- puppet_roll
+            effect = 308,
+            seconds = 45,
+            by_effect = {
+                [308] = { effect = 308, seconds = 45 },
+                [309] = { effect = 309 },
+            },
+        },
+        [123] = { effect = 309 },  -- double-up
         [131] = { effect = 2, seconds = 90 },  -- Light Shot
+        [135] = { effect = 166 },  -- overdrive
+        [137] = { effect = 42 },  -- repair
+        [149] = { effect = 340, seconds = 60 },  -- warriors_charge
+        [151] = { effect = 88 },  -- mantra
+        [152] = { effect = 341 },  -- formless_strikes
+        [155] = { effect = 342, seconds = 60 },  -- assassins_charge
+        [156] = { effect = 343, seconds = 60 },  -- feint
+        [157] = { effect = 344 },  -- fealty
+        [159] = { effect = 345, seconds = 60 },  -- dark_seal
+        [160] = { effect = 346, seconds = 180 },  -- diabolic_eye
+        [161] = { effect = 28, seconds = 10 },  -- feral_howl
+        [162] = { effect = 349, seconds = 60 },  -- killer_instinct
+        [163] = { effect = 347, seconds = 60 },  -- nightingale
+        [164] = { effect = 348, seconds = 60 },  -- troubadour
+        [168] = { -- blade_bash
+            effect = 10,
+            seconds = 6,
+            by_effect = {
+                [10] = { effect = 10, seconds = 6 },
+                [31] = { effect = 31, seconds = 15 },
+            },
+        },
+        [169] = { effect = 190, seconds = 180 },  -- deep_breathing
         [170] = { effect = 149, merit = 'angon' },  -- Angon
+        [171] = { effect = 352, seconds = 60 },  -- sange
+        [173] = { effect = 353, seconds = 300 },  -- hasso
+        [174] = { effect = 354, seconds = 300 },  -- seigan
+        [175] = { effect = 355, seconds = 60 },  -- convergence
+        [176] = { effect = 356, seconds = 60 },  -- diffusion
+        [177] = { effect = 357, seconds = 60 },  -- snake_eye
     },
     -- Monster skill IDs.
     skills = {
@@ -508,6 +866,7 @@ return {
         [276] = { effect = 11, seconds = 60 },  -- sand_pit
         [277] = { effect = 3 },  -- venom_spray
         [280] = { effect = 149, seconds = 180 },  -- sonic_wave
+        [284] = { effect = 6, seconds = 70 },  -- cold_stare
         [285] = { effect = 83, seconds = 210 },  -- whistle
         [286] = { effect = 56, seconds = 120 },  -- berserk
         [289] = { effect = 4, seconds = 60 },  -- stone_throw
@@ -561,6 +920,7 @@ return {
         [364] = { effect = 13, seconds = 120 },  -- filamented_hold
         [366] = { effect = 10, seconds = 4 },  -- tail_blow
         [369] = { effect = 6, seconds = 30 },  -- brain_crush
+        [370] = { effect = 7, seconds = 60 },  -- baleful_gaze_lizard
         [371] = { effect = 3, seconds = 120 },  -- plague_breath
         [372] = { effect = 148, seconds = 180 },  -- infrasonics
         [373] = { effect = 92, seconds = 60 },  -- secretion
@@ -571,6 +931,7 @@ return {
         [380] = { effect = 10, seconds = 4 },  -- scythe_tail
         [384] = { effect = 93, seconds = 180 },  -- scutum
         [385] = { effect = 31, seconds = 60 },  -- bone_crunch
+        [386] = { effect = 136, seconds = 180 },  -- awful_eye
         [387] = { effect = 10, seconds = 6 },  -- heavy_bellow
         [390] = { effect = 92, seconds = 180 },  -- mirage
         [391] = { effect = 93, seconds = 90 },  -- aura_of_persistence
@@ -582,6 +943,7 @@ return {
         [407] = { effect = 3, seconds = 60 },  -- poison_pick
         [408] = { effect = 6, seconds = 120 },  -- sound_vacuum_cockatrice
         [410] = { effect = 140, seconds = 180 },  -- sound_blast
+        [411] = { effect = 7, seconds = 120 },  -- baleful_gaze_cockatrice
         [414] = { effect = 10, seconds = 4 },  -- suction
         [415] = { effect = 147, seconds = 120 },  -- acid_mist
         [416] = { effect = 5, seconds = 120 },  -- sand_breath
@@ -594,10 +956,13 @@ return {
         [434] = { effect = 2, seconds = 30 },  -- soporific
         [435] = { effect = 4, seconds = 60 },  -- palsy_pollen
         [436] = { effect = 13, seconds = 180 },  -- gloeosuccus
+        [438] = { effect = 4, seconds = 120 },  -- hex_eye
+        [439] = { effect = 7, seconds = 25 },  -- petro_gaze
         [442] = { effect = 136, seconds = 180 },  -- bubble_shower
         [443] = { effect = 41, seconds = 180 },  -- bubble_curtain
         [445] = { effect = 93, seconds = 60 },  -- scissor_guard
         [448] = { effect = 37, seconds = 300 },  -- metallic_body
+        [449] = { effect = 13, seconds = 120 },  -- intimidate
         [450] = { effect = 136, seconds = 180 },  -- aqua_ball
         [453] = { effect = 93, seconds = 90 },  -- water_wall
         [454] = { effect = 92, seconds = 90 },  -- water_shield
@@ -631,6 +996,7 @@ return {
         [498] = { effect = 137, seconds = 90 },  -- triclip
         [500] = { effect = 3, seconds = 30 },  -- mow
         [501] = { effect = 149, seconds = 180 },  -- frightful_roar
+        [502] = { effect = 15, seconds = 45 },  -- mortal_ray
         [503] = { effect = 41, seconds = 180 },  -- unblessed_armor
         [504] = { effect = 3, seconds = 90 },  -- gas_shell
         [505] = { -- venom_shell
@@ -666,6 +1032,8 @@ return {
         [545] = { effect = 12, seconds = 180 },  -- somnolence
         [546] = { effect = 116, seconds = 120 },  -- noctoshield
         [548] = { effect = 5, seconds = 30 },  -- blindeye
+        [550] = { effect = 2, seconds = 135 },  -- hypnosis
+        [551] = { effect = 145, seconds = 10 },  -- mind_break
         [552] = { effect = 11, seconds = 90 },  -- binding_wave
         [553] = { effect = 151, seconds = 60 },  -- airy_shield
         [555] = { effect = 152, seconds = 60 },  -- magic_barrier
@@ -691,6 +1059,7 @@ return {
         [563] = { effect = 13, seconds = 540 },  -- demonic_howl
         [569] = { effect = 33, seconds = 180 },  -- refueling
         [570] = { effect = 12, seconds = 120 },  -- circle_of_flames
+        [577] = { effect = 28, seconds = 15 },  -- jettatura
         [579] = { -- choke_breath
             effect = 4,
             seconds = 30,
@@ -703,6 +1072,7 @@ return {
         [581] = { effect = 10, seconds = 4 },  -- blow
         [582] = { effect = 9, seconds = 60 },  -- cacodemonia
         [583] = { effect = 11, seconds = 60 },  -- beatdown
+        [586] = { effect = 4, seconds = 180 },  -- blank_gaze
         [587] = { effect = 6, seconds = 90 },  -- antiphase
         [588] = { -- death_trap
             effect = 3,
@@ -712,6 +1082,7 @@ return {
                 [10] = { effect = 10, seconds = 15 },
             },
         },
+        [589] = { effect = 15, seconds = 35 },  -- mortal_ray_minotaur
         [593] = { effect = 56, seconds = 180 },  -- berserk_bomb_big
         [595] = { effect = 128, seconds = 180 },  -- heat_wave
         [598] = { effect = 56, seconds = 120 },  -- berserk
@@ -736,9 +1107,11 @@ return {
         [643] = { effect = 3, seconds = 180 },  -- poison_breath_dragon_1
         [646] = { effect = 4, seconds = 960 },  -- heavy_stomp
         [647] = { effect = 9, seconds = 420 },  -- chaos_blade
+        [648] = { effect = 7, seconds = 420 },  -- petro_eyes
         [650] = { effect = 153, seconds = 30 },  -- thornsong
         [651] = { effect = 12, seconds = 30 },  -- lodesong
         [652] = { effect = 4, seconds = 60 },  -- blaster
+        [653] = { effect = 6, seconds = 60 },  -- chaotic_eye
         [660] = { effect = 3, seconds = 60 },  -- venom
         [661] = { effect = 4, seconds = 120 },  -- snow_cloud
         [674] = { effect = 40, seconds = 300 },  -- crystal_shield
@@ -796,6 +1169,14 @@ return {
         [780] = { effect = 10, seconds = 10 },  -- spinning_fin
         [783] = { effect = 9, seconds = 45 },  -- words_of_bane
         [784] = { effect = 92, seconds = 15 },  -- sigh
+        [785] = { -- light_of_penance
+            effect = 5,
+            seconds = 60,
+            by_effect = {
+                [5] = { effect = 5, seconds = 60 },
+                [11] = { effect = 11, seconds = 60 },
+            },
+        },
         [786] = { effect = 149, seconds = 30 },  -- lateral_slash
         [787] = { effect = 146, seconds = 30 },  -- vertical_slash
         [789] = { effect = 3, seconds = 60 },  -- spikeball
@@ -984,8 +1365,11 @@ return {
             },
         },
         [1110] = { effect = 10, seconds = 10 },  -- seismostomp
+        [1111] = { effect = 4, seconds = 180 },  -- numbing_glare
         [1112] = { effect = 10, seconds = 10 },  -- seismostomp
+        [1113] = { effect = 9, seconds = 360 },  -- tormentful_glare
         [1114] = { effect = 10, seconds = 10 },  -- seismostomp
+        [1115] = { effect = 2, seconds = 30 },  -- torpid_glare
         [1116] = { effect = 10, seconds = 10 },  -- seismostomp
         [1117] = { effect = 12, seconds = 300 },  -- lead_breath
         [1118] = { effect = 12, seconds = 300 },  -- lead_breath
@@ -1012,6 +1396,8 @@ return {
             },
         },
         [1136] = { effect = 5, seconds = 30 },  -- blindeye
+        [1138] = { effect = 2, seconds = 135 },  -- hypnosis
+        [1139] = { effect = 145, seconds = 10 },  -- mind_break
         [1140] = { effect = 11, seconds = 90 },  -- binding_wave
         [1141] = { effect = 151, seconds = 60 },  -- airy_shield
         [1143] = { effect = 152, seconds = 60 },  -- magic_barrier
@@ -1041,6 +1427,7 @@ return {
         [1161] = { effect = 10, seconds = 15 },  -- damnation_dive
         [1172] = { effect = 4, seconds = 960 },  -- heavy_stomp
         [1173] = { effect = 9, seconds = 420 },  -- chaos_blade
+        [1174] = { effect = 7, seconds = 420 },  -- petro_eyes
         [1176] = { effect = 153, seconds = 30 },  -- thornsong_powerful
         [1179] = { effect = 3, seconds = 180 },  -- poison_breath_dragon_2
         [1192] = { effect = 146, seconds = 60 },  -- onslaught
@@ -1130,6 +1517,7 @@ return {
         [1315] = { effect = 28 },  -- absolute_terror
         [1317] = { effect = 13, seconds = 90 },  -- mucus_spread
         [1319] = { effect = 11, seconds = 90 },  -- epoxy_spread
+        [1322] = { effect = 10, seconds = 10 },  -- gerjis_grip
         [1326] = { effect = 10, seconds = 4 },  -- final_retribution
         [1328] = { effect = 5, seconds = 120 },  -- ink_jet_fee
         [1329] = { effect = 14, seconds = 60 },  -- gala_macabre
@@ -1171,6 +1559,7 @@ return {
             },
         },
         [1358] = { effect = 38, seconds = 60 },  -- plasma_charge
+        [1359] = { effect = 15, seconds = 30 },  -- chthonian_ray
         [1360] = { effect = 15, seconds = 30 },  -- apocalyptic_ray
         [1361] = { -- viscid_secretion
             effect = 12,
@@ -1338,6 +1727,7 @@ return {
         [1556] = { effect = 42, seconds = 20 },  -- regeneration_scolopendra
         [1561] = { effect = 149, seconds = 240 },  -- sonic_wave_dynamis
         [1562] = { effect = 10, seconds = 10 },  -- stomping_dynamis
+        [1563] = { effect = 6, seconds = 90 },  -- cold_stare_dynamis
         [1564] = { effect = 92, seconds = 180 },  -- whistle_dynamis
         [1565] = { effect = 56, seconds = 180 },  -- berserk_dhalmel_dynamis
         [1568] = { effect = 5, seconds = 60 },  -- dust_cloud_dynamis
@@ -1466,6 +1856,7 @@ return {
                 [31] = { effect = 31, seconds = 75 },
             },
         },
+        [1695] = { effect = 2, seconds = 240 },  -- hypnic_lamp
         [1697] = { effect = 13, seconds = 60 },  -- seaspray
         [1702] = { effect = 14, seconds = 30 },  -- wisecrack
         [1703] = { -- barrier_tusk
@@ -1478,12 +1869,14 @@ return {
         },
         [1709] = { effect = 16, seconds = 60 },  -- abrasive_tantara
         [1710] = { effect = 6, seconds = 30 },  -- deafening_tantara
+        [1713] = { effect = 2, seconds = 120 },  -- yawn
         [1714] = { effect = 10, seconds = 4 },  -- wing_slap
         [1716] = { effect = 4, seconds = 120 },  -- frigid_shuffle
         [1721] = { effect = 156, seconds = 20 },  -- obfuscate
         [1722] = { effect = 36, seconds = 180 },  -- zephyr_mantle
         [1725] = { effect = 16, seconds = 60 },  -- kibosh
         [1727] = { effect = 5, seconds = 150 },  -- sandspray
+        [1728] = { effect = 28, seconds = 10 },  -- faze
         [1730] = { -- deadeye
             effect = 149,
             seconds = 120,
@@ -1514,6 +1907,7 @@ return {
         [1755] = { effect = 36, seconds = 120 },  -- dukkeripen_shadow
         [1756] = { effect = 4, seconds = 120 },  -- dukkeripen_para
         [1758] = { effect = 10, seconds = 4 },  -- tail_slap
+        [1759] = { effect = 16, seconds = 90 },  -- hypnotic_sway
         [1762] = { effect = 14, seconds = 45 },  -- belly_dance
         [1768] = { effect = 36, seconds = 120 },  -- dukkeripen_shadow
         [1769] = { effect = 4, seconds = 120 },  -- dukkeripen_para
@@ -1556,9 +1950,11 @@ return {
                 [31] = { effect = 31, seconds = 120 },
             },
         },
+        [1808] = { effect = 7, seconds = 25 },  -- petrifaction
         [1810] = { effect = 10, seconds = 4 },  -- tail_slap
         [1812] = { effect = 11, seconds = 60 },  -- pinning_shot
         [1813] = { effect = 7, seconds = 120 },  -- calcifying_deluge
+        [1814] = { effect = 7, seconds = 180 },  -- gorgon_dance
         [1815] = { effect = 93, seconds = 120 },  -- amber_scutum
         [1816] = { effect = 128, seconds = 60 },  -- vitriolic_spray
         [1817] = { effect = 5, seconds = 150 },  -- thermal_pulse
@@ -1594,6 +1990,7 @@ return {
             },
         },
         [1837] = { effect = 4, seconds = 90 },  -- feeble_bleat
+        [1847] = { effect = 46, seconds = 20 },  -- frenzy_pollen
         [1856] = { effect = 7, seconds = 45 },  -- omega_javelin
         [1896] = { effect = 7, seconds = 45 },  -- rock_smash
         [1897] = { effect = 37, seconds = 300 },  -- diamondhide
@@ -1664,15 +2061,6 @@ return {
             },
         },
         [1963] = { effect = 4, seconds = 75 },  -- mind_blast
-        [1964] = { -- immortal_mind
-            effect = 190,
-            seconds = 180,
-            by_effect = {
-                [190] = { effect = 190, seconds = 180 },
-                [191] = { effect = 191, seconds = 180 },
-            },
-        },
-        [1965] = { effect = 152 },  -- immortal_shield
         [1967] = { -- tribulation
             effect = 5,
             seconds = 120,
@@ -1771,6 +2159,7 @@ return {
         [2103] = { effect = 93, seconds = 120 },  -- granite_skin
         [2104] = { effect = 4, seconds = 90 },  -- crippling_slam
         [2110] = { effect = 10, seconds = 4 },  -- wings_of_gehenna
+        [2111] = { effect = 15, seconds = 30 },  -- eternal_damnation
         [2112] = { -- nocturnal_servitude
             effect = 14,
             seconds = 60,
@@ -1781,7 +2170,14 @@ return {
         },
         [2113] = { effect = 10 },  -- hellsnap
         [2114] = { effect = 12, seconds = 60 },  -- hellclap
-        [2116] = { effect = 9, seconds = 60 },  -- necrobane
+        [2116] = { -- necrobane
+            effect = 4,
+            seconds = 60,
+            by_effect = {
+                [4] = { effect = 4, seconds = 60 },
+                [9] = { effect = 9, seconds = 60 },
+            },
+        },
         [2117] = { effect = 9, seconds = 60 },  -- necropurge
         [2118] = { -- bilgestorm
             effect = 146,
@@ -1800,6 +2196,7 @@ return {
         [2146] = { effect = 28, seconds = 30 },  -- void_of_repentance
         [2153] = { effect = 11, seconds = 120 },  -- regurgitation
         [2154] = { effect = 31, seconds = 60 },  -- delta_thrust
+        [2155] = { effect = 4, seconds = 120 },  -- torpefying_charge
         [2161] = { -- cimicine_discharge
             effect = 13,
             seconds = 180,
@@ -1890,12 +2287,19 @@ return {
         [2248] = { effect = 50, seconds = 30 },  -- invincible
         [2249] = { effect = 51, seconds = 30 },  -- blood_weapon
         [2257] = { effect = 163, seconds = 45 },  -- azure_lore
-        [2289] = { effect = 152 },  -- immortal_shield
         [2329] = { effect = 11, seconds = 15 },  -- di_horn_attack
         [2330] = { effect = 12, seconds = 15 },  -- di_bite_attack
         [2334] = { effect = 6, seconds = 90 },  -- wrath_of_zeus
         [2335] = { effect = 16, seconds = 210 },  -- lightning_spear
         [2338] = { effect = 10, seconds = 5 },  -- rampant_stance
+        [2351] = { -- tear_grenade
+            effect = 6,
+            seconds = 60,
+            by_effect = {
+                [5] = { effect = 5, seconds = 60 },
+                [6] = { effect = 6, seconds = 60 },
+            },
+        },
         [2352] = { effect = 12, seconds = 60 },  -- sticky_grenade
         [2359] = { effect = 259, seconds = 60 },  -- strap_cutter
         [2360] = { effect = 12, seconds = 120 },  -- wind_shear_znm
@@ -1920,6 +2324,7 @@ return {
         [2414] = { effect = 251, seconds = 1800 },  -- saucepan
         [2422] = { effect = 12, seconds = 60 },  -- dark_mist
         [2423] = { effect = 91, seconds = 90 },  -- triumphant_roar
+        [2424] = { effect = 28, seconds = 30 },  -- terror_eye
         [2426] = { effect = 9, seconds = 300 },  -- shadow_burst
         [2427] = { effect = 16, seconds = 60 },  -- tail_lash
         [2430] = { -- warped_wail
@@ -1977,6 +2382,7 @@ return {
                 [167] = { effect = 167, seconds = 180 },
             },
         },
+        [2828] = { effect = 28, seconds = 15 },  -- jettatura
         [2891] = { effect = 10, seconds = 10 },  -- grapeshot
         [2892] = { effect = 128, seconds = 20 },  -- pirate_pummel
         [2893] = { -- powder_keg
@@ -2061,6 +2467,7 @@ return {
         [3351] = { effect = 138, seconds = 120 },  -- wild_oats
         [3355] = { effect = 10, seconds = 4 },  -- blow
         [3357] = { effect = 6, seconds = 90 },  -- antiphase
+        [3358] = { effect = 4, seconds = 180 },  -- blank_gaze
         [3420] = { effect = 5, seconds = 60 },  -- amatsu_yukiarashi
         [3421] = { effect = 6, seconds = 60 },  -- amatsu_tsukioboro
         [3422] = { effect = 4, seconds = 60 },  -- amatsu_hanaikusa
@@ -2135,49 +2542,52 @@ return {
         [3723] = { effect = 6, seconds = 45 },  -- tachi_gekko
         [3724] = { effect = 11, seconds = 30 },  -- dragonfall
         [3725] = { effect = 4, seconds = 60 },  -- tachi_kasha
-        [3841] = { effect = 5, seconds = 120 },  -- dust_cloud
-        [3844] = { effect = 2, seconds = 60 },  -- dream_flower
-        [3845] = { effect = 138, seconds = 120 },  -- wild_oats
-        [3846] = { effect = 3, seconds = 180 },  -- leaf_dagger
-        [3847] = { effect = 141, seconds = 180 },  -- scream
-        [3848] = { effect = 4, seconds = 120 },  -- roar
-        [3851] = { effect = 10, seconds = 4 },  -- tail_blow
-        [3854] = { effect = 6, seconds = 30 },  -- brain_crush
-        [3855] = { effect = 148, seconds = 180 },  -- infrasonics
-        [3856] = { effect = 92, seconds = 60 },  -- secretion
-        [3858] = { effect = 56, seconds = 120 },  -- rage
-        [3860] = { effect = 2, seconds = 45 },  -- sheep_song
-        [3861] = { effect = 136, seconds = 180 },  -- bubble_shower
-        [3862] = { effect = 41, seconds = 180 },  -- bubble_curtain
-        [3864] = { effect = 93, seconds = 60 },  -- scissor_guard
-        [3865] = { effect = 37, seconds = 300 },  -- metallic_body
-        [3869] = { effect = 4, seconds = 180 },  -- spore
-        [3870] = { effect = 3, seconds = 120 },  -- queasyshroom
-        [3871] = { effect = 4, seconds = 180 },  -- numbshroom
-        [3872] = { effect = 8, seconds = 720 },  -- shakeshroom
-        [3873] = { effect = 6, seconds = 60 },  -- silence_gas
-        [3874] = { effect = 5, seconds = 90 },  -- dark_spore
-        [3876] = { effect = 148, seconds = 180 },  -- hi-freq_field
-        [3878] = { effect = 92, seconds = 540 },  -- rhino_guard
-        [3879] = { effect = 136, seconds = 540 },  -- spoil
-        [3881] = { effect = 3, seconds = 60 },  -- venom
-        [3884] = { effect = 3 },  -- venom_spray
-        [3886] = { effect = 2, seconds = 30 },  -- soporific
-        [3887] = { effect = 13, seconds = 180 },  -- gloeosuccus
-        [3888] = { effect = 4, seconds = 60 },  -- palsy_pollen
-        [3890] = { effect = 10, seconds = 10 },  -- numbing_noise
-        [3893] = { effect = 3, seconds = 180 },  -- toxic_spit
-        [3896] = { effect = 13, seconds = 120 },  -- filamented_hold
-        [3899] = { effect = 4, seconds = 60 },  -- blaster
-        [3900] = { effect = 10, seconds = 4 },  -- suction
-        [3902] = { effect = 4, seconds = 120 },  -- snow_cloud
-        [3904] = { effect = 10, seconds = 4 },  -- sudden_lunge
-        [3905] = { effect = 146, seconds = 60 },  -- spiral_spin
-        [3906] = { effect = 147, seconds = 120 },  -- noisome_powder
-        [3907] = { effect = 147, seconds = 120 },  -- acid_mist
-        [3909] = { effect = 10, seconds = 4 },  -- scythe_tail
-        [3911] = { effect = 13, seconds = 180 },  -- chomp_rush
-        [3913] = { -- purulent_ooze
+        [3841] = { effect = 5, seconds = 120 },  -- dust_cloud_jugpet
+        [3844] = { effect = 2, seconds = 60 },  -- dream_flower_jugpet
+        [3845] = { effect = 138, seconds = 120 },  -- wild_oats_jugpet
+        [3846] = { effect = 3, seconds = 90 },  -- leaf_dagger_jugpet
+        [3847] = { effect = 141, seconds = 180 },  -- scream_jugpet
+        [3848] = { effect = 4, seconds = 120 },  -- roar_jugpet
+        [3851] = { effect = 10, seconds = 4 },  -- tail_blow_jugpet
+        [3854] = { effect = 6, seconds = 30 },  -- brain_crush_jugpet
+        [3855] = { effect = 148, seconds = 180 },  -- infrasonics_jugpet
+        [3856] = { effect = 92, seconds = 60 },  -- secretion_jugpet
+        [3858] = { effect = 56, seconds = 120 },  -- rage_jugpet
+        [3860] = { effect = 2, seconds = 45 },  -- sheep_song_jugpet
+        [3861] = { effect = 136, seconds = 180 },  -- bubble_shower_jugpet
+        [3862] = { effect = 41, seconds = 180 },  -- bubble_curtain_jugpet
+        [3864] = { effect = 93, seconds = 60 },  -- scissor_guard_jugpet
+        [3865] = { effect = 37, seconds = 300 },  -- metallic_body_jugpet
+        [3869] = { effect = 4, seconds = 180 },  -- spore_jugpet
+        [3870] = { effect = 3, seconds = 60 },  -- queasyshroom_jugpet
+        [3871] = { effect = 4, seconds = 180 },  -- numbshroom_jugpet
+        [3872] = { effect = 8, seconds = 720 },  -- shakeshroom_jugpet
+        [3873] = { effect = 6, seconds = 60 },  -- silence_gas_jugpet
+        [3874] = { effect = 5, seconds = 90 },  -- dark_spore_jugpet
+        [3876] = { effect = 148, seconds = 180 },  -- hi-freq_field_jugpet
+        [3878] = { effect = 92, seconds = 540 },  -- rhino_guard_jugpet
+        [3879] = { effect = 136, seconds = 540 },  -- spoil_jugpet
+        [3881] = { effect = 3, seconds = 60 },  -- venom_jugpet
+        [3882] = { effect = 5, seconds = 90 },  -- sandblast_jugpet
+        [3883] = { effect = 11, seconds = 60 },  -- sandpit_jugpet
+        [3884] = { effect = 3, seconds = 120 },  -- venom_spray_jugpet
+        [3886] = { effect = 2, seconds = 30 },  -- soporific_jugpet
+        [3887] = { effect = 13, seconds = 180 },  -- gloeosuccus_jugpet
+        [3888] = { effect = 4, seconds = 60 },  -- palsy_pollen_jugpet
+        [3890] = { effect = 10, seconds = 10 },  -- numbing_noise_jugpet
+        [3893] = { effect = 3, seconds = 180 },  -- toxic_spit_jugpet
+        [3896] = { effect = 13, seconds = 120 },  -- filamented_hold_jugpet
+        [3898] = { effect = 6, seconds = 60 },  -- chaotic_eye_jugpet
+        [3899] = { effect = 4, seconds = 60 },  -- blaster_jugpet
+        [3900] = { effect = 10, seconds = 4 },  -- suction_jugpet
+        [3902] = { effect = 4, seconds = 120 },  -- snow_cloud_jugpet
+        [3904] = { effect = 10, seconds = 4 },  -- sudden_lunge_jugpet
+        [3905] = { effect = 146, seconds = 60 },  -- spiral_spin_jugpet
+        [3906] = { effect = 147, seconds = 120 },  -- noisome_powder_jugpet
+        [3907] = { effect = 147, seconds = 120 },  -- acid_mist_jugpet
+        [3909] = { effect = 10, seconds = 4 },  -- scythe_tail_jugpet
+        [3911] = { effect = 13, seconds = 180 },  -- chomp_rush_jugpet
+        [3913] = { -- purulent_ooze_jugpet
             effect = 135,
             seconds = 120,
             by_effect = {
@@ -2185,7 +2595,7 @@ return {
                 [144] = { effect = 144, seconds = 120 },
             },
         },
-        [3914] = { -- corrosive_ooze
+        [3914] = { -- corrosive_ooze_jugpet
             effect = 147,
             seconds = 120,
             by_effect = {
@@ -2193,7 +2603,8 @@ return {
                 [149] = { effect = 149, seconds = 120 },
             },
         },
-        [3917] = { -- choke_breath
+        [3916] = { effect = 28, seconds = 15 },  -- jettatura_jugpet
+        [3917] = { -- choke_breath_jugpet
             effect = 4,
             seconds = 30,
             by_effect = {
@@ -2201,15 +2612,16 @@ return {
                 [6] = { effect = 6, seconds = 30 },
             },
         },
-        [3918] = { effect = 45, seconds = 180 },  -- fantod
-        [3919] = { effect = 149, seconds = 180 },  -- tortoise_stomp
-        [3920] = { effect = 93, seconds = 180 },  -- harden_shell
-        [3922] = { effect = 10, seconds = 4 },  -- wing_slap
-        [3926] = { effect = 93, seconds = 90 },  -- water_wall
-        [3943] = { effect = 3, seconds = 60 },  -- acid_spray
-        [3944] = { effect = 13, seconds = 90 },  -- spider_web
+        [3918] = { effect = 45, seconds = 180 },  -- fantod_jugpet
+        [3919] = { effect = 149, seconds = 180 },  -- tortoise_stomp_jugpet
+        [3920] = { effect = 93, seconds = 180 },  -- harden_shell_jugpet
+        [3922] = { effect = 10, seconds = 4 },  -- wing_slap_jugpet
+        [3924] = { effect = 13, seconds = 120 },  -- intimidate_jugpet
+        [3926] = { effect = 93, seconds = 90 },  -- water_wall_jugpet
+        [3943] = { effect = 3, seconds = 60 },  -- acid_spray_jugpet
+        [3944] = { effect = 13, seconds = 90 },  -- spider_web_jugpet
         [3954] = { effect = 91, seconds = 120 },  -- frenzied_rage
-        [3955] = { effect = 149, seconds = 180 },  -- rhinowrecker
+        [3960] = { effect = 10, seconds = 8 },  -- predatory_glare_jugpet
         [3968] = { -- fire_meeble_warble
             effect = 31,
             seconds = 60,
@@ -2280,7 +2692,7 @@ return {
         [4258] = { effect = 190, seconds = 60 },  -- mix_elemental_power
         [4259] = { effect = 191, seconds = 60 },  -- mix_dragon_shield
     },
-    -- Pet skill IDs from the action packet, including Ready and automaton moves.
+    -- Pet skill IDs from the action packet.
     pacts = {
         [513] = { effect = 3, seconds = 90 },  -- poison_nails
         [514] = { effect = 154, seconds = 180 },  -- shining_ruby
@@ -2297,7 +2709,13 @@ return {
         [527] = { effect = 113 },  -- altana_s_favor
         [528] = { effect = 5, seconds = 60 },  -- moonlit_charge
         [529] = { effect = 4, seconds = 60 },  -- crescent_fang
-        [530] = { effect = 146, by_effect = { [146] = { effect = 146 }, [148] = { effect = 148 } } },  -- lunar_cry
+        [530] = { -- lunar_cry
+            effect = 146,
+            by_effect = {
+                [146] = { effect = 146 },
+                [148] = { effect = 148 },
+            },
+        },
         [532] = { -- ecliptic_growl
             effect = 80,
             seconds = 180,
@@ -2322,7 +2740,10 @@ return {
         [548] = { effect = 68 },  -- crimson_howl
         [560] = { effect = 13, seconds = 120 },  -- rock_throw
         [562] = { effect = 11, seconds = 120 },  -- rock_buster
-        [563] = { effect = 13, seconds = 120 },  -- megalith_throw
+        [563] = { -- megalith_throw
+            effect = 13,
+            seconds = 120,
+        },
         [564] = { effect = 37, seconds = 900 },  -- earthen_ward
         [567] = { effect = 10, seconds = 4 },  -- geocrush
         [578] = { effect = 12, seconds = 120 },  -- tail_whip
@@ -2335,10 +2756,19 @@ return {
         [611] = { effect = 2, seconds = 90 },  -- sleepga
         [624] = { effect = 10, seconds = 12 },  -- shock_strike
         [626] = { effect = 98 },  -- rolling_thunder
-        [627] = { effect = 4, seconds = 60 },  -- thunderspark
+        [627] = { -- thunderspark
+            effect = 4,
+            seconds = 60,
+        },
         [628] = { effect = 38 },  -- lightning_armor
-        [630] = { effect = 10, seconds = 12 },  -- chaotic_strike
-        [657] = { effect = 12, seconds = 120 },  -- somnolence
+        [630] = { -- chaotic_strike
+            effect = 10,
+            seconds = 12,
+        },
+        [657] = { -- somnolence
+            effect = 12,
+            seconds = 120,
+        },
         [658] = { effect = 2, seconds = 90, deep = true },  -- nightmare
         [660] = { effect = 116, seconds = 180 },  -- noctoshield
         [661] = { -- dream_shroud
@@ -2350,10 +2780,13 @@ return {
             },
         },
         [671] = { effect = 283 },  -- perfect_defense
-        [673] = { effect = 5, seconds = 120 },  -- dust_cloud
+        [673] = { -- dust_cloud
+            effect = 5,
+            seconds = 120,
+        },
         [676] = { effect = 2, seconds = 60 },  -- dream_flower
         [677] = { effect = 138, seconds = 120 },  -- wild_oats
-        [678] = { effect = 3, seconds = 180 },  -- leaf_dagger
+        [678] = { effect = 3, seconds = 90 },  -- leaf_dagger
         [679] = { effect = 141, seconds = 180 },  -- scream
         [680] = { effect = 4, seconds = 120 },  -- roar
         [683] = { effect = 10, seconds = 4 },  -- tail_blow
@@ -2362,36 +2795,52 @@ return {
         [688] = { effect = 92, seconds = 60 },  -- secretion
         [690] = { effect = 56, seconds = 120 },  -- rage
         [692] = { effect = 2, seconds = 45 },  -- sheep_song
-        [693] = { effect = 136, seconds = 180 },  -- bubble_shower
+        [693] = { -- bubble_shower
+            effect = 136,
+            seconds = 180,
+        },
         [694] = { effect = 41, seconds = 180 },  -- bubble_curtain
         [696] = { effect = 93, seconds = 60 },  -- scissor_guard
         [697] = { effect = 37, seconds = 300 },  -- metallic_body
         [701] = { effect = 4, seconds = 180 },  -- spore
-        [702] = { effect = 3, seconds = 120 },  -- queasyshroom
+        [702] = { effect = 3, seconds = 60 },  -- queasyshroom
         [703] = { effect = 4, seconds = 180 },  -- numbshroom
         [704] = { effect = 8, seconds = 720 },  -- shakeshroom
-        [705] = { effect = 6, seconds = 60 },  -- silence_gas
-        [706] = { effect = 5, seconds = 90 },  -- dark_spore
+        [705] = { -- silence_gas
+            effect = 6,
+            seconds = 60,
+        },
+        [706] = { -- dark_spore
+            effect = 5,
+            seconds = 90,
+        },
         [708] = { effect = 148, seconds = 180 },  -- hi-freq_field
         [710] = { effect = 92, seconds = 540 },  -- rhino_guard
         [711] = { effect = 136, seconds = 540 },  -- spoil
         [713] = { effect = 3, seconds = 60 },  -- venom
         [714] = { effect = 5, seconds = 90 },  -- sandblast
         [715] = { effect = 11, seconds = 60 },  -- sandpit
-        [716] = { effect = 3 },  -- venom_spray
+        [716] = { effect = 3, seconds = 120 },  -- venom_spray
         [718] = { effect = 2, seconds = 30 },  -- soporific
         [719] = { effect = 13, seconds = 180 },  -- gloeosuccus
         [720] = { effect = 4, seconds = 60 },  -- palsy_pollen
         [722] = { effect = 10, seconds = 10 },  -- numbing_noise
         [725] = { effect = 3, seconds = 180 },  -- toxic_spit
         [729] = { effect = 13, seconds = 120 },  -- filamented_hold
+        [730] = { effect = 6, seconds = 60 },  -- chaotic_eye
         [731] = { effect = 4, seconds = 60 },  -- blaster
         [732] = { effect = 10, seconds = 4 },  -- suction
-        [734] = { effect = 4, seconds = 120 },  -- snow_cloud
+        [734] = { -- snow_cloud
+            effect = 4,
+            seconds = 120,
+        },
         [736] = { effect = 10, seconds = 4 },  -- sudden_lunge
         [737] = { effect = 146, seconds = 60 },  -- spiral_spin
         [738] = { effect = 147, seconds = 120 },  -- noisome_powder
-        [740] = { effect = 147, seconds = 120 },  -- acid_mist
+        [740] = { -- acid_mist
+            effect = 147,
+            seconds = 120,
+        },
         [743] = { effect = 10, seconds = 4 },  -- scythe_tail
         [745] = { effect = 13, seconds = 180 },  -- chomp_rush
         [747] = { -- purulent_ooze
@@ -2410,11 +2859,26 @@ return {
                 [149] = { effect = 149, seconds = 120 },
             },
         },
-        [753] = { effect = 149, seconds = 180 },  -- tortoise_stomp
+        [750] = { effect = 28, seconds = 15 },  -- jettatura
+        [751] = { -- choke_breath
+            effect = 4,
+            seconds = 30,
+            by_effect = {
+                [4] = { effect = 4, seconds = 30 },
+                [6] = { effect = 6, seconds = 30 },
+            },
+        },
+        [752] = { effect = 45, seconds = 180 },  -- fantod
+        [753] = { -- tortoise_stomp
+            effect = 149,
+            seconds = 180,
+        },
         [754] = { effect = 93, seconds = 180 },  -- harden_shell
         [756] = { effect = 10, seconds = 4 },  -- wing_slap
+        [758] = { effect = 13, seconds = 120 },  -- intimidate
         [760] = { effect = 93, seconds = 90 },  -- water_wall
         [790] = { effect = 91, seconds = 120 },  -- frenzied_rage
+        [796] = { effect = 10, seconds = 8 },  -- predatory_glare
         [960] = { -- clarsach_call
             effect = 91,
             seconds = 180,
@@ -2727,6 +3191,8 @@ return {
         angon = { id = 2882, base = 15, per_rank = 15, most = 3 },
         bio_iii = { id = 2312, base = 0, per_rank = 30, most = 3 },
         dia_iii = { id = 2304, base = 0, per_rank = 30, most = 3 },
+        penance = { id = 2118, base = 0, per_rank = 20, most = 3 },
+        tomahawk = { id = 2050, base = 15, per_rank = 15, most = 3 },
     },
     troubadour = 348,
 }

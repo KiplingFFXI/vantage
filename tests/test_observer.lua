@@ -78,13 +78,15 @@ packet = action(4, 23, { { id = mob, rows = { { message = 2, param = 0 } } } });
 events = observer.read(packet, 6, snapshot);
 assert(events[1].effect == 134 and events[1].duration == 60, 'Dia damage result confirms Dia even for zero damage.');
 packet = action(6, 125, { { id = mob, rows = { { message = 2, param = 120 } } } });
-assert(#observer.read(packet, 7, snapshot) == 0, 'Quick Draw damage cannot restart an existing debuff.');
+events = observer.read(packet, 7, snapshot);
+assert(#events == 1 and events[1].kind == 'used', 'Quick Draw damage cannot restart an existing debuff. Only your use is reported.');
 packet = action(6, 131, { { id = mob, rows = { { message = 127, param = 2 } } } });
 assert(observer.read(packet, 8, snapshot)[1].duration == 90, 'A successful Light Shot is a real Sleep application.');
--- A roll also gives the Phantom Roll display its own observation (test_rolls.lua); the status events are these.
+-- A roll also gives the Phantom Roll display its own observation (test_rolls.lua), and your own reports its use for the
+-- recast reader. The status events are these.
 local function statuses(list)
     local out = {};
-    for _, event in ipairs(list) do if event.kind ~= 'roll' then out[#out + 1] = event; end end
+    for _, event in ipairs(list) do if event.kind ~= 'roll' and event.kind ~= 'used' then out[#out + 1] = event; end end
     return out;
 end
 packet = action(6, 98, {

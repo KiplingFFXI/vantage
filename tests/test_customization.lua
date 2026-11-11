@@ -29,11 +29,12 @@ assert(custom.set(s,'style.text_color','FF000080').style.text_color[4]==128/255)
 assert(custom.set(s,'panels.self_buffs.labels','{"33":"Quick haste"}').panels.self_buffs.labels[33]=='Quick haste');
 assert(custom.set(s,'watch_ids','[999]')==nil, 'Generic settings edits cannot inject gameplay identities.');
 assert(custom.set(s,'style..font','Arial')==nil and custom.set(s,'unknown','x')==nil);
-local extra=defaults.copy(s); extra.panels.future_panel=false;
+local extra=defaults.copy(s); extra.panels.future_panel={zz_newer=1};
+local function future(settings) return type(settings.panels.future_panel)=='table' and settings.panels.future_panel.zz_newer==1; end
 for _,scope in ipairs({'appearance','panels','effects'}) do
-    assert(custom.reset(extra,scope) and extra.panels.future_panel==false, 'Scoped resets ignore unrecognized saved panels.');
+    assert(custom.reset(extra,scope) and future(extra), 'Scoped resets ignore unrecognized saved panels.');
 end
-assert(require('core.starters').apply(extra,'Melee').panels.future_panel==false and custom.reset(extra,'future_panel')==nil);
+assert(future(require('core.starters').apply(extra,'Melee')) and custom.reset(extra,'future_panel')==nil);
 local starter=assert(require('core.starters').apply(s,'Support'));
 assert(starter.party_ui.enabled and starter.rolls.enabled and not starter.panels.watch.enabled);
 assert(starter.panels.self_buffs.labels[33]=='My haste' and #starter.alerts.rules==2);
@@ -87,7 +88,7 @@ assert(#app.state.settings.watch_ids==0, 'Undo never revives watched IDs from an
 command('/vg watch 777'); command('/vg undo');
 assert(#app.state.settings.watch_ids==0, 'Watch edits within the same zone remain undoable.');
 command('/vg report');
-assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.1.0');
+assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.1.1');
 local report=require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json');
 assert(report.snapshot.valid and report.snapshot.self_known and report.snapshot.self_effects==0,
     'A local report distinguishes a complete empty snapshot from unavailable self-status data.');

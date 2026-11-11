@@ -40,8 +40,23 @@ local added_wakes = { [161] = true, [162] = true, [163] = true, [165] = true, [2
 local function skillchain(message) return message ~= nil and (message >= 288 and message <= 303 or message >= 385 and message <= 400); end
 -- A counter hits the attacker back through TakePhysicalDamage (battle_entity.cpp :3781-3783), message 33 in the
 -- reaction slot with the damage. Spikes don't wake or break Bind: they deal their damage without either
--- (CBattleEntity::takeDamage, battleutils.cpp :952, :990, :997, :1092, :1145).
+-- (CBattleEntity::takeDamage, battleutils.cpp :928, :966, :973, :1068, :1121).
 local COUNTERED = 33;
+-- On every path above, Phoenix takes Stoneskin's share out of the damage before the damage is shown (battleutils.cpp
+-- HandleStoneskin :4719, utils.handleStoneskin in utils/combat_utils.lua :243), so a hit for more than 0 says a Stoneskin
+-- had none left. Two kinds of hit say nothing about it. Weapon Bash, ability 77, deals its damage straight to HP
+-- (globals/job_utils/dark_knight.lua :144), and an absorbed skillchain heals the mob (modules/era/lua/combat/skillchain.lua
+-- :110-121).
+local WEAPON_BASH = 77;
+-- Spikes from a spell, a roll or a mob's script show what's left of their damage after the attacker's Stoneskin took its
+-- share, message 44 in the reaction slot, or 132 when Dread Spikes drains it (battleutils.cpp HandleSpikesDamage
+-- :895-919, :962, src/map/enums/msg_basic.h :69, :104), so spike damage says a Stoneskin is gone, as a hit does. Spikes
+-- from gear show the item's number from before Stoneskin (:1018, HandleSpikesEquip :1105-1119). Only a player's gear has
+-- them, and only while no spikes effect is on the player (:895, :1000-1002). So spikes on a mob or a pet count, and on
+-- you or a party member only while the listing shows Blaze, Ice or Shock Spikes (34, 35, 38), Dread Spikes (173) or
+-- Gallant's Roll (316), which has spikes in Phoenix's era (modules/era/lua/globals/job_utils/corsair.lua :241-255).
+local SPIKES = { [44] = true, [132] = true };
+local SPIKE_EFFECTS = { [34] = true, [35] = true, [38] = true, [173] = true, [316] = true };
 -- A mob's or an alliance member's Utsusemi, whose shadows the tracker counts, as the game lists only your party's. Ichi
 -- gives 3, Ni 4 and San 5 (globals/spells/enhancing_ninjutsu.lua :28-30), and Ni one less to a caster whose main job isn't
 -- NIN (:51-57): the mobs that cast it are NINs but Ark Angel HM, a WAR, and Shikaree X, a BST
@@ -181,6 +196,20 @@ local function ally(snapshot, id)
     return false;
 end
 
+-- Whether your listing, or a party member's, shows a spikes effect on them.
+local function spiked(snapshot, id)
+    local effects = id == snapshot.id and snapshot.self_effects;
+    if not effects then
+        for _, member in ipairs(snapshot.party or NONE) do
+            if member.id == id then effects = member.effects; break; end
+        end
+    end
+    for _, status in ipairs(effects or NONE) do
+        if SPIKE_EFFECTS[status.effect] then return true; end
+    end
+    return false;
+end
+
 local function event(snapshot, kind, id, effect, actor)
     local entity = identity(snapshot, id);
     local from = actor and identity(snapshot, actor);
@@ -297,9 +326,10 @@ local function action_events(action, snapshot, now)
     -- A mob, your pet or an alliance member that took damage: the tracker takes off what Phoenix takes off at a hit. A
     -- mob's and a pet's ids start at 0x1000000; the player's and the party's own effects are read from their listings, and
     -- a stranger's aren't followed. It comes before anything the same row puts on, as Phoenix deals the damage first, and
-    -- once for each one an action hits, saying whether a hit got through their shadows and whether a melee swing landed.
+    -- once for each one an action hits, saying whether a hit got through their shadows, whether a melee swing landed,
+    -- whether damage that Stoneskin soaks first got through and whether spikes were all that hurt it.
     local struck;
-    local function hit(id, from, through, melee)
+    local function hit(id, from, through, melee, unsoaked, spikes)
         local entry = struck and struck[id];
         if not entry then
             if id < 0x1000000 and not ally(snapshot, id) then return; end
@@ -307,9 +337,13 @@ local function action_events(action, snapshot, now)
             if entry.scope ~= 'enemy' and entry.scope ~= 'pet' and entry.scope ~= 'alliance' then return; end
             struck = struck or {};
             struck[id], out[#out + 1] = entry, entry;
+            entry.spikes_only = spikes or nil;
+        elseif not spikes then
+            entry.spikes_only = nil;
         end
         if through then entry.through = true; end
         if melee then entry.melee = true; end
+        if unsoaked then entry.unsoaked = true; end
     end
     -- Shadows a mob or an alliance member lost.
     local function lost(id, count)
@@ -325,12 +359,22 @@ local function action_events(action, snapshot, now)
     for _, row in ipairs(action.rows) do
         local message, param = row.message, row.param;
         local hurt = wakes[message] == true and param > 0;
+        -- Damage that went through Stoneskin first: the row's, unless it's Weapon Bash, added damage, or a skillchain the mob
+        -- didn't absorb.
+        local unsoaked = hurt and not (action.category == 6 and action.id == WEAPON_BASH)
+            or row.added and row.added_param > 0 and (added_wakes[row.added] == true or row.added >= 288 and row.added <= 303);
         if not hurt and row.added then hurt = added_wakes[row.added] == true and row.added_param > 0 or skillchain(row.added); end
         if hurt then
-            hit(row.target, action.actor, param > 0 and landing and landing[message], action.category == 1 and param > 0 and passed[1][message]);
+            hit(row.target, action.actor, param > 0 and landing and landing[message], action.category == 1 and param > 0 and passed[1][message],
+                unsoaked);
         end
-        -- A mob whose attack was countered took the counter's damage, through any shadows it had.
-        if row.reaction == COUNTERED and row.reaction_param > 0 then hit(action.actor, row.target, true); end
+        -- A mob whose attack was countered took the counter's damage, through any shadows it had. Stoneskin soaks it
+        -- first, as it does a swing.
+        if row.reaction == COUNTERED and row.reaction_param > 0 then hit(action.actor, row.target, true, nil, true); end
+        -- An attacker that spikes hurt after its Stoneskin took its share.
+        if SPIKES[row.reaction] and row.reaction_param > 0 and (row.target >= 0x1000000 or spiked(snapshot, row.target)) then
+            hit(action.actor, row.target, nil, nil, true, true);
+        end
         if message == ABSORBED then lost(row.target, param); end
         if row.reaction == COUNTER_ABSORBED then lost(action.actor, row.reaction_param); end
         if message == ANTICIPATED and (row.target >= 0x1000000 or ally(snapshot, row.target)) then
@@ -504,6 +548,27 @@ local function action_events(action, snapshot, now)
         local entry = event(snapshot, 'call_beast', snapshot.id);
         entry.item = sample.items[3] or snapshot.ammo;
         out[#out + 1] = entry;
+    end
+    -- Your own job ability, which starts a cooldown the client didn't list before (core/recasts.lua). Jump, Steal, Shield
+    -- Bash and a few others finish as category 3, as weapon skills do. A weapon skill's id can match an ability's, but
+    -- it never starts a cooldown.
+    if action.actor == snapshot.id and (action.category == 6 or action.category == 3) then
+        out[#out + 1] = { kind = 'used', ability = action.id };
+    end
+    -- Your avatar's pact going off is a use of it too. Phoenix starts a pact's cooldown when the move goes off, not
+    -- when you use the pact (scripts/globals/job_utils/summoner.lua onUseBloodPact), and the move has the pact's own id
+    -- (src/map/entities/pet_entity.cpp OnPetSkillFinished). When the avatar has far to run, that's more than 3 seconds
+    -- after your use. A wyvern's breath is category 13 too but has no cooldown, and a jug pet's move is category 11.
+    if from_pet and action.category == 13 then
+        out[#out + 1] = { kind = 'used', ability = action.id };
+    end
+    -- Your action that paralysis stopped: category 4 with no action id, and message 84 (src/map/action/interrupts.cpp
+    -- AbilityParalyzed). A paralyzed ranged attack looks the same, so core/recasts.lua takes it as a use only of a job
+    -- ability you asked for just before.
+    if action.actor == snapshot.id and action.category == 4 and action.id == 0 then
+        for _, row in ipairs(action.rows) do
+            if row.message == 84 then out[#out + 1] = { kind = 'paralyzed' }; break; end
+        end
     end
     return out;
 end

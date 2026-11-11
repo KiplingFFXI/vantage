@@ -79,7 +79,16 @@ for _, call in ipairs(MOCK.imgui_calls) do
 end;
 assert(away == 2, 'Each member no longer in the party reads Someone not in your party now, with a row of their own.');
 assert(not any('not currently visible') and not any('Member %d'), 'No number: ' .. tostring(any('Member %d')));
+-- Remove waits for the list to be drawn. Taking someone off adds a key to the table pairs is walking, and Lua doesn't say
+-- what the walk does then, so the frame of the click draws both rows with the list as it was.
+local text, whole = imgui.TextUnformatted, {};
+imgui.TextUnformatted = function(words, ...)
+    if words == 'Someone not in your party now' then whole[#whole + 1] = s.panels.party.members[2001] == true and s.panels.party.members[2002] == true; end;
+    return text(words, ...);
+end;
 draw({ 'Remove##member' });
+imgui.TextUnformatted = text;
+assert(#whole == 2 and whole[1] and whole[2], 'The frame of a Remove draws each row once, with the list as it was.');
 assert((s.panels.party.members[2001] and 1 or 0) + (s.panels.party.members[2002] and 1 or 0) == 1 and s.panels.party.members[1002] == true,
     'Remove takes out only that one.');
 for _, result in ipairs(window.search('someone not in your party')) do assert(result.tab ~= 'Display', 'A remembered id isn\'t a thing to search for.'); end;

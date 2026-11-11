@@ -8,6 +8,14 @@ local shared = setmetatable({}, { __mode = 'k' })
 -- Job ability ID to the status the player's own use of it gave, false once it gave two different ones.
 -- Kept across zones and texture resets: it is game data, not character state.
 local learned = {}
+-- Actions whose row in the effect data names an effect they give only sometimes, so it isn't the effect they give.
+-- Every Cure's Stoneskin needs Afflatus Solace (scripts/actions/spells/white/cure.lua :70-72), which is WotG
+-- (sql/abilities.sql :263). Chakra's Regen and Chi Blast's Inhibit TP need merits (globals/job_utils/monk.lua :66-72,
+-- :80-83). Charm binds only a monster it can't charm (beastmaster.lua :165-172), Jump lowers Defense only under Spirit
+-- Surge (dragoon.lua :237-242), and Double-Up gives Bust only when you bust (corsair.lua :498-502). The rows still give
+-- the effect's length when it lands (core/catalog.lua).
+local sometimes = { spells = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true },
+    abilities = { [38] = true, [52] = true, [66] = true, [82] = true, [123] = true } }
 
 local function choices(entries)
     if type(entries) ~= 'table' then return nil end
@@ -44,7 +52,7 @@ local function ability_effect(id)
     local action = type(id) == 'number' and id - 512
     if not action or action < 0 or action > 1023 then return nil end
     if rolls[action] then return rolls[action] end
-    local info = data.abilities[action]
+    local info = not sometimes.abilities[action] and data.abilities[action]
     if info then return info.effect end
     return learned[action] or nil
 end
@@ -53,7 +61,7 @@ end
 -- has one only when every action it can stand for gives the same one. Items and anything unknown have none.
 function icons.effect(row)
     if row.kind == 'spell' then
-        local info = data.spells[row.recast_id]
+        local info = not sometimes.spells[row.recast_id] and data.spells[row.recast_id]
         return info and info.effect or nil
     elseif row.kind ~= 'ability' then return nil end
     local candidates, found = row.action_icons

@@ -1,6 +1,6 @@
 addon.name = 'vantage';
 addon.author = 'Kipling';
-addon.version = '1.1.0';
+addon.version = '1.1.1';
 addon.desc = 'Customizable buff, debuff and recast timers, with buffs beside the game party list, for Phoenix.';
 addon.link = 'https://github.com/KiplingFFXI/vantage';
 
@@ -329,7 +329,8 @@ local function save()
 end
 
 local function changed_after()
-    -- A drag changes settings every frame; the profile status waits for its 250 ms refresh meanwhile.
+    -- A drag changes settings every frame. The profile status waits for its 2 second refresh, or the save after the
+    -- drag.
     state.settings_revision=state.settings_revision+1;
     if not state.mouse_held then state.profile_summary_cache=nil; end;
 end
@@ -469,6 +470,10 @@ local function keep_recovery()
         editing.deleted_history=held;
     end;
 end;
+-- The open settings window's place, for the edit mode bar to keep clear of. One stopped by an error isn't drawn.
+callbacks.settings_area = function()
+    if window.area and not (settings_stopped() and state.settings.window.open) then return window.area(state.settings); end;
+end;
 callbacks.settings_blocks_input = function(x,y,shift,typing)
     -- The edit mode bar takes the mouse over it, as the settings window does.
     if edit_mode.blocks_input(x,y) then return true; end;
@@ -478,7 +483,8 @@ callbacks.settings_blocks_input = function(x,y,shift,typing)
     end;
     return false;
 end;
-callbacks.party_native_status = native_party.status;
+-- The Party list buffs page reads the game's party list each draw, so it gets the one kept, with no copy.
+callbacks.party_native_status = native_party.live_status;
 callbacks.recast_catalog = recast_source.catalog;
 callbacks.recast_item_status = recast_source.item_status;
 
@@ -816,11 +822,13 @@ function callbacks.profile_status(name)
     return profile_status_fields(status,why);
 end
 
+-- Your own changes clear it, so it reads profiles.json again at once. Otherwise it reads it every 2 seconds, as the
+-- shared layout poll reads its own file, for another character's save.
 function callbacks.profile_summary()
     local t,cache=now(),state.profile_summary_cache;
     local s=state.settings;
     if cache and cache.settings==s and cache.active==s.active_profile and cache.identity==state.identity
-        and t>=cache.at and t-cache.at<0.25 then return cache.value; end;
+        and t>=cache.at and t-cache.at<2 then return cache.value; end;
     local summary=saved_profiles:summary(s,state.settings_revision);
     summary.status=profile_status_fields(summary.status,summary.problem);
     state.profile_summary_cache={settings=s,active=s.active_profile,identity=state.identity,at=t,value=summary};
@@ -1189,7 +1197,8 @@ local function recast_options()
             else options[kind=='ability' and 'abilities' or kind..'s']=true; end;
         end;
     end;
-    if s.window.open and s.window.tab=='Display' then options.spells,options.abilities,options.items=true,true,true; end;
+    -- A settings page that lists your recasts to pick from has every kind read.
+    if window.lists_recasts(s) then options.spells,options.abilities,options.items=true,true,true; end;
     -- A ready pulse at its own spot on the screen needs the recasts whatever the panels show.
     if s.ready_pulse.enabled and s.ready_pulse.spot=='screen' then options.spells,options.abilities,options.items=true,true,true; end;
     -- The pet display shows your pet commands' recasts.
@@ -1738,6 +1747,12 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
         elseif observation.kind=='roll' then
             -- A roll goes to the Phantom Roll display, and what the pet display follows goes to it, on or off.
             if state.settings.rolls.enabled then roll_watch:observe(observation,now()); end
+        elseif observation.kind=='used' then
+            -- Your job ability, or your avatar's pact going off, goes to the recast reader for the cooldown it starts.
+            recasts:used(observation.ability,now());
+        elseif observation.kind=='paralyzed' then
+            -- So does one paralysis stopped: its cooldown still starts, and your request says which it is.
+            recasts:paralyzed(now());
         elseif pet_watch.takes[observation.kind] then
             pet_watch:observe(observation,now(),state.snapshot);
         -- Hits stop taking room once the queue is half full, so the wear-offs and despawns behind them still fit.
@@ -1745,11 +1760,12 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
             state.queue[#state.queue+1]=observation;
         end
         -- A hit only takes effects off, and a fight sends many, so it waits for the next refresh, as does an entity
-        -- leaving view that no display shows. A party cooldown wakes it only while the watch keeps them.
+        -- leaving view that no display shows. A party cooldown wakes it only while the watch keeps them. Your use of
+        -- an ability waits too, paralyzed or not: the client's recast list shows its cooldown.
         local kind=observation.kind;
         if kind=='cooldown' or kind=='cooldown_reset' then woken=woken or state.settings.party_cooldowns.enabled;
         elseif kind=='despawn' then woken=woken or shown_or_watched(observation.entity_id);
-        elseif kind~='damage' then woken=true; end
+        elseif kind~='damage' and kind~='used' and kind~='paralyzed' then woken=true; end
     end
     -- A zone change the client takes starts the zone window in /vg report.
     if id==0x00A and size>=50 or id==0x00B and size>=5 then
@@ -1758,6 +1774,16 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
         state.zone_entered=id==0x00A;
     end;
     if woken then state.wake=true; end
+end);
+
+-- Your request to use a job ability (0x01A: action 9 at 0x0A, the ability's id at 0x0C), for the recast reader. Paralysis
+-- stops a use with an action that names no ability (core/recasts.lua). A request another addon made still goes to the
+-- server, so only one kept from going is left out.
+ashita.events.register('packet_out','vantage_packet_out',function(e)
+    if e.id~=0x01A or e.blocked then return; end
+    local size,data=client.packet_size(e);
+    if size<0x10 or data:byte(0x0B)+data:byte(0x0C)*256~=9 then return; end
+    recasts:requested(data:byte(0x0D)+data:byte(0x0E)*256+data:byte(0x0F)*65536+data:byte(0x10)*16777216,now());
 end);
 
 -- Where the overhead icons go this frame, from the view the refresh made, and the icons drawn there with the
@@ -1951,10 +1977,16 @@ local function run_command(e)
         local ok,why=callbacks[command](); if not ok then say(why); end
     elseif command=='get' or command=='set' then
         local path,raw=e.command:match('^%S+%s+%S+%s+(%S+)%s*(.*)$');
+        -- How a value is told: a table as JSON, and text in quotes, so text of spaces shows. Set takes the quotes off,
+        -- so what get prints sets it back as it was.
+        local function told(value)
+            if type(value)=='table' then return store.encode(value); end
+            return type(value)=='string' and '"'..value..'"' or tostring(value);
+        end
         if command=='get' then
             local value,why=customization.get(state.settings,path);
             if value==nil then say(why);
-            else say(path..' = '..(type(value)=='table' and store.encode(value) or tostring(value))); end
+            else say(path..' = '..told(value)); end
         else
             local current=customization.get(state.settings,path);
             if type(current)=='string' and raw:sub(1,1)=='"' and raw:sub(-1)=='"' then raw=raw:sub(2,-2); end
@@ -1964,7 +1996,7 @@ local function run_command(e)
             local function confirm(saved)
                 local shown=path:match('^(edit_mode%.grid_displays)%.') or path;
                 local value=customization.get(state.settings,shown);
-                say(shown..' is now '..(type(value)=='table' and store.encode(value) or tostring(value))..'.'
+                say(shown..' is now '..told(value)..'.'
                     ..(saved and '' or ' Settings could not be saved; Vantage will retry.'));
             end;
             if not candidate then say(why);

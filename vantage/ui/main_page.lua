@@ -707,12 +707,14 @@ local function blink_rows(imgui, settings, c)
     imgui.SameLine();
     local value = blink_seconds.value;
     value[1] = seconds or shared_look.first_blink_seconds(settings);
-    imgui.SetNextItemWidth(7 * imgui.GetFontSize());
+    imgui.SetNextItemWidth(imgui.CalcTextSize('300 seconds left') + 24);
     local moved = imgui.SliderFloat(blink_seconds.id, value, 1, 300, seconds and '%.0f seconds left' or 'Mixed');
     mark(c, blink_seconds.text, blink_seconds.help);
     c.tip(blink_seconds.help);
-    if moved then
-        local chosen = math.floor(math.max(1, math.min(300, tonumber(value[1]) or 15)) + 0.5);
+    local typed = moved and (tonumber(value[1]) or 15);
+    -- A typed nan is no number of seconds. Saved, it would stop every save after it.
+    if typed and typed == typed then
+        local chosen = math.floor(math.max(1, math.min(300, typed)) + 0.5);
         if seconds == nil then
             write_shared(c, true, 'Blink seconds left', 'when blinking starts', shared_look.changes_blink_seconds(settings, chosen),
                 function() shared_look.set_blink_seconds(settings, chosen); end);

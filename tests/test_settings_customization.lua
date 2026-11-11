@@ -60,8 +60,22 @@ local panels = require('ui.panel_frame')
 panels.open('self_buffs', 'look')
 s.panels.self_buffs.wrap = true
 frame('Display')
-frame(nil, 'Down##part')
+-- How many times each choice is drawn in a frame.
+local function drawn_choices(click)
+    MOCK.imgui_calls = {}
+    frame(nil, click)
+    local seen = {}
+    for _, call in ipairs(MOCK.imgui_calls) do
+        if call[1] == 'Selectable' then seen[call[2]] = (seen[call[2]] or 0) + 1 end
+    end
+    return seen
+end
+local moving = drawn_choices('Down##part')
 assert(s.panels.self_buffs.field_order[2] == 'name', 'Part move buttons reorder parts, not effects.')
+-- The move waits for the list to be drawn, so the frame of the click draws each part once and leaves none out.
+local moved = drawn_choices()
+for label, count in pairs(moved) do assert(moving[label] == count, 'The frame of a move draws ' .. label .. ' as the next frame does.') end
+for label in pairs(moving) do assert(moved[label], 'The frame of a move draws only what the next frame does: ' .. label) end
 input['##frame_Label_part'] = 'Effect:'
 frame()
 assert(s.panels.self_buffs.field_labels.name == 'Effect:')

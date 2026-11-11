@@ -1,6 +1,6 @@
 # Release checklist
 
-A Vantage release is one addon archive, `vantage-1.1.0-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
+A Vantage release is one addon archive, `vantage-1.1.1-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
 
 Don't change the version unless the author tells you to release. Keep `vantage/vantage.lua` and the newest changelog heading at the same version.
 
@@ -16,7 +16,7 @@ Don't change the version unless the author tells you to release. Keep `vantage/v
 8. To install it on a game folder, run `tools/install_addon.ps1` in Windows PowerShell. The game can be open:
 
    ```text
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.1.0-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.1.1-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
    ```
 
    It refuses an archive whose SHA-256 differs. It notes the hash of every file under `config/addons/vantage` (settings, profiles, shared layout and the rest). It moves the current `addons/vantage` to `vantage-addon-backup-<UTC time>` in your Documents folder. You can pass `-BackupParent` to use a folder outside the game folder and on the same drive instead. Then it copies the new addon in and checks every copied file's hash. It also checks that no settings file changed. If anything fails, it puts the backup back. Each folder moves whole or not at all, so an old addon with a file held open stays where it is. A JSON receipt goes beside the backup. It never touches a startup script or the launcher. With the game open, a loaded Vantage keeps its old code until you run `/addon reload vantage` in game. Don't change any setting in game while the install runs. A saved settings file counts as a change and puts the old addon back.
@@ -70,7 +70,7 @@ Run these on a real client after installing the archive. Note what you saw and w
 40. Use Sic, Reward and Call Beast. Their recasts show under the bars, soonest first, and the name Ready never shows. Call a jug pet. It shows with no charm. Zone with it and note whether the game keeps it. The display follows the game either way.
 41. As SMN with an avatar, use a Blood Pact. Rage and Ward show their recasts, and the bars show MP. As DRG and PUP, check the wyvern's and the automaton's display and Spirit Link, Repair and Maneuver recasts.
 42. Have a mob put a debuff on your pet. It shows on the display with an estimated time. Hide it with **Hide here** on the **Filters** tab of Pet, and with a rule for Pets under **Hide only for some players or jobs** on Hidden everywhere. Both displays move only after their **Locked** is off and you hold Shift. Otherwise, clicking them does nothing in Vantage, and the click goes to the game.
-43. Run `/vg edit`. Every display that's on gets an outline with its name. Overhead icons get none. The edit mode bar shows at the top, and no grid shows. Clicking the game world outside the outlines and the bar still works. Until you click the bar or an outline, the arrow keys still move your character.
+43. Run `/vg edit`. Every display that's on gets an outline with its name. Overhead icons get none. The edit mode bar shows at the top, and no grid shows. With the settings window at the top of the screen, run `/vg` to open it. The bar goes to the bottom of the screen, clear of the window's title and top row. Run `/vg` again, and the bar is back at the top. Clicking the game world outside the outlines and the bar still works. Until you click the bar or an outline, the arrow keys still move your character.
 44. Click a locked display. It gets picked, and the bar says it's locked. Hold Shift and drag it. It stays, with the same line. Uncheck **Locked** in the bar, then hold Shift and drag. It moves with the mouse. Let go, then press **Undo** in the bar. It goes back in one step.
 45. Grid mode starts off. With it off, drag a display near the screen's middle, another display's edge, your party's window and the chat log. It snaps to none of them, and no line or grid shows. Steps 90 to 95 check Grid mode.
 46. Click the bar, then press the arrow keys. The picked display moves 1 px, or 10 with Shift, and your character doesn't move or turn. Click the game world. The arrow keys move your character again and not the display.
@@ -292,3 +292,18 @@ These need a second character in your party, in East Ronfaure (`!pos 100 -50 120
 220. Make them a SMN (`!changejob smn 75`, `!addspell 301`), call Garuda and use Hastega. Haste shows on both displays. Run `/addon reload vantage`, and Haste goes from both, as Vantage didn't see what put it on and a spell gives Haste too.
 221. Make them a NIN (`!changejob nin 75`, `!addspell 339`, `!additem 1179 12`) and cast Utsusemi: Ni. Copy Image shows on their row of Party list buffs, as it's ticked under **Always show**, and not on Party members' timers. Untick it under **Always show**, and it goes. Tick it again.
 222. Turn on **Show samples** for both. Party members' timers shows only its Divine Seal sample, and Party list buffs shows only a Berserk sample, on your own row. Untick **Only effects from job abilities** on both, and every sample is back.
+
+### Stoneskin on a mob
+
+223. In South Gustaberg (`!pos -484 40 -478 107`), as DRK (`!changejob drk 20`) with no weapon on and Mobs on in Overhead icons, target a Land Crab and run `!exec target:useMobAbility(448)`. Stoneskin shows over its head and on the Target panel, counting down from 5 minutes. Attack it. Bare-handed hits are small, so the first ones show 0 and leave it in place. The first hit for more than 0 takes it off the Target panel and from over its head.
+224. Get a Claymore (`!additem 16583`) and put it on, as Weapon Bash needs a two-handed weapon. Target a fresh Land Crab without attacking it, run `!exec target:useMobAbility(448)` and use Weapon Bash on it. Stoneskin stays, as Phoenix deals Weapon Bash straight to HP. Then attack it. The first hit for more than 0 takes it off.
+225. As RDM (`!changejob rdm 20`, `!addspell 249`, `!addspell 258`), cast Blaze Spikes. Target a fresh Land Crab, run `!exec target:useMobAbility(448)`, stand next to it and cast Bind on it. Don't attack. Each time it hits you, your spikes hit it back. A spike for 0 leaves Stoneskin in place, and the first spike for more than 0 takes it off. Bind keeps its countdown, as spikes don't break it.
+
+### First uses and the newer data
+
+226. In East Ronfaure (`!pos 100 -50 120 101`), run `!changejob war 75`. On Alerts, click **New alert** and set **Alert type** to **Recast**, **Recast** to Berserk and **Trigger** to **Recast started**. Use Berserk. Its recast shows its full length from the start, and the alert goes off.
+227. With **Icons show** on **The effect it gives**, run `/addon reload vantage` while Berserk's recast runs. Its row shows the Berserk status icon, though Vantage hasn't seen you use it since the reload. As DRG (`!changejob drg 75`), use Jump. Its row keeps the Jump picture, as Jump gives its status only sometimes.
+228. As WAR again (`!changejob war 75`), run `!exec player:addStatusEffect(xi.effect.PARALYSIS, 100, 0, 60)` and use Warcry. Paralysis stops it, and its recast still shows its full length from the start. Then run `!exec player:delStatusEffect(xi.effect.PARALYSIS)`.
+229. As SMN (`!changejob smn 75`, `!addspell 301`), go to South Gustaberg (`!pos -484 40 -478 107`), call Garuda and use Claw on a Land Crab far enough away that Garuda runs a few seconds before it hits. Its Rage recast shows its full length from the start.
+230. With a second character in your party in East Ronfaure (`!pos 100 -50 120 101`), make them a MNK (`!changejob mnk 75`, typed on that character) and have them use Boost and Focus. On Party members' timers, Boost counts down from 3 minutes and Focus from 2.
+231. Under **More look** on the main page, set **Settings text size** to 36. Scroll the page to its very bottom. It ends one line above the window's bottom edge, so no row sits under the corners. Click the lowest tick box on the left, and it toggles. Dragging the lower-left corner still resizes the window. Set the size back to 17.

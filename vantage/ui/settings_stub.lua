@@ -1,7 +1,7 @@
--- What vantage.lua calls on the settings window: draw, blocks_input and cancel_resize. The window itself
--- (ui/settings_window.lua, with the code it loads) is loaded the first time it opens, not when the addon loads.
+-- What vantage.lua calls on the settings window: draw, blocks_input, area, cancel_resize and lists_recasts. The window
+-- itself (ui/settings_window.lua, with the code it loads) is loaded the first time it opens, not when the addon loads.
 -- Every call gives the answer the window would: while it is shut and not yet loaded it has nothing to draw, takes no
--- mouse and has no resize to end, and once it is loaded every call goes to it.
+-- mouse, has no place, has no resize to end and lists no recasts, and once it is loaded every call goes to it.
 local stub = {}
 -- The window's name in package.loaded. The requires below spell it out, so the release check
 -- (tools/release_files.py) reaches what the window loads.
@@ -42,9 +42,23 @@ function stub.blocks_input(s, x, y, shift, typing)
     return window.blocks_input(s, x, y, shift, typing)
 end
 
+-- Where the open window is, for the edit mode bar. Opened and not yet loaded, it is at its saved place, as the window
+-- would say before its first draw. One that could not load isn't drawn.
+function stub.area(s)
+    local window = loaded()
+    if window then return window.area and window.area(s) end
+    if s and s.window.open and not failed then return s.window end
+end
+
 function stub.cancel_resize()
     local window = loaded()
     if window and window.cancel_resize then return window.cancel_resize() end
+end
+
+-- Whether the window's last draw listed your recasts to pick from.
+function stub.lists_recasts(s)
+    local window = loaded()
+    return window ~= nil and window.lists_recasts ~= nil and window.lists_recasts(s)
 end
 
 return stub

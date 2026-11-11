@@ -59,34 +59,34 @@ All of these numbers come from `tests/benchmark_frame.py` in the x86 runtime wit
 
 | Scenario | x86 KB a frame | x86 frame | Times party6 |
 | --- | ---: | ---: | ---: |
-| party6, window shut | 8.0 | 0.108 ms | 1.00 |
-| main_closed | 8.0 | 0.141 ms | 1.31 |
-| main_open | 8.0 | 0.155 ms | 1.43 |
-| One panel tab | 9.0 | 0.133 ms | 1.23 |
+| party6, window shut | 7.9 | 0.110 ms | 1.00 |
+| main_closed | 7.9 | 0.149 ms | 1.36 |
+| main_open | 7.9 | 0.157 ms | 1.43 |
+| One panel tab | 7.9 | 0.135 ms | 1.23 |
 
-One panel tab is the median of the forty runs of `panel_show`, `panel_look`, `panel_filters`, `panel_party` and `panel_pet`. For the open window, the time goal is a frame of at most 1.25x party6. The KB goal is at most about 8 KB a frame over party6 in x86, and about 15 in the test runtime. Those five tabs are 1.21x to 1.26x, so `panel_pet` is just over the time goal and the other four meet it. `main_closed` and `main_open` are over it. Every scene here meets the KB goal. The window's own draw makes nothing, so the main page makes what party6 does. A tab of a display's editor makes about 1 KB more. That's the recasts the refresh reads while an editor is open, for the recast lists it shows.
+One panel tab is the median of the forty runs of `panel_show`, `panel_look`, `panel_filters`, `panel_party` and `panel_pet`. For the open window, the time goal is a frame of at most 1.25x party6. The KB goal is at most about 8 KB a frame over party6 in x86, and about 15 in the test runtime. Those five tabs are 1.20x to 1.24x, so all five meet the time goal. `main_closed` and `main_open` are over it. Every scene here meets the KB goal. The window's own draw makes nothing, and the refresh reads your recasts only for a page that lists them, so the main page and a tab of a display's editor make what party6 does.
 
 The other scenes ran in the same conditions. The table below has medians of two runs, and of eight for `party6` and `cooldowns`.
 
 | Scenario | KB a frame | Frame |
 | --- | ---: | ---: |
-| solo | 1.5 | 0.058 ms |
-| party6 | 8.0 | 0.108 ms |
-| alliance18 | 36.4 | 0.422 ms |
-| filters | 10.3 | 0.122 ms |
-| overhead | 8.5 | 0.146 ms |
-| cooldowns | 9.7 | 0.231 ms |
-| rolls | 8.1 | 0.129 ms |
-| edit | 8.3 | 0.120 ms |
-| settings | 8.0 | 0.156 ms |
-| settings_filters | 9.0 | 0.127 ms |
-| settings_party | 8.9 | 0.129 ms |
-| settings_durations | 8.2 | 0.130 ms |
-| settings_profiles | 9.1 | 0.143 ms |
-| settings_help | 8.1 | 0.129 ms |
-| search | 19.5 | 0.238 ms |
+| solo | 1.5 | 0.059 ms |
+| party6 | 7.9 | 0.110 ms |
+| alliance18 | 36.4 | 0.439 ms |
+| filters | 10.2 | 0.117 ms |
+| overhead | 8.4 | 0.152 ms |
+| cooldowns | 9.6 | 0.247 ms |
+| rolls | 8.0 | 0.134 ms |
+| edit | 8.2 | 0.118 ms |
+| settings | 7.9 | 0.164 ms |
+| settings_filters | 7.9 | 0.128 ms |
+| settings_party | 8.0 | 0.132 ms |
+| settings_durations | 8.0 | 0.129 ms |
+| settings_profiles | 7.9 | 0.135 ms |
+| settings_help | 7.9 | 0.127 ms |
+| search | 18.4 | 0.251 ms |
 
-`pet` makes 9.9 KB in 0.157 ms. That's the median of eight runs in the same conditions. A refresh copies only the tracker's rows that changed. A row that still holds what it did keeps the copy it had, with its time left worked out again (`tests/test_tracker_view_reuse.lua`). When a refresh finds the same listings as the last, pairing them with the tracker's rows makes nothing (`tests/test_tracker_snapshot_allocation.lua`). `overhead` makes about 0.5 KB a frame more than `party6`, because each refresh makes a few small tables for each unit it tracks, and the four mobs are four more. Drawing itself makes nothing. The harness has none of the name point's patterns, so its blocks sit on the guess and `overhead` leaves out the name point reads. Those are about 14 reads a unit each frame, and one page check a frame for each region of memory the units' actors and entities sit in (docs/OVERHEAD.md). Grid mode on with its section open adds about 0.005 ms, and the window's draw still makes nothing. An open alert draws about 30 more rows, and the window's draw still makes nothing, because those rows are the same tables each frame.
+`pet` makes 9.9 KB in 0.162 ms. That's the median of eight runs in the same conditions. A refresh copies only the tracker's rows that changed. A row that still holds what it did keeps the copy it had, with its time left worked out again (`tests/test_tracker_view_reuse.lua`). When a refresh finds the same listings as the last, pairing them with the tracker's rows makes nothing (`tests/test_tracker_snapshot_allocation.lua`). `overhead` makes about 0.5 KB a frame more than `party6`, because each refresh makes a few small tables for each unit it tracks, and the four mobs are four more. Drawing itself makes nothing. The harness has none of the name point's patterns, so its blocks sit on the guess and `overhead` leaves out the name point reads. Those are about 14 reads a unit each frame, and one page check a frame for each region of memory the units' actors and entities sit in (docs/OVERHEAD.md). Grid mode on with its section open adds about 0.005 ms, and the window's draw still makes nothing. An open alert draws about 30 more rows, and the window's draw still makes nothing, because those rows are the same tables each frame.
 
 Some costs come once rather than each frame. The first time the window opens, it takes about 6 ms and makes about 1 MB. The first key in the search box takes about 14 ms and 3.5 MB. Until then, neither one is loaded.
 
@@ -117,7 +117,7 @@ If a display is anchored to the list, Vantage reads the list whatever Grid mode 
 
 ### Settings window
 
-`vantage.lua` calls `ui/settings_stub.lua`, which loads the window the first time it opens and hands it every call after that. Until then, a frame draws nothing for the window, the mouse checks answer that it takes nothing, and there's no resize to end. A window file that can't load stops the window, and Vantage says so once. A command that opens the window tries it again. While the window is open, it brings its working copy of the save up to date only after something changes, because walking the whole save is the most expensive part. The main page and the panel frame (`ui/main_page.lua`, `ui/panel_frame.lua`) draw from row tables made once when the window loads, so a frame makes no closures or value boxes. The panel frame shares one scratch value for each kind of control, and the window does the same for the controls it hands its pages. The window's frame, its pushed colors and More look's art checks keep what they hand ImGui too. So the window's own draw makes nothing a frame once warm on every page and tab but three (`tests/test_frame_window_cost.py`). Timer durations and Profiles make a function for each of their buttons as they draw, and the Place tab of Party list buffs copies the game's party list for its notes. The window keeps its look (`theme.window`) until the settings count a change, or until its settings, style or window style tables are new ones (`tests/test_window_look_cache.lua`). At the title screen a change has no file to go to, and it isn't tried again each frame, so the looks stay kept there too (`tests/test_app_title_save.lua`). What the pages work out from the settings is kept the same way. That covers the main page's lines about the settings, the Timer durations lists, and what an import read on Profiles would change. The main page's lines also wait for the mouse to come up while a drag changes the settings every frame. In the Timer durations lists, a learned time counts as a change. `skin.prepare_menu` makes no table or function. It runs each time, because the art it checks can go and come back with no settings change. Painting the skin under the window, its lists and its tooltips (`skin.menu`) makes none either. It works out the resize grip corner's color once for each look (`tests/test_menu_paint_allocation.lua`). The window art sends only the pieces inside its clip, and a frame edge whose art is the same along its length goes as one stretched piece in place of tiles (`tests/test_skin_pieces.lua`).
+`vantage.lua` calls `ui/settings_stub.lua`, which loads the window the first time it opens and hands it every call after that. Until then, a frame draws nothing for the window, the mouse checks answer that it takes nothing, the edit mode bar finds no window to keep clear of, there's no resize to end, and no page lists your recasts. A window file that can't load stops the window, and Vantage says so once. A command that opens the window tries it again. While the window is open, it brings its working copy of the save up to date only after something changes, because walking the whole save is the most expensive part. The main page and the panel frame (`ui/main_page.lua`, `ui/panel_frame.lua`) draw from row tables made once when the window loads, so a frame makes no closures or value boxes. The panel frame shares one scratch value for each kind of control, and the window does the same for the controls it hands its pages. The window's frame, its pushed colors and More look's art checks keep what they hand ImGui too. Timer durations and Profiles hand their buttons and lists functions made once when they load, and the Place tab of Party list buffs reads the game's party list with no copy, its rooms in a list kept from draw to draw. So the window's own draw makes nothing a frame once warm on every page and tab (`tests/test_frame_window_cost.py`). The window keeps its look (`theme.window`) until the settings count a change, or until its settings, style or window style tables are new ones (`tests/test_window_look_cache.lua`). At the title screen a change has no file to go to, and it isn't tried again each frame, so the looks stay kept there too (`tests/test_app_title_save.lua`). What the pages work out from the settings is kept the same way. That covers the main page's lines about the settings, the Timer durations lists, and what an import read on Profiles would change. The main page's lines also wait for the mouse to come up while a drag changes the settings every frame. In the Timer durations lists, a learned time counts as a change. `skin.prepare_menu` makes no table or function. It runs each time, because the art it checks can go and come back with no settings change. Painting the skin under the window, its lists and its tooltips (`skin.menu`) makes none either. It works out the resize grip corner's color once for each look (`tests/test_menu_paint_allocation.lua`). The window art sends only the pieces inside its clip, and a frame edge whose art is the same along its length goes as one stretched piece in place of tiles (`tests/test_skin_pieces.lua`).
 
 ### Settings search
 
@@ -169,6 +169,6 @@ The estimate is a lower bound, because the Lua work of making the faces and the 
 
 LuaJIT's default limit is 1,000 traces, and a session here holds thousands. So `vantage.lua` sets `maxtrace=12000` and `maxmcode=16384` for the addon's own Lua state as it loads. `jit` in `/vg report` says whether that took. A session pays only for the traces it makes.
 
-`python tests/jit_flush_guard.py` runs in the x86 runtime and counts traces and bytes, never ms. It draws each of its scenes for 600 frames after 600 to warm up. Then it draws a mixed session of those scenes, without `search` and with `solo` and `party6`, 600 frames each, twelve times over. That's 72,000 frames. It fails on any flush, on fewer than 2,500 traces free, or if a full cache of such traces wouldn't fit `maxmcode`. The newest runs had 0 flushes in every scene and in the mixed session, twice. They had 5,019 and 6,753 traces free, against the guard's 2,500. The count held moves from run to run, in a range of about 5,200 to 7,650. `search` goes round every page, which nothing else there does, so it stays out of the mixed session. With it in, the session held 6,397 to 10,304 traces in 18 runs, and the run at 10,304 left fewer than the guard's 2,500 free.
+`python tests/jit_flush_guard.py` runs in the x86 runtime and counts traces and bytes, never ms. It draws each of its scenes for 600 frames after 600 to warm up. Then it draws a mixed session of those scenes, without `search` and with `solo` and `party6`, 600 frames each, twelve times over. That's 72,000 frames. It fails on any flush, on fewer than 2,500 traces free, or if a full cache of such traces wouldn't fit `maxmcode`. The newest runs had 0 flushes in every scene and in the mixed session, twice. They had 5,809 and 5,203 traces free, against the guard's 2,500. The count held moves from run to run, in a range of about 5,200 to 7,650. `search` goes round every page, which nothing else there does, so it stays out of the mixed session. With it in, the session held 6,397 to 10,304 traces in 18 runs, and the run at 10,304 left fewer than the guard's 2,500 free.
 
 A simulated twelve hours shows nothing growing. It has a frame every 0.1 s, 6,875 mobs, 144 party joins and 47 zone changes. Reachable tables stay near 22,900 from the third hour on. The collector's count settles near 37 MB, and most of it is trace data. The session holds 10,556 of 12,000 traces and 9,999 KB of machine code, and gains about 100 traces an hour by the end. Filling the 12,000 would take about a day of that. But three hours of steady editing, with 211 changes, filled it in three of six runs. A flush is cheap. `jit.flush()` took 0.155 ms, and the two seconds after it cost about 40 ms more than usual, with no frame over 3.3 ms. Those runs went on with normal frames and no second flush.

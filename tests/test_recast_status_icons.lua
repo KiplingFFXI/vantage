@@ -1,5 +1,6 @@
 -- A recast whose action gives a buff or debuff shows that status icon, in the buff icon artwork. Actions with
--- none, shared timers the data can't narrow to one status, unknown actions and items keep their own picture.
+-- none, actions that give theirs only sometimes, shared timers the data can't narrow to one status, unknown actions and
+-- items keep their own picture.
 local actions_drawn = {}
 package.loaded['ui.action_icons'] = {
     prepare = function() end, clear = function() end,
@@ -44,12 +45,12 @@ local function learn(packet)
     assert(#seen > 0, 'The observer reads the action.')
     recast_icons.learn(seen, snapshot)
 end
-learn(action(self_id, 4, 31, { { self_id, 230, 43 } }))      -- a spell numbered like Berserk teaches no ability
-learn(action(self_id, 6, 31, { { self_id, 115, 56 } }))      -- Berserk
-learn(action(self_id, 6, 33, { { self_id, 117, 57 } }))      -- Defender
-learn(action(ally, 6, 32, { { ally, 116, 68 } }))            -- someone else's Warcry
-learn(action(self_id, 6, 40, { { self_id, 100, 60 } }))      -- an ability seen giving two different statuses
-learn(action(self_id, 6, 40, { { self_id, 100, 61 } }))
+-- The effect data has no row for Unlimited Shot or the maneuvers, so only a use of your own shows theirs.
+learn(action(self_id, 4, 86, { { self_id, 230, 43 } }))      -- a spell numbered like Unlimited Shot teaches no ability
+learn(action(self_id, 6, 86, { { self_id, 100, 115 } }))     -- Unlimited Shot
+learn(action(ally, 6, 141, { { ally, 100, 300 } }))          -- someone else's Fire Maneuver
+learn(action(self_id, 6, 998, { { self_id, 100, 60 } }))     -- an ability seen giving two different statuses
+learn(action(self_id, 6, 998, { { self_id, 100, 61 } }))
 learn(action(self_id, 6, 999, { { self_id, 115, 56 } }))     -- the other action on a shared timer, same status
 
 local now = 100
@@ -80,10 +81,12 @@ local rows = {
     recast('ability', 2, 'Warcry', 33, one(544, 207)),
     recast('ability', 9, 'Berserk / Other (shared)', 34, { shared = true,
         action_icons = { { ability_id = 543, list_icon_id = 208 }, { ability_id = 1511, list_icon_id = 209 } } }),
-    recast('ability', 10, 'Changing ability', 35, one(552, 210)),
+    recast('ability', 10, 'Changing ability', 35, one(1510, 210)),
     recast('ability', 11, 'Shadowbind', 36, one(569, 211)),
     recast('ability', 0, 'Job special (shared)', 37, { shared = true, icon_ambiguous = true, action_icons = {} }),
     recast('item', 15762, 'Empress Band', 38, { item_id = 15762 }),
+    recast('ability', 126, 'Unlimited Shot', 39, one(598, 212)),
+    recast('ability', 210, 'Fire Maneuver', 40, one(653, 213)),
 }
 local buff = { key = 'buff_protect', instance = 1, effect = 40, name = 'Protect', kind = 'buff', group = 'Buffs', scope = 'self',
     entity_id = self_id, entity_name = 'Tester', status = 'server', present = true, deadline = now + 600, remaining = 600 }
@@ -93,12 +96,22 @@ for _, row in ipairs(rows) do view.rows[#view.rows + 1] = row end
 
 -- The mapping itself: each kind of action, tiers, shared timers, unknowns and items.
 local expected = { Protect = 40, ['Protect II'] = 40, Paralyze = 4, Dia = 134, ['Valor Minuet'] = 198, Sneak = 71,
-    ['Fighter\'s Roll'] = 310, Berserk = 56, Defender = 57, ['Berserk / Other (shared)'] = 56, Shadowbind = 11, Haste = 33 }
+    ['Fighter\'s Roll'] = 310, Berserk = 56, Defender = 57, Warcry = 68, ['Berserk / Other (shared)'] = 56, Shadowbind = 11,
+    Haste = 33, ['Unlimited Shot'] = 115 }
 for _, row in ipairs(rows) do
     assert(recast_icons.effect(row) == expected[row.name], row.name .. ' maps to the status its action gives, or none.')
 end
 assert(recast_icons.effect({ kind = 'ability', ability_id = 547 }) == nil and recast_icons.effect({ kind = 'ability' }) == nil,
     'A single action with no status, or none known, has no status icon.')
+-- Cure IV, Chakra, Charm, Jump, Chi Blast and Double-Up have a row in the effect data, for an effect they give only
+-- sometimes.
+local durations = require('data.effects')
+assert(durations.spells[4] and recast_icons.effect({ kind = 'spell', recast_id = 4 }) == nil,
+    'Cure IV\'s Stoneskin, which needs Afflatus Solace, isn\'t its status.')
+for _, id in ipairs({ 38, 52, 66, 82, 123 }) do
+    assert(durations.abilities[id] and recast_icons.effect({ kind = 'ability', ability_id = id + 512 }) == nil,
+        'Ability ' .. id .. ' gives its effect only sometimes, so it keeps its own picture.')
+end
 
 local settings = defaults.make()
 assert(settings.style.recast_icon_source == 'effect', 'Recasts show buff and debuff icons by default.')
@@ -129,9 +142,9 @@ end
 for _, mode in ipairs({ 'bars', 'expanded', 'icons' }) do
     local shown, items, sizes = render(mode)
     -- The Protect buff's own icon is the first 40; the two Protect recasts share it.
-    assert(sorted(shown) == '4,11,40,40,40,56,56,57,71,134,198,310',
+    assert(sorted(shown) == '4,11,40,40,40,56,56,57,68,71,115,134,198,310',
         'Status recasts draw the same status icons as the buff panel in ' .. mode)
-    assert(sorted(actions_drawn) == '107,108,201,202,203,207,210',
+    assert(sorted(actions_drawn) == '107,108,201,202,203,210,213',
         'Rows with no single known status keep their action pictures in ' .. mode)
     assert(items == 1, 'Item recasts keep the item picture in ' .. mode)
     local haste = false
@@ -157,7 +170,7 @@ settings.style.recast_icon_source = 'action'
 for _, mode in ipairs({ 'bars', 'expanded', 'icons' }) do
     local shown, items = render(mode)
     assert(#shown == 0 and #status_calls == 0, 'Action icons draw no status icons in ' .. mode)
-    assert(sorted(actions_drawn) == '101,102,103,104,105,106,107,108,201,202,203,204,205,206,207,208,209,210,211',
+    assert(sorted(actions_drawn) == '101,102,103,104,105,106,107,108,201,202,203,204,205,206,207,208,209,210,211,212,213',
         'Action icons restore every action picture in ' .. mode)
     assert(items == 1, 'Action icons keep the item picture in ' .. mode)
 end
@@ -193,7 +206,7 @@ imgui.Selectable = selectable
 
 -- The entrypoint teaches it from every status packet it reads.
 recast_icons._forget_for_tests()
-assert(recast_icons.effect({ kind = 'ability', ability_id = 543 }) == nil, 'Forgetting clears what was learned.')
+assert(recast_icons.effect({ kind = 'ability', ability_id = 598 }) == nil, 'Forgetting clears what was learned.')
 local copy = defaults.copy
 package.loaded['core.client'] = { load = function() end, read = function() return copy(snapshot) end }
 local reply = {}
@@ -204,7 +217,8 @@ package.loaded['core.recasts'] = { catalog = function() return {} end, new = fun
 } end }
 local app = dofile(ADDON_DIR .. '/vantage.lua')
 MOCK.now = MOCK.now + .2; app.refresh(MOCK.now)
-reply = { { kind = 'apply', action_category = 6, spell = 34, effect = 58, source = self_id, entity_id = self_id, scope = 'self' } }
+reply = { { kind = 'apply', action_category = 6, spell = 86, effect = 115, source = self_id, entity_id = self_id, scope = 'self' } }
 MOCK.fire('packet_in', MOCK.packet(0x028, MOCK.bytes(32)))
-assert(recast_icons.effect({ kind = 'ability', ability_id = 546 }) == 58, 'An observed Aggressor teaches its recast the Aggressor icon.')
+assert(recast_icons.effect({ kind = 'ability', ability_id = 598 }) == 115,
+    'An observed Unlimited Shot teaches its recast the Unlimited Shot icon.')
 MOCK.fire('unload')

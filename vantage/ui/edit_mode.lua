@@ -1,6 +1,7 @@
 -- Edit mode (/vg edit, or Edit mode on the main page): every display on the screen gets an outline with its name, and a bar at
 -- the top of the screen holds the picked display's lock, what it moves with and the way to its Size and place tab. Click a
--- display to pick it; hold Shift and drag to move it.
+-- display to pick it. Hold Shift and drag to move it. While the open settings window reaches the bar's spot, the bar goes
+-- to the bottom of the screen.
 -- While Grid mode is on, a display ticked for it snaps to the grid, the screen's center and edges, the other displays,
 -- the game's party list and the chat log, as settings.edit_mode chooses, and the grid shows while it is dragged if
 -- Show the grid is on (ui/snap.lua, which every Shift drag uses); the bar then holds its tick and the grid's switches. While the bar or a
@@ -28,12 +29,14 @@ local active, selected, gesture = false, nil, nil;
 -- edit mode sees the key, so that Escape ends nothing else.
 local listing, listed = false, false;
 local message, message_at = nil, 0;
-local bar = { x = 0, y = 0, width = 0, height = 0 };
+-- Where the bar was drawn last, and the most room it has taken since edit mode started.
+local bar = { x = 0, y = 0, width = 0, height = 0, wide = 0, tall = 0 };
 -- Tables each frame refills: the window place and size, line ends, a move's start and the box's value.
 local at, size, from, to, label_at, ZERO = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 };
 local start = {};
 local grid_value = { 16 };
-local TOP = { 0.5, 0 };
+local TOP, BOTTOM = { 0.5, 0 }, { 0.5, 1 };
+local HELP = 'Click a display to pick it. Hold Shift and drag to move it. Arrow keys move it 1 pixel, 10 with Shift. Esc ends.';
 local ARROWS = { { 'ImGuiKey_LeftArrow', -1, 0 }, { 'ImGuiKey_RightArrow', 1, 0 }, { 'ImGuiKey_UpArrow', 0, -1 }, { 'ImGuiKey_DownArrow', 0, 1 } };
 -- What a ticked display lines up with: the switches the bar shows, the keys they set and their Undo steps.
 local SWITCHES = { { 'Grid', 'snap_grid', 'Line up with the grid' }, { 'Screen edges', 'snap_screen', 'Line up with the screen edges' },
@@ -50,7 +53,7 @@ function edit.cancel_gesture()
     if prior and prior.dirty and prior.callbacks.save then prior.callbacks.save(); end
 end
 
-function edit.start() active, listing, listed = true, false, false; end
+function edit.start() active, listing, listed, bar.wide, bar.tall = true, false, false, 0, 0; end
 
 -- Ending leaves every display where it is: a drag under way is kept as it stands.
 function edit.stop()
@@ -285,13 +288,28 @@ local function place_settings(element, callbacks)
     callbacks.open_page('Display');
 end
 
+-- The bar's spot: the top middle of the screen, or the bottom middle while the open settings window reaches it, so the
+-- window's title and first row stay clear. The spot is the most room the bar has taken since edit mode started, so a line
+-- that comes and goes doesn't move it. It is never less than the help line and three rows, which every bar has: ImGui
+-- sizes a new window only after its first frame.
+local function bar_spot(imgui, screen, area)
+    local wide = math.max(bar.wide, (imgui.CalcTextSize(HELP)));
+    local tall = math.max(bar.tall, 3 * imgui.GetFrameHeight());
+    local left = (screen.x - wide) / 2;
+    if area and area.x < left + wide and area.x + area.width > left and area.y < 6 + tall and area.y + area.height > 6 then
+        at[1], at[2] = screen.x / 2, screen.y - 6;
+        return BOTTOM;
+    end
+    at[1], at[2] = screen.x / 2, 6;
+    return TOP;
+end
+
 -- The bar: Done, Undo and Redo, the picked display with its lock, what it moves with and the way to its Size and place tab, and
 -- while Grid mode is on the picked display's tick for it, the grid size and the snapping switches. It doesn't take focus
 -- as it opens, so the keys stay with the game until the bar or an outline is clicked. Returns whether it has focus.
 local function draw_bar(imgui, settings, callbacks, screen)
     local e = settings.edit_mode;
-    at[1], at[2] = screen.x / 2, 6;
-    imgui.SetNextWindowPos(at, ImGuiCond_Always, TOP);
+    imgui.SetNextWindowPos(at, ImGuiCond_Always, bar_spot(imgui, screen, callbacks.settings_area and callbacks.settings_area()));
     local flags = bit.bor(ImGuiWindowFlags_NoSavedSettings or 0, ImGuiWindowFlags_NoCollapse or 0, ImGuiWindowFlags_NoMove or 0,
         ImGuiWindowFlags_NoResize or 0, ImGuiWindowFlags_AlwaysAutoResize or 0, ImGuiWindowFlags_NoFocusOnAppearing or 0,
         ImGuiWindowFlags_NoDocking or 0);
@@ -302,6 +320,7 @@ local function draw_bar(imgui, settings, callbacks, screen)
         local wx, wy = imgui.GetWindowPos();
         local ww, wh = imgui.GetWindowSize();
         bar.x, bar.y, bar.width, bar.height = wx, wy, ww, wh;
+        bar.wide, bar.tall = math.max(bar.wide, ww), math.max(bar.tall, wh);
         if imgui.Button('Done##edit_done') then edit.stop(); end
         if imgui.IsItemHovered() then imgui.SetTooltip('Ends edit mode. Every display stays where it is.'); end
         imgui.SameLine();
@@ -394,7 +413,7 @@ local function draw_bar(imgui, settings, callbacks, screen)
                 end
             end
         end
-        imgui.TextUnformatted('Click a display to pick it. Hold Shift and drag to move it. Arrow keys move it 1 pixel, 10 with Shift. Esc ends.');
+        imgui.TextUnformatted(HELP);
         if message and os.clock() - message_at < 6 then imgui.TextUnformatted(message); end
     end
     imgui.End();
@@ -411,7 +430,7 @@ local function look_of(settings)
 end
 
 -- Drawn after every display each frame while edit mode is on. callbacks gives shift, focused, typing, settings_blocks_input,
--- changed, save, undo, redo and open_page.
+-- settings_area, changed, save, undo, redo and open_page.
 function edit.draw(settings, callbacks)
     if not active then return; end
     local imgui = require('imgui');

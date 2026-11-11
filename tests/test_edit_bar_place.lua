@@ -1,5 +1,6 @@
 -- The edit mode bar (ui/edit_mode.lua): the display list by plain names, Moves with in the words of the Size and place tab, Size and place
--- settings on the way to that tab, a party group's lock help, the line for a display its rules hide, and how to move it.
+-- settings on the way to that tab, a party group's lock help, the line for a display its rules hide, how to move it, and
+-- where it sits while the settings window is open.
 local defaults, store = require('ui.defaults'), require('core.store');
 local elements, edit, frame = require('ui.elements'), require('ui.edit_mode'), require('ui.panel_frame');
 local conditions = require('core.conditions');
@@ -112,6 +113,30 @@ conditions.shown = shown;
 draw();
 assert(not said('Its When to show rules hide it right now. Edit mode shows it anyway.'), 'The line goes with the rule.');
 assert(said('Click a display to pick it. Hold Shift and drag to move it. Arrow keys move it 1 pixel, 10 with Shift. Esc ends.'), 'The bar says how to move a display.');
+
+-- The bar sits at the top middle of the screen, or at the bottom middle while the open settings window reaches its spot
+-- up there, so the window's title and first row stay clear.
+local spot, placed;
+local set_pos, begin = imgui.SetNextWindowPos, imgui.Begin;
+rawset(imgui, 'SetNextWindowPos', function(pos, cond, pivot) spot = { pos[1], pos[2], pivot and pivot[2] }; return set_pos(pos, cond, pivot); end);
+rawset(imgui, 'Begin', function(name, ...) if name == 'Vantage edit mode##vantage_edit_bar' then placed = spot; end; return begin(name, ...); end);
+MOCK.screen, MOCK.window_size = { 1280, 720 }, { 970, 82 };
+edit.stop(); edit.start();
+local function bar_at(area)
+    callbacks.settings_area = area and function() return area; end;
+    placed = nil;
+    draw();
+    return table.concat(placed or {}, ',');
+end;
+assert(bar_at(nil) == '640,6,0', 'With no settings window open, the bar is at the top middle.');
+local where = bar_at({ x = 100, y = 40, width = 960, height = 680 });
+assert(where == '640,714,1', 'The window at the top sends it to the bottom middle: ' .. where);
+assert(bar_at({ x = 100, y = 40, width = 960, height = 680 }) == '640,714,1', 'It stays there the next frame.');
+assert(bar_at({ x = 100, y = 300, width = 960, height = 400 }) == '640,6,0', 'Lower down, the window leaves it at the top.');
+assert(bar_at({ x = 0, y = 0, width = 150, height = 700 }) == '640,6,0', 'So does a window beside its spot.');
+callbacks.settings_area, MOCK.screen, MOCK.window_size = nil, nil, nil;
+rawset(imgui, 'SetNextWindowPos', nil);
+rawset(imgui, 'Begin', nil);
 
 edit.stop();
 rawset(imgui, 'BeginCombo', nil);

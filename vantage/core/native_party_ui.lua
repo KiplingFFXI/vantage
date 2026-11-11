@@ -207,7 +207,7 @@ local function locate()
         end
         for j = 1, i - 1 do if found[j] == found[i] then reason = 'Party-frame pointers overlap.'; return false; end end
     end
-    slots = found;
+    slots, reason = found, 'Found the game\'s party windows.';
     return true;
 end
 
@@ -368,6 +368,14 @@ end;
 
 function native.status()
     return { available = slots ~= nil, reason = reason, geometry = require('core.store').copy(geometry_status) };
+end
+
+-- The same for the settings window, which reads it each draw and changes none of it: the geometry itself, not a copy,
+-- in a table kept from call to call.
+local live = {};
+function native.live_status()
+    live.available, live.reason, live.geometry = slots ~= nil, reason, geometry_status;
+    return live;
 end
 
 -- The party list's warmup steps, in order, as { name, run }: the first party-frame pattern, the second with the

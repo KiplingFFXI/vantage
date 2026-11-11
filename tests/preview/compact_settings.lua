@@ -32,9 +32,11 @@ end;
 function PREVIEW.compact_capture()
     app.state.history, app.state.redo, app.state.transaction = {}, {}, nil;
     assert(PREVIEW.body.height >= 80, 'Short menus retain a usable scroll area.');
-    local inside, bounds = fits(TABS);
-    assert(inside, 'The tabs start in view: '..bounds);
-    inside, bounds = fits(FIRST_ROW);
+    -- The page ends a line of text above the window's bottom edge, clear of the resize corners, so at this size the
+    -- tabs' second line starts with its bottom cut off.
+    local tabs = PREVIEW_PY.item_bounds(TABS);
+    assert(tabs[2] >= PREVIEW.body.y and tabs[2] < PREVIEW.body.y+PREVIEW.body.height, 'The tabs start in view: '..table.concat(tabs, ','));
+    local inside, bounds = fits(FIRST_ROW);
     assert(not inside, 'The first row starts below the fold, so only scrolling can bring it into view: '..bounds);
 end;
 function PREVIEW.compact_visible()

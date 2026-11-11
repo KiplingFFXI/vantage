@@ -1,5 +1,6 @@
 -- A group in a panel of its own lists its members in the slot order chosen on Party list buffs, and leaves you out
--- when Your own row is Never. The Up and Down buttons reorder the slots as one Undo step each.
+-- when Your own row is Never. The Up and Down buttons reorder the slots as one Undo step each, and the frame of a click
+-- still shows each slot once.
 local layout, overlay, hud = require('ui.party_layout'), require('ui.native_party_hud'), require('ui.party_hud');
 local defaults = require('ui.defaults');
 local copy, equal = require('core.store').copy, require('core.customization').equal;
@@ -49,9 +50,19 @@ local history = h.app.state.history;
 local before = copy(config);
 h.on('party_ui', 'place');
 assert(equal(config, before) and #history == 0, 'Opening the slot order changes nothing.');
-h.draw('Down##party_slot');
+-- The move waits for the list to be drawn, so the frame of the click shows each slot once, in the order it had.
+local function slot_rows(click)
+    h.draw(click);
+    local rows = {};
+    for _, call in ipairs(h.calls('TextUnformatted')) do
+        if tostring(call[2]):find('^Slot %d$') then rows[#rows + 1] = call[2]; end;
+    end;
+    return table.concat(rows, ',');
+end;
+local shown = slot_rows('Down##party_slot');
 assert(table.concat(config.groups[1].order, ',') == '3,5,1,0,4,2' and #history == 1 and history[1].label == 'Member order',
     'Down moves a slot one place later, as one Undo step.');
+assert(shown == 'Slot 6,Slot 4,Slot 2,Slot 1,Slot 5,Slot 3', 'The frame of the click draws each slot once: ' .. shown);
 h.draw('Up##party_slot');
 assert(table.concat(config.groups[1].order, ',') == '5,3,1,0,4,2' and #history == 2, 'Up moves it back.');
 assert(table.concat(config.groups[2].order, ',') == '0,1,2,3,4,5', 'Only the party chosen to edit is reordered.');

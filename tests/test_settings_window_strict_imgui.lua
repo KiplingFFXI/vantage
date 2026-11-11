@@ -5,7 +5,7 @@
 local base=require('imgui');
 -- The functions the settings window and its pages use.
 local bound={'AddFontFromFileTTF','AlignTextToFramePadding','Begin','BeginChild','BeginCombo','BeginDisabled','BeginTable',
-    'BeginTooltip','Button','CalcTextSize','Checkbox','CollapsingHeader',
+    'BeginTooltip','Button','CalcTextSize','Checkbox','CloseCurrentPopup','CollapsingHeader',
     'ColorEdit4','Dummy','End','EndChild','EndCombo','EndDisabled','EndTable','EndTooltip','GetBackgroundDrawList',
     'GetContentRegionAvail','GetCursorPosX','GetCursorScreenPos','GetFont','GetFontSize','GetForegroundDrawList',
     'GetFrameHeight','GetIO','GetItemRectMax','GetItemRectMin','GetMousePos','GetScrollY','GetStyle','GetWindowDrawList',

@@ -3,11 +3,9 @@
 Each scene of tests/frame_harness.lua below runs with the JIT off, where the counts repeat from run to run. After a
 warmup the window's draw is counted alone, with the collector stopped: its frame, look and skin, Undo and Redo, the
 search box and the page with its controls. The main page has every section open, More look's art checks among them,
-and every tab of the panel frame is drawn as a player has it. Two pages and a tab still make a little each frame and
-are left out: Timer durations and Profiles make a function for each of their buttons as they draw, and the Place tab
-of Party list buffs copies the game's party list for its notes. The tick, text and number controls those pages draw
-with are counted on Timer durations with a page that draws one of each. A table made every tenth draw shows. Skipped
-without the client.
+and every tab of the panel frame is drawn as a player has it. The tick, text and number controls are also counted
+alone, on Timer durations with a page that draws one of each. A table made every tenth draw shows. Skipped without
+the client.
 """
 from pathlib import Path
 import os
@@ -18,8 +16,9 @@ import benchmark_frame
 
 GAME = Path(os.environ['ASHITA_LIBS']).resolve().parent.parent / 'SquareEnix/FINAL FANTASY XI'
 SCENES = ('settings', 'main_closed', 'main_grid', 'settings_help', 'settings_display', 'settings_filters', 'settings_party',
+          'settings_durations', 'settings_profiles',
           'panel_show', 'panel_look', 'panel_look_open', 'panel_filters', 'panel_place', 'panel_when', 'panel_recasts',
-          'panel_party', 'panel_party_look', 'panel_party_filters', 'panel_party_when', 'panel_overhead',
+          'panel_party', 'panel_party_look', 'panel_party_filters', 'panel_party_place', 'panel_party_when', 'panel_overhead',
           'panel_overhead_filters', 'panel_cooldowns', 'panel_rolls', 'panel_pet', 'panel_pet_filters', 'panel_alerts',
           'panel_alerts_rule', 'panel_hidden')
 

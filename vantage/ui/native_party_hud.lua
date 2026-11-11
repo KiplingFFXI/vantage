@@ -221,22 +221,29 @@ end
 -- the settings and the strips agree: { group, row_height, pitch, room, measured_by,
 -- attached, members }. pitch is nil when nothing measured it, and measured_by says where it came from: 'rows',
 -- 'empty_slots', 'session' or 'none'. attached is false for a strip in a panel of its own. members counts the group's
--- rows, yours included. geometry is core/native_party_ui's, or the copy its status() gives; without one the list is
--- empty.
-function overlay.rooms(config, geometry)
-    local out = {};
-    if type(geometry) ~= 'table' or not geometry.available or type(geometry.groups) ~= 'table' then return out; end;
-    for group = 1, 3 do
-        local frame = geometry.groups[group];
-        if type(frame) == 'table' and overlay.shown(config, group) then
-            local height, members = tallest(frame);
-            local pitch, saved = frame.pitch, config.groups[group];
-            out[#out + 1] = { group = group, row_height = height, pitch = pitch,
-                room = overlay.room(height, pitch),
-                measured_by = frame.measured_by or (pitch and 'rows' or 'none'),
-                attached = not (type(saved) == 'table' and saved.native_detached), members = members };
+-- rows, yours included. geometry is core/native_party_ui's, as native.geometry or its live_status() gives it, or the
+-- copy its status() gives. Without one the list is empty. out, when given, is the list to fill, its entries used
+-- again, so a page that asks each frame makes nothing.
+function overlay.rooms(config, geometry, out)
+    out = out or {};
+    local count = 0;
+    if type(geometry) == 'table' and geometry.available and type(geometry.groups) == 'table' then
+        for group = 1, 3 do
+            local frame = geometry.groups[group];
+            if type(frame) == 'table' and overlay.shown(config, group) then
+                local height, members = tallest(frame);
+                local pitch, saved = frame.pitch, config.groups[group];
+                count = count + 1;
+                local entry = out[count] or {};
+                out[count] = entry;
+                entry.group, entry.row_height, entry.pitch = group, height, pitch;
+                entry.room = overlay.room(height, pitch);
+                entry.measured_by = frame.measured_by or (pitch and 'rows' or 'none');
+                entry.attached, entry.members = not (type(saved) == 'table' and saved.native_detached), members;
+            end;
         end;
     end;
+    for index = #out, count + 1, -1 do out[index] = nil; end;
     return out;
 end
 

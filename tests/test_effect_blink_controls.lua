@@ -57,6 +57,23 @@ frame(nil,threshold,47);
 expected=defaults.copy(baseline);
 for _,effects in ipairs(holders(expected))do effects.blink_seconds=47;end;
 assert(custom.equal(custom.history_value(settings),expected),'Changing the threshold preserves every other display choice');
+-- A typed nan is no number of seconds and changes nothing. A number past the ends is held at them.
+frame(nil,threshold,0/0);
+assert(custom.equal(custom.history_value(settings),expected) and #phases==0,'A nan typed into the seconds changes nothing');
+assert(require('core.store').encode(settings)~=nil,'The settings still save');
+frame(nil,threshold,math.huge);
+assert(settings.overhead.blink_seconds==300,'Past the end, the seconds are held at 300');
+frame(nil,threshold,47);
+-- The slider is as wide as its longest text, so none of it is cut off.
+frame();
+local width;
+for index,call in ipairs(MOCK.imgui_calls)do
+    if call[1]=='SliderFloat' and call[2]==threshold then
+        local before=MOCK.imgui_calls[index-1];
+        width=before and before[1]=='SetNextItemWidth' and before[2];
+    end;
+end;
+assert(width and width>=imgui.CalcTextSize('300 seconds left')+16,'The seconds slider fits "300 seconds left": '..tostring(width));
 frame(on_tick);
 for _,effects in ipairs(holders(expected))do effects.blink_icons=false;end;
 assert(custom.equal(custom.history_value(settings),expected) and settings.overhead.blink_seconds==47,

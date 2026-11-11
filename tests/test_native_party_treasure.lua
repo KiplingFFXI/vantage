@@ -100,6 +100,10 @@ package.loaded.ffi.os = 'Windows';
 setup();
 found = native.geometry(roster, 1280, 720, menu);
 assert(native.status().available, 'Two unique patterns find the party window slots.');
+assert(native.status().reason == "Found the game's party windows.", 'Once they are found, the status says so instead of waiting.');
+plain(native.status().reason);
+assert(native.status().geometry ~= found and native.live_status().geometry == found and native.live_status() == native.live_status()
+    and native.live_status().reason == native.status().reason, 'The settings window reads the geometry itself, with no copy and no new table.');
 local searches = scans;
 native.geometry(roster, 1280, 720, menu);
 assert(scans == searches, 'The slots are found once, then kept.');

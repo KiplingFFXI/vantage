@@ -21,6 +21,8 @@ local pending, previews, previewed, previewed_revision, other_screen, save_probl
 local import_name, import_keep = { '' }, { keep = false };
 -- The files Import from a file listed.
 local files;
+-- What the buttons and lists act on, set as each draw starts, so a draw makes no function for them.
+local now = {};
 
 -- Saved profile names, any problem reading them, and where the current settings came from.
 function page.choices(callbacks)
@@ -125,126 +127,183 @@ local function list(imgui, c, label, search, help, id, shown, draw_entries, leav
     c.tip(help);
 end
 
+local function profile_entries()
+    for _, name in ipairs(now.names) do if now.imgui.Selectable(name, selected == name) then page.pick(name); end end
+end
+
+-- Overwrite and Delete wait for their Confirm.
+local function ask(kind)
+    local c, callbacks = now.c, now.callbacks;
+    if selected == '' then c.note('Choose a saved profile first.'); return; end
+    local state = callbacks.profile_status and callbacks.profile_status(selected) or {};
+    confirm = { kind = kind, name = selected, token = state.token };
+end
+
+local function load_profile()
+    local c = now.c;
+    if selected == '' then c.note('Choose a saved profile first.'); return; end
+    if c.call('profile_load', selected) ~= false then c.note('Profile loaded.'); end
+end
+
+local function overwrite_profile() ask('overwrite'); end
+
+local function rename_profile()
+    local c, callbacks = now.c, now.callbacks;
+    if selected == '' or name_box[1] == '' then c.note('Choose a saved profile and enter its new name.'); return; end
+    local state = callbacks.profile_status and callbacks.profile_status(selected) or {};
+    if c.call('profile_rename', selected, name_box[1], state.token) ~= false then pick_saved(callbacks, name_box[1]); c.note('Profile renamed.'); end
+end
+
+local function delete_profile() ask('delete'); end
+
+local function confirm_change()
+    local c, request = now.c, confirm;
+    local ok;
+    if request.kind == 'overwrite' then ok = c.call('profile_save', request.name, true, request.token);
+    else ok = c.call('profile_delete', request.name, request.token); end
+    if ok ~= false then
+        c.note('Profile ' .. (request.kind == 'overwrite' and 'updated.' or 'deleted.'));
+        if request.kind == 'delete' then selected = ''; end
+    end
+    confirm = nil;
+end
+
+local function cancel_change() confirm = nil; end
+
+local function share_profile(to_file)
+    local c, callbacks = now.c, now.callbacks;
+    if selected == '' then c.note('Choose a saved profile first.'); return; end
+    if not callbacks.profile_share then c.note('That action is not available right now.'); return; end
+    local ok, why, left, file = callbacks.profile_share(selected, to_file);
+    if not ok then c.note(why or 'That profile could not be exported.', 'problem_messages'); return; end
+    c.note((to_file and 'Saved "' .. selected .. '" as ' .. file .. '. A friend puts it in their own shared folder and uses Import from a file.'
+        or 'Copied "' .. selected .. '". Send it in a message, or use Export to a file to keep it as a file.') .. (left and ' ' .. left or ''), 'done_messages');
+end
+
+local function export_to_clipboard() share_profile(false); end
+local function export_to_file() share_profile(true); end
+
+local function save_new()
+    local c = now.c;
+    if name_box[1] == '' then c.note('Give this profile a name first.'); return; end
+    if c.call('profile_save', name_box[1], false) ~= false then pick_saved(now.callbacks, name_box[1]); c.note('Profile saved.', 'done_messages'); end
+end
+
 local function saved_profiles(imgui, settings, callbacks, c, names, problem, status)
     c.heading('Profiles', 'Save your panels, appearance and alert rules together. Current effects and timer deadlines are never part of a profile.');
     if problem then imgui.TextWrapped(problem); end
     imgui.TextWrapped(status_line(settings, status));
+    -- With nothing to pick, the list is greyed out and says why.
+    local none = #names == 0;
+    if none and imgui.BeginDisabled then imgui.BeginDisabled(true); end
     list(imgui, c, 'Saved profiles', 'Saved profiles', 'Picking one changes nothing until you use a button below.', '##profiles',
-        selected ~= '' and selected or 'Choose a saved profile', function()
-            for _, name in ipairs(names) do if imgui.Selectable(name, selected == name) then page.pick(name); end end
-        end);
-    local function ask(kind)
-        if selected == '' then c.note('Choose a saved profile first.'); return; end
-        local state = callbacks.profile_status and callbacks.profile_status(selected) or {};
-        confirm = { kind = kind, name = selected, token = state.token };
-    end
-    c.button('Load##profile_load', function()
-        if selected == '' then c.note('Choose a saved profile first.'); return; end
-        if c.call('profile_load', selected) ~= false then c.note('Profile loaded.'); end
-    end, 'Puts the picked saved profile in place of your settings. Undo puts them back.', nil, 'Load profile');
+        none and (problem and 'No profiles could be read' or 'No saved profiles yet') or selected ~= '' and selected or 'Choose a saved profile',
+        profile_entries);
+    if none and imgui.EndDisabled then imgui.EndDisabled(); end
+    c.button('Load##profile_load', load_profile, 'Puts the picked saved profile in place of your settings. Undo puts them back.', nil, 'Load profile');
     imgui.SameLine();
-    c.button('Overwrite##profile_overwrite', function() ask('overwrite'); end,
+    c.button('Overwrite##profile_overwrite', overwrite_profile,
         'Replaces the picked saved profile after you confirm. Undo the last profile change can put it back.', nil, 'Overwrite profile');
     imgui.SameLine();
-    c.button('Rename##profile_rename', function()
-        if selected == '' or name_box[1] == '' then c.note('Choose a saved profile and enter its new name.'); return; end
-        local state = callbacks.profile_status and callbacks.profile_status(selected) or {};
-        if c.call('profile_rename', selected, name_box[1], state.token) ~= false then pick_saved(callbacks, name_box[1]); c.note('Profile renamed.'); end
-    end, 'Gives the picked saved profile the name below.', nil, 'Rename profile');
+    c.button('Rename##profile_rename', rename_profile, 'Gives the picked saved profile the name below.', nil, 'Rename profile');
     imgui.SameLine();
-    c.button('Delete##profile_delete', function() ask('delete'); end, 'Deletes the picked saved profile after you confirm.', nil, 'Delete profile');
+    c.button('Delete##profile_delete', delete_profile, 'Deletes the picked saved profile after you confirm.', nil, 'Delete profile');
     if confirm then
         imgui.TextWrapped((confirm.kind == 'overwrite' and 'This replaces the saved settings in ' or 'This deletes the saved profile ') .. confirm.name .. '.');
         -- The search knows both kinds by the words they begin with, which it finds only while a Confirm waits.
-        c.button('Confirm ' .. confirm.kind, function()
-            local request = confirm;
-            local ok;
-            if request.kind == 'overwrite' then ok = c.call('profile_save', request.name, true, request.token);
-            else ok = c.call('profile_delete', request.name, request.token); end
-            if ok ~= false then
-                c.note('Profile ' .. (request.kind == 'overwrite' and 'updated.' or 'deleted.'));
-                if request.kind == 'delete' then selected = ''; end
-            end
-            confirm = nil;
-        end, nil, nil, 'Confirm ');
+        c.button('Confirm ' .. confirm.kind, confirm_change, nil, nil, 'Confirm ');
         imgui.SameLine();
-        c.button('Cancel profile change', function() confirm = nil; end);
+        c.button('Cancel profile change', cancel_change);
     end
     -- Export to clipboard and Export to a file sit here, as they act on the profile picked just above.
     local text = help_lines();
-    local function share_profile(to_file)
-        if selected == '' then c.note('Choose a saved profile first.'); return; end
-        if not callbacks.profile_share then c.note('That action is not available right now.'); return; end
-        local ok, why, left, file = callbacks.profile_share(selected, to_file);
-        if not ok then c.note(why or 'That profile could not be exported.', 'problem_messages'); return; end
-        c.note((to_file and 'Saved "' .. selected .. '" as ' .. file .. '. A friend puts it in their own shared folder and uses Import from a file.'
-            or 'Copied "' .. selected .. '". Send it in a message, or use Export to a file to keep it as a file.') .. (left and ' ' .. left or ''), 'done_messages');
-    end
-    c.button('Export to clipboard##profile_share', function() share_profile(false); end, text.share, nil, 'Export a saved profile');
+    c.button('Export to clipboard##profile_share', export_to_clipboard, text.share, nil, 'Export a saved profile');
     imgui.SameLine();
-    c.button('Export to a file##profile_save_file', function() share_profile(true); end, text.save_file, nil, 'Export a saved profile to a file');
+    c.button('Export to a file##profile_save_file', export_to_file, text.save_file, nil, 'Export a saved profile to a file');
     c.row_label('Name', 'What Save as new calls it, and the new name for Rename.');
     imgui.SetNextItemWidth(-(imgui.CalcTextSize('Save as new') + 28));
     imgui.InputTextWithHint('##profile_name', 'Profile name', name_box, 81);
     c.mark('Profile name', 'What Save as new calls it, and the new name for Rename.');
     c.tip('What Save as new calls it, and the new name for Rename.');
     imgui.SameLine();
-    c.button('Save as new', function()
-        if name_box[1] == '' then c.note('Give this profile a name first.'); return; end
-        if c.call('profile_save', name_box[1], false) ~= false then pick_saved(callbacks, name_box[1]); c.note('Profile saved.', 'done_messages'); end
-    end, 'Saves your settings as a new profile under this name.');
+    c.button('Save as new', save_new, 'Saves your settings as a new profile under this name.');
 end
+
+local function job_entries()
+    local imgui, job = now.imgui, now.job;
+    for id = 1, #jobs do
+        if imgui.Selectable(jobs[id], job == id) then picked_job = id; end
+    end
+end
+
+local function link_job()
+    local c = now.c;
+    if selected == '' then c.note('Choose a saved profile first.'); return; end
+    c.call('profile_link', now.job, selected);
+end
+
+local function unlink_job() now.c.call('profile_link', now.job, ''); end
+local function unlink_all() now.c.call('reset', 'job_profiles'); end
+local function recover_change() now.c.call('profile_recover'); confirm = nil; end
+
+-- Whether names has name.
+local function has_name(names, name)
+    for _, each in ipairs(names) do if each == name then return true; end end
+    return false;
+end
+
+-- The jobs the picked profile loads on, a table kept from draw to draw.
+local linked = {};
 
 -- Any job can be linked, not only the one you are on.
 local function job_links(imgui, settings, view, c, names, status)
     local job = job_shown(view);
+    now.job = job;
     list(imgui, c, 'Load this profile when I change to', 'Load this profile when I change to',
-        'Pick a job, then Link. Changing to that job loads the saved profile picked above.', '##linked_job', jobs[job], function()
-            for id = 1, #jobs do
-                if imgui.Selectable(jobs[id], job == id) then picked_job = id; end
-            end
-        end, 'Link');
+        'Pick a job, then Link. Changing to that job loads the saved profile picked above.', '##linked_job', jobs[job], job_entries, 'Link');
     imgui.SameLine();
-    c.button('Link##profile_link', function()
-        if selected == '' then c.note('Choose a saved profile first.'); return; end
-        c.call('profile_link', job, selected);
-    end, 'Changing to this job loads the saved profile picked above.', nil, 'Link this job');
+    c.button('Link##profile_link', link_job, 'Changing to this job loads the saved profile picked above.', nil, 'Link this job');
     local link = link_of(settings, job);
     if link ~= '' then
-        c.button('Unlink##profile_unlink', function() c.call('profile_link', job, ''); end, 'Changing to this job loads no profile.', nil, 'Unlink this job');
+        c.button('Unlink##profile_unlink', unlink_job, 'Changing to this job loads no profile.', nil, 'Unlink this job');
         imgui.SameLine();
     end
     if page.any_link(settings) then
-        c.button('Unlink all jobs', function() c.call('reset', 'job_profiles'); end, 'No job loads a profile any more. Undo puts the links back.');
+        c.button('Unlink all jobs', unlink_all, 'No job loads a profile any more. Undo puts the links back.');
     end
-    local exists = {};
-    for _, name in ipairs(names) do exists[name] = true; end
-    if link ~= '' and not exists[link] then imgui.TextColored(settings.style.warning_color, 'This job refers to a missing profile: ' .. link);
+    if link ~= '' and not has_name(names, link) then imgui.TextColored(settings.style.warning_color, 'This job refers to a missing profile: ' .. link);
     elseif link ~= '' and link ~= selected then imgui.TextWrapped(jobs[job] .. ' loads ' .. link .. '.'); end
     if selected ~= '' then
-        local linked = {};
+        for index = #linked, 1, -1 do linked[index] = nil; end
         for id = 1, #jobs do if link_of(settings, id) == selected then linked[#linked + 1] = jobs[id]; end end
         if #linked > 0 then imgui.TextWrapped('Linked: ' .. table.concat(linked, ', ')); end
     end
     if status.recover_available then
-        c.button('Undo the last profile change', function() c.call('profile_recover'); confirm = nil; end,
+        c.button('Undo the last profile change', recover_change,
             'Puts back the last saved profile ' .. (status.recover_kind or 'change') .. ' if those files have not changed since.');
+    end
+end
+
+local scopes = { placement = 'Where the panels and party list buffs are', presentation = 'Where things are and how they look' };
+local scope_order = { 'placement', 'presentation' };
+
+local function share_toggled(value) now.c.call('sharing', value, now.settings.shared_scope); end
+
+local function scope_entries()
+    local imgui, settings, c = now.imgui, now.settings, now.c;
+    for _, scope in ipairs(scope_order) do
+        if imgui.Selectable(scopes[scope] .. '##' .. scope, settings.shared_scope == scope) then c.call('sharing', settings.shared_layout, scope); end
     end
 end
 
 local function across_characters(imgui, settings, c)
     c.heading('Across characters');
     c.check('Share settings across my characters', settings, 'shared_layout', 'Loads existing shared settings before joining. Your later changes to what you share reach your other characters.',
-        function(value) c.call('sharing', value, settings.shared_scope); end);
+        share_toggled);
     if not settings.shared_layout then return; end
-    local scopes = { placement = 'Where the panels and party list buffs are', presentation = 'Where things are and how they look' };
     list(imgui, c, 'What to share', 'What to share across characters',
         'How they look shares panels, appearance, groups, visibility, overhead icons, recast marks, the ready pulse, party cooldowns and the Phantom Roll and pet displays. Job links, alert rules and member names stay with each character.',
-        '##Shared settings scope', scopes[settings.shared_scope], function()
-            for _, scope in ipairs({ 'placement', 'presentation' }) do
-                if imgui.Selectable(scopes[scope] .. '##' .. scope, settings.shared_scope == scope) then c.call('sharing', settings.shared_layout, scope); end
-            end
-        end);
+        '##Shared settings scope', scopes[settings.shared_scope], scope_entries);
 end
 
 -- A string read from the clipboard or a file. base is the name a whole profile starts with, before a number is added
@@ -266,11 +325,15 @@ local function read_string(imgui, c, names, payload, why, base)
     import_name[1] = page.free_name(names, base or 'Imported');
 end
 
+local function file_entries()
+    local imgui = now.imgui;
+    for _, file in ipairs(files) do if imgui.Selectable(file .. '##profile_file_' .. file, false) then now.opened = file; end end
+end
+
 local function read_file(imgui, callbacks, c, names, text)
-    local opened;
-    list(imgui, c, 'File to open', 'File to open', text.file, '##profile_file', 'Choose a file to open', function()
-        for _, file in ipairs(files) do if imgui.Selectable(file .. '##profile_file_' .. file, false) then opened = file; end end
-    end);
+    now.opened = nil;
+    list(imgui, c, 'File to open', 'File to open', text.file, '##profile_file', 'Choose a file to open', file_entries);
+    local opened = now.opened;
     if not opened or not callbacks.shared_read then return; end
     -- The name starts as the file's name without .txt, keeping only what a profile name can have (core/profiles.lua):
     -- plain characters, no ##. It is Imported when nothing is left of it, or when what is left is None.
@@ -280,30 +343,54 @@ local function read_file(imgui, callbacks, c, names, text)
     read_string(imgui, c, names, payload, why, base ~= '' and not reserved and base or 'Imported');
 end
 
+local function keep_toggled(value) import_keep.keep = value; end
+
+local function save_import()
+    local c, callbacks = now.c, now.callbacks;
+    if not callbacks.profile_import then return; end
+    local ok, why, saved = callbacks.profile_import(pending, import_name[1], other_screen ~= nil and import_keep.keep);
+    if not ok then
+        save_problem = why or 'That profile could not be saved.';
+        c.note(save_problem, 'problem_messages');
+        return;
+    end
+    page.pick(saved);
+    page.clear();
+    c.note('Saved "' .. saved .. '" as a new profile. It is not loaded: click Load to use it.', 'done_messages');
+end
+
 -- A whole profile can stay out of your settings: saved under a name, not loaded.
 local function save_read_profile(imgui, callbacks, c, text)
     imgui.TextWrapped('Or save it as a new profile. It is not loaded, and your screen does not change.');
     if other_screen then
         imgui.TextWrapped(other_screen);
-        c.check('Keep my own display positions', import_keep, 'keep', text.keep, function(value) import_keep.keep = value; end);
+        c.check('Keep my own display positions', import_keep, 'keep', text.keep, keep_toggled);
     end
     c.row_label('Save it as', text.name);
     imgui.SetNextItemWidth(-1);
     imgui.InputTextWithHint('##import_name', 'Profile name', import_name, 81);
     c.mark('Save it as', text.name);
     c.tip(text.name);
-    c.button('Save as a new profile', function()
-        if not callbacks.profile_import then return; end
-        local ok, why, saved = callbacks.profile_import(pending, import_name[1], other_screen ~= nil and import_keep.keep);
-        if not ok then
-            save_problem = why or 'That profile could not be saved.';
-            c.note(save_problem, 'problem_messages');
-            return;
-        end
-        page.pick(saved);
-        page.clear();
-        c.note('Saved "' .. saved .. '" as a new profile. It is not loaded: click Load to use it.', 'done_messages');
-    end, text.save);
+    c.button('Save as a new profile', save_import, text.save);
+end
+
+-- Import and add, and Import and replace, one for each way an export can go in.
+local import_with = {};
+for _, mode in ipairs(share.modes) do
+    import_with[mode] = function()
+        local c = now.c;
+        local ok, why = now.callbacks.share_import(pending, mode);
+        if ok ~= false then
+            c.note((mode == 'add' and 'Added from the export.' or 'Replaced with the export.') .. ' Undo takes it back.', 'done_messages');
+            page.clear();
+        else c.note(why or 'That export could not be used.', 'problem_messages'); end
+    end;
+end
+
+-- This also takes away the line a save that failed left, which asks for a name in a box that is gone.
+local function clear_import()
+    if save_problem then now.c.forget_note(save_problem); end
+    page.clear();
 end
 
 local function read_result(imgui, settings, callbacks, c, text)
@@ -323,21 +410,35 @@ local function read_result(imgui, settings, callbacks, c, text)
     for _, mode in ipairs(share.modes) do
         if mode ~= share.modes[1] then imgui.SameLine(); end
         local name = mode == 'add' and 'Import and add' or 'Import and replace';
-        c.button(name .. '##share_' .. mode, function()
-            local ok, why = callbacks.share_import(pending, mode);
-            if ok ~= false then
-                c.note((mode == 'add' and 'Added from the export.' or 'Replaced with the export.') .. ' Undo takes it back.', 'done_messages');
-                page.clear();
-            else c.note(why or 'That export could not be used.', 'problem_messages'); end
-        end, mode == 'add' and 'Keeps what you changed and takes the rest. One Undo step.' or 'Puts what it holds in place of yours. One Undo step.', nil, name);
+        c.button(name .. '##share_' .. mode, import_with[mode],
+            mode == 'add' and 'Keeps what you changed and takes the rest. One Undo step.' or 'Puts what it holds in place of yours. One Undo step.', nil, name);
     end
     imgui.SameLine();
-    -- This also takes away the line a save that failed left, which asks for a name in a box that is gone.
-    c.button('Clear##share_clear', function()
-        if save_problem then c.forget_note(save_problem); end
-        page.clear();
-    end, 'Forgets the export read. Nothing changes.', nil, 'Clear the import');
+    c.button('Clear##share_clear', clear_import, 'Forgets the export read. Nothing changes.', nil, 'Clear the import');
     if pending and pending.kind == 'profile' then save_read_profile(imgui, callbacks, c, text); end
+end
+
+local function copy_export()
+    local c, callbacks = now.c, now.callbacks;
+    if not callbacks.share_copy then return; end
+    local ok, why, left = callbacks.share_copy(pick.kind, pick.id);
+    if ok then c.note('Copied an export of ' .. (pick.kind == 'element' and labels[pick.id] or share.kind_names[pick.kind]:lower()) .. '.'
+        .. (left and ' ' .. left or ''), 'done_messages');
+    else c.note(why or 'That export could not be made.', 'problem_messages'); end
+end
+
+local function import_clipboard()
+    local callbacks = now.callbacks;
+    if callbacks.share_read then read_string(now.imgui, now.c, now.names, callbacks.share_read()); end
+end
+
+local function open_files()
+    local c, callbacks = now.c, now.callbacks;
+    if not callbacks.shared_files then return; end
+    local found, why = callbacks.shared_files();
+    files = found;
+    if why then c.note(why, 'problem_messages');
+    elseif #found == 0 then c.note('There are no .txt files in ' .. help_lines().folder .. ' yet. Put a file there, then click Import from a file again.'); end
 end
 
 local function import_export(imgui, settings, callbacks, c, names)
@@ -348,25 +449,11 @@ local function import_export(imgui, settings, callbacks, c, names)
         'One display holds everything about it but its switch and lock. Where everything is holds where every display sits. Whole profile holds every setting.', nil, not one_display and 'Copy' or nil);
     if one_display then c.choice('Display to export', pick, 'id', ids, labels, nil, nil, 'Copy'); end
     imgui.SameLine();
-    c.button('Copy##share_copy', function()
-        if not callbacks.share_copy then return; end
-        local ok, why, left = callbacks.share_copy(pick.kind, pick.id);
-        if ok then c.note('Copied an export of ' .. (pick.kind == 'element' and labels[pick.id] or share.kind_names[pick.kind]:lower()) .. '.'
-            .. (left and ' ' .. left or ''), 'done_messages');
-        else c.note(why or 'That export could not be made.', 'problem_messages'); end
-    end, 'Copies it to the clipboard. Nothing is sent anywhere.', nil, 'Copy the export');
+    c.button('Copy##share_copy', copy_export, 'Copies it to the clipboard. Nothing is sent anywhere.', nil, 'Copy the export');
     local text = help_lines();
-    c.button('Import from clipboard', function()
-        if callbacks.share_read then read_string(imgui, c, names, callbacks.share_read()); end
-    end, text.read);
+    c.button('Import from clipboard', import_clipboard, text.read);
     imgui.SameLine();
-    c.button('Import from a file##profile_open_file', function()
-        if not callbacks.shared_files then return; end
-        local found, why = callbacks.shared_files();
-        files = found;
-        if why then c.note(why, 'problem_messages');
-        elseif #found == 0 then c.note('There are no .txt files in ' .. text.folder .. ' yet. Put a file there, then click Import from a file again.'); end
-    end, text.open_file, nil, 'Import from a file');
+    c.button('Import from a file##profile_open_file', open_files, text.open_file, nil, 'Import from a file');
     if files and #files > 0 then read_file(imgui, callbacks, c, names, text); end
     if pending then read_result(imgui, settings, callbacks, c, text); end
 end
@@ -380,16 +467,20 @@ local function shaded(imgui, c, value)
     imgui.PopStyleColor();
 end
 
+local function put_back() now.c.call('reset', 'displays'); end
+local function reset_all() now.c.call('reset', 'all'); end
+
 local function start_over(imgui, c)
     c.heading('Start over');
-    c.button('Put every display back where it started', function() c.call('reset', 'displays'); end, PUT_BACK .. ' Undo takes it back.');
+    c.button('Put every display back where it started', put_back, PUT_BACK .. ' Undo takes it back.');
     shaded(imgui, c, PUT_BACK);
-    c.button('Reset all settings', function() c.call('reset', 'all'); end, RESET_ALL .. ' Undo takes it back.');
+    c.button('Reset all settings', reset_all, RESET_ALL .. ' Undo takes it back.');
     shaded(imgui, c, RESET_ALL);
 end
 
 function page.draw(imgui, settings, view, callbacks, c)
     local names, problem, status = page.choices(callbacks);
+    now.imgui, now.settings, now.callbacks, now.c, now.names = imgui, settings, callbacks, c, names;
     saved_profiles(imgui, settings, callbacks, c, names, problem, status);
     job_links(imgui, settings, view, c, names, status);
     across_characters(imgui, settings, c);

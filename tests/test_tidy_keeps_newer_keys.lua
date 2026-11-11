@@ -55,3 +55,20 @@ old = defaults.tidy(json.decode(store.encode(old)));
 for _, key in ipairs(window_keys) do assert(old.window_style[key] == nil, 'The window look loses ' .. key .. '.'); end
 for _, key in ipairs(style_keys) do assert(old.party_ui.style[key] == nil, 'The strips style loses ' .. key .. '.'); end
 assert(#window_keys == 51 and old.window_style.zz_newer == 1 and old.party_ui.style.zz_newer == 2, 'and the newer keys stay.');
+-- A newer display stays in the panels map, and a newer overhead type in its map: each is a table. Anything else there,
+-- from a hand edit or /vg set, goes, as the settings window and the layout export read each one as a table.
+local stray = defaults.make();
+stray.panels.zz_newer, stray.overhead.types.zz_newer = { label = 'newer panel' }, { label = 'newer type' };
+stray.panels['1'], stray.panels.zz_flag = 0.5, true;
+stray.overhead.types.enabled, stray.overhead.types['2'] = false, 'x';
+stray = defaults.tidy(json.decode(store.encode(stray)));
+assert(stray.panels.zz_newer and stray.panels.zz_newer.label == 'newer panel' and stray.overhead.types.zz_newer
+    and stray.overhead.types.zz_newer.label == 'newer type', 'A newer display or overhead type stays.');
+assert(stray.panels['1'] == nil and stray.panels.zz_flag == nil and stray.overhead.types.enabled == nil
+    and stray.overhead.types['2'] == nil, 'A value that is no table goes from both maps.');
+local custom = require('core.customization');
+local set = assert(custom.set(defaults.make(), 'panels', '[0.5]'));
+for id, panel in pairs(set.panels) do assert(type(panel) == 'table', '/vg set panels [0.5] keeps no ' .. tostring(id) .. ' that is no table.'); end
+assert(require('core.share').export(set, 'layout', nil, 'Tester'), 'The layout export reads every display.');
+set = assert(custom.set(defaults.make(), 'overhead.types', '{"enabled":false}'));
+assert(set.overhead.types.enabled == nil, '/vg set overhead.types {"enabled":false} keeps no value that is no table.');

@@ -71,10 +71,10 @@ class UiCleanupPreviewTests(unittest.TestCase):
     def test_short_menu_large_font(self):
         actions = [
             {'frame':5, 'lua':'PREVIEW.compact_capture()'},
-            # One notch (80 px) brings the page's first row fully into view, and the same back up reaches the lock control.
-            {'frame':7, 'mouse':[300,380], 'wheel':-0.5},
+            # One notch (146 px) brings the page's first row fully into view, and the same back up reaches the lock control.
+            {'frame':7, 'mouse':[300,380], 'wheel':-1},
             {'frame':10, 'lua':'PREVIEW.compact_visible(); PREVIEW.compact_check(true,0)'},
-            {'frame':11, 'mouse':[300,380], 'wheel':0.5},
+            {'frame':11, 'mouse':[300,380], 'wheel':1},
             {'frame':14, 'lua':'PREVIEW.compact_back()'},
             {'frame':15, 'target':'Locked##frame', 'down':True},
             {'frame':16, 'down':False},

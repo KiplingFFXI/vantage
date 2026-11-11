@@ -10,9 +10,17 @@ package.loaded['core.observer'] = { read = function() return {}; end };
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 MOCK.fire('load'); app.refresh(0);
 local window = require('ui.settings_window');
-local clipboard, combo, previews = nil, nil, {};
+local clipboard, combo, previews, greyed, greys = nil, nil, {}, {}, {};
 rawset(imgui, 'GetClipboardText', function() return clipboard; end);
-rawset(imgui, 'BeginCombo', function(label, preview) previews[label] = preview; return label == combo; end);
+-- Each list's closed text, and whether it is greyed out.
+rawset(imgui, 'BeginDisabled', function(on) greys[#greys + 1] = on ~= false; end);
+rawset(imgui, 'EndDisabled', function() greys[#greys] = nil; end);
+rawset(imgui, 'BeginCombo', function(label, preview)
+    local grey = false;
+    for _, on in ipairs(greys) do grey = grey or on; end;
+    previews[label], greyed[label] = preview, grey;
+    return label == combo;
+end);
 rawset(imgui, 'EndCombo', function() end);
 local view = { rows = {}, context = { valid = true, job = 3, entities = {} } };
 local function draw(click, opened)
@@ -41,13 +49,23 @@ local function job(name) draw(name, '##linked_job'); draw(); end;
 -- The status line.
 draw(); draw();
 assert(said('No profile in use.'), 'With no profile it says so.');
-assert(previews['##profiles'] == 'Choose a saved profile', 'Nothing is picked at first.');
+assert(previews['##profiles'] == 'No saved profiles yet' and greyed['##profiles'], 'With nothing saved, the list says so and is greyed out.');
+-- A profile file that can't be read: a line says why, and the list doesn't say there are none.
+local profiles_path = app.state.path:gsub('Tester_1001/settings.json$', '') .. 'profiles.json';
+local broken = assert(io.open(profiles_path, 'wb'), 'Fixture: the profile file opens.');
+broken:write('{'); broken:close();
+app.state.profile_summary_cache = nil;
+draw(); draw();
+assert(previews['##profiles'] == 'No profiles could be read' and greyed['##profiles'], 'A profile file that can\'t be read greys the list out.');
+os.remove(profiles_path);
+app.state.profile_summary_cache = nil;
 assert(previews['##linked_job'] == 'WHM', 'The job list starts on the job you are on.');
 assert(app.callbacks.profile_save('Raid', false), 'Fixture: Raid is saved.');
 assert(app.callbacks.profile_save('Solo', false), 'Fixture: Solo is saved.');
 app.state.settings.active_profile = 'Raid';
 draw(); draw();
 assert(said('Using profile "Raid".'), 'It names the profile in use.');
+assert(previews['##profiles'] == 'Choose a saved profile' and not greyed['##profiles'], 'Nothing is picked at first.');
 local function font(by)
     app.callbacks.changed('before', 'Font size');
     app.state.settings.style.font_size = app.state.settings.style.font_size + by;

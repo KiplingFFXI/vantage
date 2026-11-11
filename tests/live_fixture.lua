@@ -62,13 +62,30 @@ local function handler(event, name)
     return found;
 end
 
--- An incoming packet of bytes (0-based, n long) as Ashita hands it to vantage.lua's packet_in handler.
-function L.receive(id, bytes)
+-- A packet of bytes (0-based, n long) as Ashita hands it to a packet handler.
+local function packet(id, bytes)
     local characters = {};
     for i = 0, bytes.n - 1 do characters[i + 1] = string.char(bytes[i] or 0); end
-    local fields = { id = id, size = bytes.n, data = table.concat(characters), data_raw = bytes, injected = false, blocked = false };
+    return { id = id, size = bytes.n, data = table.concat(characters), data_raw = bytes, injected = false, blocked = false };
+end
+-- An incoming packet, to vantage.lua's packet_in handler.
+function L.receive(id, bytes)
+    local fields = packet(id, bytes);
     handler('packet_in', 'vantage_packet_in')(L.event(fields, PACKET));
     return fields;
+end
+-- An outgoing one, to its packet_out handler.
+function L.send(id, bytes)
+    local fields = packet(id, bytes);
+    handler('packet_out', 'vantage_packet_out')(L.event(fields, PACKET));
+    return fields;
+end
+-- 0x01A: your request for an action on a target, with the action at 0x0A (9 a job ability, 16 a ranged attack) and its
+-- id at 0x0C.
+function L.request(action, id, target)
+    local bytes = MOCK.bytes(0x1C);
+    MOCK.put(bytes, 4, 4, target); MOCK.put(bytes, 0x0A, 2, action); MOCK.put(bytes, 0x0C, 4, id);
+    return L.send(0x01A, bytes);
 end
 function L.command(text)
     local fields = { mode = 1, command = text, injected = false, blocked = false };

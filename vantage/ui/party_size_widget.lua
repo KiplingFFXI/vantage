@@ -17,27 +17,28 @@ local function px(value)
     return (string.format('%.1f', value):gsub('%.0$', ''));
 end
 
--- "14" when every value is the same, "14 to 18" when they differ, nil when there are none.
-local function span(values)
+-- "14" when the rooms of every measured step are the same, "14 to 18" when they differ, nil when none is measured.
+local function span(rooms)
     local low, high;
-    for _, value in ipairs(values) do low, high = math.min(low or value, value), math.max(high or value, value); end;
+    for _, entry in ipairs(rooms) do
+        if entry.pitch then low, high = math.min(low or entry.room, entry.room), math.max(high or entry.room, entry.room); end;
+    end;
     if not low then return nil; end;
     return low == high and px(low) or px(low) .. ' to ' .. px(high);
 end
 
--- For each shown strip the game's party list has, the room its members' icons get (ui/native_party_hud.lua). Empty
--- until the game's party list has been read.
+-- For each shown strip the game's party list has, the room its members' icons get (ui/native_party_hud.lua), in a
+-- list kept from call to call. Empty until the game's party list has been read.
+local kept_rooms = {};
 function widget.rooms(settings, callbacks)
     local status = callbacks and callbacks.party_native_status and callbacks.party_native_status();
-    return hud.rooms(settings.party_ui, type(status) == 'table' and status.geometry or nil);
+    return hud.rooms(settings.party_ui, type(status) == 'table' and status.geometry or nil, kept_rooms);
 end
 
 -- The line about the icons beside the game's rows, with the size they draw at once the game's step from one row to the
 -- next is measured.
 function widget.step(p, rooms)
-    local steps = {};
-    for _, entry in ipairs(rooms) do if entry.pitch then steps[#steps + 1] = entry.room; end; end;
-    local numbers = span(steps);
+    local numbers = span(rooms);
     return "Beside the game's party list the icons fill the step from one row to the next"
         .. (numbers and ' (' .. numbers .. ' px here)' or '') .. ', with no space between them.';
 end

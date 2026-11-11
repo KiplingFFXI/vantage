@@ -6,6 +6,8 @@ local names = {spell={},ability={},item={}};
 local indexed = {spell=false,ability=false};
 local catalogs = {};
 local ability_candidates, preview_icons = {}, {spell={},ability={},item={}};
+-- Each job ability's timer, by the ability's id, found with the aliases.
+local action_timers = {};
 local preview_missing = {spell={},ability={},item={}};
 local ready_observations = {spell={},ability={}};
 local item_library, item_library_tried, item_library_problem;
@@ -147,6 +149,7 @@ local function index_abilities(resources)
             groups[timer]=groups[timer] or {};
             groups[timer][#groups[timer]+1]={name=name,icon=action_icon('ability',id,resource),type=field(resource,'Type')};
             kept[timer]=kept[timer] or listed[id-512];
+            action_timers[id-512]=timer;
         end;
     end;
     for timer,values in pairs(groups) do
@@ -220,7 +223,45 @@ function recasts.catalog(kind)
 end
 
 function recasts.new()
-    return setmetatable({rows={},previous={},events={},sequence=0,version=0,valid=false,capabilities={}},methods);
+    return setmetatable({rows={},previous={},events={},sequence=0,version=0,valid=false,capabilities={},uses={},pending={},requests={}},methods);
+end
+
+-- How far from a cooldown's first reading your use of its ability can come. Phoenix sends the two together. A pact's
+-- cooldown starts when the avatar's move goes off, which core/observer.lua counts as a use of the pact too.
+local USE_WINDOW=3;
+
+-- Your own use of a job ability, or your avatar's pact going off, by its id (core/observer.lua). Phoenix lists only the
+-- abilities on cooldown (0x119), so the first use of one since you logged in, zoned or changed jobs brings a timer with
+-- no reading before it, and so does a zone's list that comes after the first read. Only one that comes with a use of
+-- its own has started.
+function methods:used(action_id,now)
+    if integer(action_id,0,1023) and finite(now) then self.uses[action_id]=now; end;
+end
+
+-- How long your request waits for a paralysis. The server acts on it at its next tick, so the paralysis comes about a
+-- round trip later, but a lag spike can hold it back for seconds. A request the server answered some other way can
+-- meet a later paralysis too, but that starts nothing: its timer is listed already, or comes with a use of its own.
+local REQUEST_WINDOW=10;
+
+-- Your request to use a job ability (0x01A). Paralysis stops a use with an action that names no ability, though its
+-- cooldown still starts (src/map/entities/char_entity.cpp OnAbility), so a paralysis counts as a use of each ability
+-- you asked for in the 10 seconds before it.
+function methods:requested(action_id,now)
+    if integer(action_id,0,1023) and finite(now) then self.requests[action_id]=now; end;
+end
+
+function methods:paralyzed(now)
+    if not finite(now) then return; end;
+    for action,time in pairs(self.requests) do if now-time<=REQUEST_WINDOW then self:used(action,now); end;end;
+    clear(self.requests);
+end
+
+-- Whether you used an ability on this timer within the window either side of at.
+local function confirmed(model,timer,at)
+    for action,time in pairs(model.uses) do
+        if action_timers[action]==timer and math.abs(time-at)<=USE_WINDOW then return true; end;
+    end;
+    return false;
 end
 
 -- A zone change or a pause drops the rows, but the client keeps counting the same cooldowns. Rows that knew their
@@ -233,6 +274,7 @@ function methods:reset()
     if kept then self.carried={owner=self.owner,time=self.last_time,rows=kept}; end;
     if next(self.rows) then self.version=self.version+1; end;
     self.rows,self.previous,self.spare,self.events,self.epoch,self.last_time={},{},nil,{},nil,nil;
+    clear(self.uses);clear(self.pending);clear(self.requests);
     self.ability_metadata,self.ability_context,self.ability_checked={},nil,nil;
     self.valid=false;
 end
@@ -410,6 +452,9 @@ function methods:update(snapshot,now,options)
     end;
     local memory=call(AshitaCore,'GetMemoryManager');
     if not same_session(memory,snapshot) then self:reset();self.capabilities={identity_changed=true};return; end;
+    -- A timer waits up to the window for a use, which can come up to the window before it, so a use is kept twice that.
+    for action,time in pairs(self.uses) do if math.abs(now-time)>2*USE_WINDOW then self.uses[action]=nil; end;end;
+    for action,time in pairs(self.requests) do if math.abs(now-time)>REQUEST_WINDOW then self.requests[action]=nil; end;end;
     local manager,resources=call(memory,'GetRecast'),call(AshitaCore,'GetResourceManager');
     local counts,observed={},self.spare or {};
     self.spare=nil;clear(observed);
@@ -458,6 +503,10 @@ function methods:update(snapshot,now,options)
             -- used, so a running ability timer can rise by up to a second without a new use.
             local started=not baseline and previous and (previous.seconds==0
                 or input.seconds>previous.seconds+(input.kind=='ability' and 1.5 or 0.1));
+            -- An ability timer with no reading before it waits from its first reading for your use of it.
+            local first=self.pending[key] or not baseline and not previous and input.kind=='ability' and now;
+            if first and not started then started=confirmed(self,input.id,first); end;
+            self.pending[key]=first and not started and now-first<=USE_WINDOW and first or nil;
             local meta=input.meta or metadata(input.kind,input.id,resources);
             if not row or started then
                 if not row then changed=true; end;
@@ -495,6 +544,7 @@ function methods:update(snapshot,now,options)
         row.unavailable_at=row.unavailable_at or now;
         if now-row.unavailable_at>10 then self.rows[key],changed=nil,true; end;
     end end;
+    for key in pairs(self.pending) do if not observed[key] or observed[key].seconds==0 then self.pending[key]=nil; end;end;
     if baseline then self.carried=nil; end;
     self.spare,self.previous=self.previous,observed;
     if changed then self.version=self.version+1; end;

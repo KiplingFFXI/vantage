@@ -107,6 +107,8 @@ function store.read(path, cache)
     end
     -- An editor that saves UTF-8 with a byte order mark puts one in front; the settings are the text after it.
     if (text:sub(1, 3) == '\239\187\191') then text = text:sub(4); end
+    -- Blank space alone holds no settings either, as an empty file. An editor can save a file emptied by hand that way.
+    if (text:find('^[ \t\r\n]*$')) then return {}; end
     if (cache and cache.text == text) then return cache.value; end
     local ok, value = pcall(json.decode, text);
     if (not ok or type(value) ~= 'table') then

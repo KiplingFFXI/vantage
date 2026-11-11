@@ -1544,6 +1544,11 @@ local WAKES = { [2] = true, [19] = true, [193] = true };
 local BIND = 11;
 -- Third Eye, and Seigan, which can keep it past an attack it anticipates (core/observer.lua).
 local THIRD_EYE, SEIGAN = 67, 354;
+-- Stoneskin soaks damage until its pool runs out (utils.handleStoneskin, combat_utils.lua :243). A mob's own skill or spell
+-- puts it on with the mob as its origin (mobskills.lua :1617), and a wear-off reaches only the origin
+-- (status_effect_container.cpp :611-670). So on a mob or a pet, damage that Stoneskin soaks first, from a hit or from
+-- spikes, is the only sign it's gone (core/observer.lua).
+local STONESKIN = 37;
 -- The effects whose ticks deal damage (scripts/effects with REGEN_DOWN): poison 3, kaustra 23, burn to drown 128 to 133,
 -- dia 134, bio 135 and requiem 192. A tick wakes a sleeper without a message to anyone but its caster
 -- (status_effect_container.cpp :2047-2064), so a sleep beside one teaches nothing.
@@ -1553,19 +1558,23 @@ local DOTS = { [3] = true, [23] = true, [128] = true, [129] = true, [130] = true
 -- A mob or a pet took damage: what Phoenix takes off at a hit leaves, and Bind keeps its icon with no time. A mob's
 -- Nightmare is the sleep a hit doesn't end (status_effect_container.cpp :856-864). A hit that got through says Copy Image
 -- had no shadows left, and a melee swing that landed says nothing anticipated it, so Third Eye was gone. An alliance
--- member's hits are read for those two only.
-function methods:hurt(entity, now, through, melee)
+-- member's hits are read for those two only. Damage that went through Stoneskin first says a mob's or a pet's Stoneskin
+-- was used up. Spike damage says only that, as spikes don't wake or break Bind (core/observer.lua).
+function methods:hurt(entity, now, through, melee, unsoaked, spikes_only)
     local mob_or_pet = entity.scope ~= 'alliance';
+    local struck = mob_or_pet and not spikes_only;
     for i = #entity.entries, 1, -1 do
         local row = entity.entries[i];
-        if mob_or_pet and WAKES[row.effect] and not row.deep then
+        if struck and WAKES[row.effect] and not row.deep then
             row.learn_key, row.learn_start = nil, nil;
             self:erase(entity, i, now, 'Damage was observed.');
         elseif through and COPY_IMAGE[row.effect] then
             self:erase(entity, i, now, 'A hit got through, so it had no shadows left.');
         elseif melee and row.effect == THIRD_EYE then
             self:erase(entity, i, now, 'A swing landed, so nothing anticipated it.');
-        elseif mob_or_pet and row.effect == BIND then
+        elseif mob_or_pet and unsoaked and row.effect == STONESKIN then
+            self:erase(entity, i, now, 'Damage got through, so its Stoneskin was used up.');
+        elseif struck and row.effect == BIND then
             row.learn_key, row.learn_start = nil, nil;
             if row.deadline or row.status ~= 'unknown' then
                 row.deadline, row.status = nil, 'unknown';
@@ -1581,11 +1590,11 @@ end
 -- :305-327), and with 32 packets at most in a datagram (map_constants.h :79) that 0x028 can come in the next one. So
 -- a wear-off of a cast of yours waits a second before it is learned, and these spoil it: a hit on the mob for a
 -- sleep or Bind, a removal Vantage saw on that unit, and a copy of the effect or one that drops it, as Bio does
--- Dia (bio.lua :17-22).
+-- Dia (bio.lua :17-22). Spike damage alone ends neither a sleep nor Bind, so it spoils nothing.
 local SAMPLE_HOLD = 1;
 local function spoils(sample, observation)
     local kind = observation.kind;
-    if kind == 'damage' then return WAKES[sample.effect] == true or sample.effect == BIND; end
+    if kind == 'damage' then return not observation.spikes_only and (WAKES[sample.effect] == true or sample.effect == BIND); end
     if kind == 'remove' or kind == 'removed' then return observation.reason == 'Observed removal'; end
     if kind ~= 'apply' then return false; end
     if effect_id(observation.effect) and key(observation.effect) == key(sample.effect) then return true; end
@@ -1663,7 +1672,7 @@ function methods:observe(observations, now, snapshot)
         elseif kind == 'damage' and id then
             local entity = self.entities[id];
             if entity and (entity.scope == 'enemy' or entity.scope == 'pet' or entity.scope == 'alliance') then
-                self:hurt(entity, now, observation.through, observation.melee);
+                self:hurt(entity, now, observation.through, observation.melee, observation.unsoaked, observation.spikes_only);
             end
         elseif kind == 'shadows' and id then
             -- Shadows a mob or an alliance member lost come off the count their Utsusemi started, and the icon shows what's

@@ -1,6 +1,7 @@
 -- /vg set says, once it has stored a value, one plain line naming the setting and what it holds now, read back from
--- the settings: a string, a number, a switch or a table, the shared layout too, and a note on the same line when the
--- file could not be written. A path or value it refuses says what it always said, and nothing more.
+-- the settings: text in quotes, a number, a switch or a table, the shared layout too, and a note on the same line when
+-- the file could not be written. A path or value it refuses says what it always said, and nothing more. /vg get shows
+-- text in quotes too, so text of spaces shows, and what it prints sets the setting back as it was.
 local store = require('core.store');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
 package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
@@ -29,10 +30,16 @@ local function says(text, line)
     assert(#out == 1 and out[1] == '[Vantage] ' .. line, text .. ' says one line: ' .. table.concat(out, ' | '));
 end
 
-says('/vg set overhead.camera.capture present', 'overhead.camera.capture is now present.');
+says('/vg set overhead.camera.capture present', 'overhead.camera.capture is now "present".');
 assert(app.state.settings.overhead.camera.capture == 'present' and store.read(app.state.path).overhead.camera.capture == 'present',
     'and it is stored and saved.');
-says('/vg set overhead.camera.capture "scene"', 'overhead.camera.capture is now scene.');
+says('/vg set overhead.camera.capture "scene"', 'overhead.camera.capture is now "scene".');
+local blank = app.state.settings.panels.target.separator;
+assert(type(blank) == 'string' and blank:find('^ +$'), 'Fixture: the separator is spaces.');
+local got = set('/vg get panels.target.separator');
+assert(#got == 1 and got[1] == '[Vantage] panels.target.separator = "' .. blank .. '"', 'Get shows text in quotes: ' .. table.concat(got, ' | '));
+says('/vg set panels.target.separator ' .. got[1]:match(' = (.*)$'), 'panels.target.separator is now "' .. blank .. '".');
+assert(app.state.settings.panels.target.separator == blank, 'Set from what get printed, it is as it was.');
 says('/vg set overhead.max_units 4', 'overhead.max_units is now 4.');
 says('/vg set overhead.size.alpha 0.25', 'overhead.size.alpha is now 0.25.');
 says('/vg set overhead.enabled true', 'overhead.enabled is now true.');

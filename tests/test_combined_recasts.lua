@@ -170,8 +170,10 @@ state().alerts.rules={rule};refresh()
 assert(options.items and not options.spells and not options.abilities, 'Hidden combined categories still permit requested alerts.')
 state().alerts.rules={};command('/vg recasts show');refresh()
 assert(options.abilities and not options.spells and not options.items)
+-- The open window alone reads nothing more. Every kind is read only once a page lists your recasts to pick from
+-- (tests/test_recast_reads_for_lists.lua).
 state().window.open,state().window.tab=true,'Display';refresh()
-assert(options.spells and options.abilities and options.items, 'An open recast catalog can request all categories.')
+assert(options.abilities and not options.spells and not options.items, 'The open window alone reads nothing more.')
 state().window.open=false
 command('/vg recasts separate');refresh()
 assert(state().recast_display=='separate' and options.spells and not options.abilities and not options.items)

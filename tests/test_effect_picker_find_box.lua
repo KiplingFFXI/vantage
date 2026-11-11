@@ -1,5 +1,5 @@
 -- One find box serves every effect and recast picker, as one list is open at a time. What is typed stays while its list
--- is open, and a list that opens, the same one again or another, starts with the box empty.
+-- is open, and a list that opens, the same one again or another, starts with the box empty. A pick closes the list.
 local h = require('panel_fixture')();
 local imgui = h.imgui;
 local typed, hint = {}, imgui.InputTextWithHint;
@@ -36,6 +36,12 @@ shut();
 h.on('recasts', 'show');
 open('Never pulse for');
 assert(box('Never pulse for') == '', 'Another list starts with the box empty.');
+shut();
+-- A pick closes the list. Its choices are in a child window of the list, where ImGui doesn't close the list for a pick.
+h.on('notices', 'show');
+h.combo = '##Effect';
+h.draw('Accuracy Down##effect_146');
+assert(h.called('CloseCurrentPopup') and h.s.alerts.rules[1].effect == 146, 'A pick from the list closes it.');
 shut();
 rawset(imgui, 'InputTextWithHint', nil);
 return 'Each effect picker starts with its find box empty';

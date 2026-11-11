@@ -1,6 +1,6 @@
 -- The settings window loads the first time it opens (ui/settings_stub.lua). Until then nothing loads it, and the
--- addon draws, takes the mouse and ends gestures as it does with the window loaded. It loads once, and a window that
--- can't load is reported once and stopped, as a page that fails is.
+-- addon draws, takes the mouse, ends gestures and tells the edit mode bar where the window is as it does with the window
+-- loaded. It loads once, and a window that can't load is reported once and stopped, as a page that fails is.
 local loads, broken = 0, nil
 local source = ADDON_DIR .. '/ui/settings_window.lua'
 package.preload['ui.settings_window'] = function(...)
@@ -54,6 +54,8 @@ each_case(function(x, y, shift, typing)
     assert(stub.blocks_input(s, x, y, shift, typing) == shut_copy.blocks_input(s, x, y, shift, typing))
 end)
 assert(stub.draw(s, state.view, callbacks) == nil and stub.cancel_resize() == nil)
+assert(stub.area(s) == nil and shut_copy.area(s) == nil and callbacks.settings_area() == nil, 'A shut window has no place.')
+assert(stub.lists_recasts(s) == false and shut_copy.lists_recasts(s) == false, 'A shut window lists no recasts.')
 assert(loads == 0, 'Asking a shut window loads nothing.')
 
 -- Opened and not yet drawn, the window answers from its saved place, as a window loaded with the addon does.
@@ -67,6 +69,7 @@ each_case(function(x, y, shift, typing)
     if answer then inside = inside + 1 end
 end)
 assert(inside > 0 and loads == 1, 'The first open loads the window once.')
+assert(stub.area(s) == open_copy.area(s) and callbacks.settings_area() == s.window, 'Before its first draw the window is at its saved place.')
 local window = package.loaded['ui.settings_window']
 assert(type(window) == 'table')
 frames()
@@ -80,6 +83,8 @@ each_case(function(x, y, shift, typing)
     if answer then trues = trues + 1 else falses = falses + 1 end
 end)
 assert(trues > 0 and falses > 0, 'Fixture: the open window takes some points and not others.')
+local area = callbacks.settings_area()
+assert(area and area == window.area(s) and area == stub.area(s) and area.width == s.window.width, 'Drawn, it is where it was drawn.')
 local real_draw, real_cancel = window.draw, window.cancel_resize
 local draws, cancels = {}, 0
 window.draw = function(settings, ...) draws[#draws + 1] = settings.window.open; return real_draw(settings, ...) end
@@ -106,6 +111,7 @@ local tried = loads
 frames(3)
 each_case(function(x, y, shift, typing) assert(callbacks.settings_blocks_input(x, y, shift, typing) == false) end)
 assert(stub.blocks_input(s, w.x + 20, w.y + 20, false, false) == false, 'A window that cannot load takes no mouse.')
+assert(stub.area(s) == nil and callbacks.settings_area() == nil, 'Nor does it have a place.')
 assert(loads == tried and said(broken_text) == 1, 'The stopped window is not loaded or said again.')
 broken = nil
 command('/vg')

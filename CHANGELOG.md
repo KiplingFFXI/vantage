@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.1
+
+This update fixes bugs found since 1.1.0 and brings the effect data up to date with Phoenix. A mob's Stoneskin now goes away once damage gets through.
+
+- A mob's Stoneskin, or a pet's, such as from Metallic Body, comes off its timers at the first hit or spikes that get damage through. The game sends no one the wear-off for a mob's own buff, so before, a mob's icon stayed for minutes after it was gone.
+- The effect data now follows Phoenix's source at `ed41f351f6`, from October 30. Party members' timers count down for many more job abilities, such as Boost from 3 minutes and Focus from 2. More spells, blood pacts and mob moves have a length too, and a few lengths changed to match Phoenix, such as Leaf Dagger's Poison.
+- With **Icons show** on **The effect it gives**, many more job abilities show their status picture from the start, such as Berserk and Divine Seal, on recasts, Party cooldowns and the Pet display. Before, most showed it only once you'd used them that session. Jump, Chakra, Charm, Chi Blast, Double-Up and Cure I to V keep their own picture, as they give that status only sometimes.
+- The first time you use a job ability after you log in, zone or change jobs, its recast shows its full length and its **Recast started** alert goes off. That goes for a use Paralysis stops too, as Phoenix still starts the recast unless it's a two-hour. Your first Blood Pact after you zone also gets its full length, even when your avatar runs a while before it goes off.
+- Typing "nan" into **Blink seconds left** no longer stops every save after it, and the slider is now wide enough for its text.
+- If a hand edit or `/vg set` turns a display or an overhead icon type in your settings into a number or true/false, Vantage drops it at load. Before, it broke the settings window.
+- Picking from an effect or recast list with a find box, such as an alert's **Effect** or **Never pulse for**, closes the list. Before, it stayed open.
+- A settings or profiles file with nothing but blank space counts as empty, like an empty file. Before, Vantage reported it as broken and wouldn't save over it.
+- `/vg get` and the `/vg set` confirmation show text in quotes, so text of only spaces shows. Before, a separator of one space looked empty, and setting it back as shown emptied it.
+- **Down** in **Parts of a row** and in **Member order** no longer shows the moved entry twice for a frame and leaves out the one it changed places with. **Remove** beside someone no longer in your party had the same kind of bug.
+- In edit mode, the bar sits at the bottom of the screen while the settings window is open at the top, so the window's title and top row stay clear.
+- At a big **Settings text size**, the settings window's bottom corners no longer take clicks meant for the rows under them.
+- **Saved profiles** is greyed out and says "No saved profiles yet" when you have none. Before, it opened an empty list.
+- A report made after Vantage finds the game's party windows says it found them. Before, it still said it was waiting for the party list.
+- Vantage does less work while the settings window is open, most of all on **Timer durations**, **Profiles**, the **Size and place** tab of Party list buffs and a display's own page.
+
 ## 1.1.0
 
 This update adds a way to show only the effects job abilities put on your party. It also fixes some bugs, and Vantage does less work every frame.

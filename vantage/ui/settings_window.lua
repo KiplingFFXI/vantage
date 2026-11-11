@@ -12,7 +12,7 @@ local catalog_cache, catalog_seen = nil, {}
 -- Goes up whenever the status catalog changes: when it's made, when a row is added, and when the client names a row in it.
 local catalog_changes, catalog_renamed = 0, nil
 local recast_catalog_cache, empty_catalog, recast_view_signature = {}, {}, ''
-local recast_signature_frame, draw_frame, saved_revision = -1, 0, -1
+local recast_signature_frame, draw_frame, saved_revision, recast_list_frame = -1, 0, -1, -1
 -- A look pick waiting for Apply or Cancel: { id, owner, text, action }.
 local look_confirm
 local escape_busy = false
@@ -406,6 +406,7 @@ end
 
 local function catalog(domain, kind)
     if domain == 'recast' then
+        recast_list_frame = draw_frame
         if recast_signature_frame ~= draw_frame then
             local keys = {}
             for _, row in ipairs(live_view and live_view.rows or {}) do
@@ -504,10 +505,14 @@ local function effect_picker(label, selected, setter, all, domain, shown)
         imgui.InputTextWithHint('##effect_search_' .. label, 'Find an effect by name', effect_search, 81)
         local query = effect_search[1]:lower()
         if all and imgui.Selectable((domain == 'recast' and 'All recasts' or 'All effects') .. '##all', selected == 0) then setter(0) end
+        -- The choices scroll in a child window of the list, and ImGui doesn't close the list for a pick made in one.
         if imgui.BeginChild('##effect_choices_' .. label, { 0, 250 }, 0) then
             for _, row in ipairs(catalog(domain)) do
                 if query == '' or row.name:lower():find(query, 1, true) or tostring(row.id) == query then
-                    if imgui.Selectable(row.name .. '##effect_' .. row.id, selected == row.id) then setter(row.id) end
+                    if imgui.Selectable(row.name .. '##effect_' .. row.id, selected == row.id) then
+                        setter(row.id)
+                        imgui.CloseCurrentPopup()
+                    end
                 end
             end
         end
@@ -646,6 +651,17 @@ end
 local window_title_height = 24
 local function title_point(rect, x, y)
     return contains_point(rect, x, y) and y <= rect.y + window_title_height
+end
+
+-- Where the open window is: its place this frame, or its saved one before it's drawn. The edit mode bar keeps clear of it.
+function window.area(s)
+    if not s or not s.window.open then return nil end
+    return settings == s and window_bounds or s.window
+end
+
+-- Whether the last draw listed your recasts. The next refresh then reads every kind, so the list has them all.
+function window.lists_recasts(s)
+    return s ~= nil and s.window.open == true and recast_list_frame == draw_frame
 end
 
 function window.blocks_input(s, x, y, shift, typing)
@@ -881,8 +897,11 @@ local function draw_open(s, view, cb)
             imgui.TextWrapped(message)
             if look[message_kind] then imgui.PopStyleColor() end
         end
+        -- ImGui's resize corners are squares about a line of text tall at the bottom corners, and they take a click
+        -- before anything under them. The page ends above them, so nothing on it sits there.
         local _, available_height = imgui.GetContentRegionAvail()
-        content_size[2] = math.max(120, available_height)
+        local _, page_top = imgui.GetCursorScreenPos()
+        content_size[2] = math.max(120, math.min(available_height, wy + wh - imgui.GetFontSize() - page_top))
         local content_visible = imgui.BeginChild('##settings_content', content_size, 0, ImGuiWindowFlags_NoSavedSettings or 0)
         if content_visible then
         if search_page ~= s.window.tab then selected_match, scroll_match, search_page = 1, true, s.window.tab; window.search_memo.pick = true end

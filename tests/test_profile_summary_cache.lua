@@ -1,6 +1,6 @@
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 local c, state = app.callbacks, app.state;
--- A read past the 250 ms memo, by emptying it as an edit does.
+-- A read past the 2 second memo, by emptying it as an edit does.
 local function reread() state.profile_summary_cache = nil; return c.profile_summary(); end;
 local store, profiles, defaults = require('core.store'), require('core.profiles'), require('ui.defaults');
 local peer = profiles.new(require('core.identity').root());
@@ -14,10 +14,10 @@ MOCK.now = 100;
 local first = c.profile_summary();
 assert(reads == 1 and first.status.source == 'Support' and first.status.exists and not first.status.modified);
 assert(c.profile_summary() == first and reads == 1);
-MOCK.now = 100.249;
+MOCK.now = 101.999;
 assert(c.profile_summary() == first and reads == 1);
-MOCK.now = 100.25;
-assert(c.profile_summary() ~= first and reads == 2, 'Display refreshes at the 250ms boundary.');
+MOCK.now = 102;
+assert(c.profile_summary() ~= first and reads == 2, 'Display refreshes at the 2 second boundary.');
 MOCK.now = 99;
 assert(c.profile_summary() and reads == 3, 'Clock rollback cannot retain stale results.');
 c.profile_list(); c.profile_status('Support');
@@ -72,7 +72,7 @@ assert(refresh_after(function() assert(c.profile_save('Second', false)); end, 'S
 assert(refresh_after(function() assert(c.profile_delete('Second', c.profile_status('Second').token)); end,
     'Deleting refreshes').status.recover_kind == 'delete');
 
--- A drag reports a change every frame while the mouse is down. The status keeps its 250 ms refresh
+-- A drag reports a change every frame while the mouse is down. The status keeps its 2 second refresh
 -- then, and a change with the mouse up refreshes it at once again.
 state.settings.window.open = false;
 MOCK.mouse_down = true; MOCK.frame(0);
@@ -88,9 +88,9 @@ for _ = 1, 5 do
     assert(c.profile_summary() == dragging, 'A drag frame keeps the cached profile status.');
 end;
 assert(reads == drag_reads, 'A drag reads the profile file only at the display refresh.');
-MOCK.now = MOCK.now + 0.25;
+MOCK.now = MOCK.now + 2;
 local refreshed = c.profile_summary();
-assert(refreshed ~= dragging and reads == drag_reads + 1 and refreshed.status.modified, 'The 250 ms refresh still runs during a drag.');
+assert(refreshed ~= dragging and reads == drag_reads + 1 and refreshed.status.modified, 'The 2 second refresh still runs during a drag.');
 MOCK.mouse_down = false; MOCK.frame(0);
 local released = c.profile_summary();
 c.changed('before', 'Timer scale'); state.settings.style.scale = state.settings.style.scale + 0.01; c.changed('after');

@@ -297,6 +297,9 @@ function defaults.tidy(settings)
     settings.party_ui = require('ui.party_defaults').tidy(settings.party_ui)
     settings.overhead = require('ui.overhead_defaults').tidy(settings.overhead)
     settings = fill(settings, defaults.make())
+    -- A display is a table, a newer Vantage's too. Anything else in the map, from a hand edit or /vg set, goes, as what
+    -- reads every display takes each one as a table.
+    for id, p in pairs(settings.panels) do if type(p) ~= 'table' then settings.panels[id] = nil end end
     theme.tidy_window(settings)
     settings.recast_display = choice(settings.recast_display, { 'separate', 'combined' }, 'separate')
     settings.effect_filters = require('core.effect_filters').tidy(settings.effect_filters)

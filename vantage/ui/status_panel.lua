@@ -196,6 +196,9 @@ local function draw_members(imgui, c, item)
             member_tick(imgui, c, p, member.id, name .. '##member_' .. member.id);
         end;
     end;
+    -- Remove waits for the list to be drawn. Taking someone off adds a key to the table pairs is walking, and Lua doesn't
+    -- say what the walk does then.
+    local gone;
     for key, on in pairs(p.members) do
         local id = tonumber(key) or key;
         if on and not member_seen[id] then
@@ -203,10 +206,11 @@ local function draw_members(imgui, c, item)
             imgui.PushID('member_' .. tostring(id));
             imgui.TextUnformatted('Someone not in your party now');
             imgui.SameLine();
-            if imgui.Button('Remove##member') then c.changed(function() set_map(p.members, id, false); end, true, 'Members'); end;
+            if imgui.Button('Remove##member') then gone = id; end;
             imgui.PopID();
         end;
     end;
+    if gone then c.changed(function() set_map(p.members, gone, false); end, true, 'Members'); end;
     if not listed then frame.shaded(imgui, c, 'Nobody in your party right now.'); end;
 end;
 
@@ -424,6 +428,9 @@ local function draw_parts(names)
     return function(imgui, c, item)
         caption(imgui, c, item);
         local order = ctx.p.field_order;
+        -- A move waits for the list to be drawn. Made in the loop, Down would draw the part again further on and leave
+        -- out the one it changed places with.
+        local from, to;
         for index = 1, #order do
             local key = order[index];
             if key and part_id[key] and offered(ctx, key) then
@@ -431,15 +438,16 @@ local function draw_parts(names)
                 if imgui.Selectable(part_shown(ctx, key) and names[key] or names.hidden[key], chosen_part == key) then chosen_part = key; end;
                 if chosen_part == key then
                     if parts_meet(ctx) then
-                        if imgui.Button('Up##part') then c.changed(function() c.move(order, index, index - 1); end, true, 'Reorder row text'); end;
+                        if imgui.Button('Up##part') then from, to = index, index - 1; end;
                         imgui.SameLine();
-                        if imgui.Button('Down##part') then c.changed(function() c.move(order, index, index + 1); end, true, 'Reorder row text'); end;
+                        if imgui.Button('Down##part') then from, to = index, index + 1; end;
                     end;
                     frame.draw_rows(imgui, c, part_rows);
                 end;
                 imgui.PopID();
             end;
         end;
+        if from then c.changed(function() c.move(order, from, to); end, true, 'Reorder row text'); end;
     end;
 end;
 

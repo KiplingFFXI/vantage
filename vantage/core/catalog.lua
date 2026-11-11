@@ -9,7 +9,7 @@ durations.spells[107].merit = 'phalanx_ii';
 -- Third Eye lasts 30 seconds and Seigan 300 (globals/job_utils/samurai.lua :115, :156), with nothing to change either, so
 -- both are exact. Utsusemi takes Third Eye off (globals/spells/enhancing_ninjutsu.lua :111-114), and Third Eye has no
 -- effect while Copy Image or Blink is up (samurai.lua :108-113), so one seen to land means neither is there. The exported
--- data has neither length, and those drops are in the scripts.
+-- data has both lengths but not that they're exact, and those drops are in the scripts.
 durations.abilities[62] = { effect = 67, seconds = 30, exact = true };
 durations.abilities[174] = { effect = 354, seconds = 300, exact = true };
 local copy_image = durations.effects[66].drops;
@@ -34,18 +34,31 @@ for id, name in pairs({ [119] = 'STR Boost II', [120] = 'DEX Boost II', [121] = 
     entries[id].name, names[id] = name, true;
 end
 
+local function client_name(id)
+    return AshitaCore:GetResourceManager():GetString('buffs.names', id);
+end
+
+-- The rows for effects nothing names, kept so a lookup makes none.
+local unnamed = {};
+
 function catalog.get(id)
     local row = entries[id];
     if not names[id] and AshitaCore then
-        local ok, text = pcall(function () return AshitaCore:GetResourceManager():GetString('buffs.names', id); end);
+        local ok, text = pcall(client_name, id);
         if ok and type(text) == 'string' and text ~= '' and text ~= '.' then
             row = row or { id = id, kind = 'other', group = 'Other', priority = 0 };
             entries[id], row.name, names[id] = row, text, true;
             renamed = renamed + 1;
         end
     end
+    if row then return row; end
     -- What nothing names doesn't exist on Phoenix, and core/tracker.lua gives it no row. Only the settings can hold its id.
-    return row or { id = id, name = 'An effect with no name', kind = 'other', group = 'Other', priority = 0, unnamed = true };
+    row = unnamed[id];
+    if not row then
+        row = { id = id, name = 'An effect with no name', kind = 'other', group = 'Other', priority = 0, unnamed = true };
+        unnamed[id] = row;
+    end
+    return row;
 end
 
 -- Goes up each time catalog.get gives a row the client's name.

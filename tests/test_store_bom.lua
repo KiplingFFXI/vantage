@@ -21,6 +21,14 @@ value, why = store.read(path);
 assert(type(value) == 'table' and next(value) == nil, 'An empty file loads as no settings: ' .. tostring(why));
 assert(store.write(path, { style = { font_size = 24 } }) and (store.read(path) or { style = {} }).style.font_size == 24,
     'An empty file is saved over.');
+-- So is one with nothing but a mark or blank space in it, as an editor can save a file emptied by hand.
+for _, blank in ipairs({ '\239\187\191', '\r\n', '\239\187\191 \t\r\n' }) do
+    put(blank);
+    value, why = store.read(path);
+    assert(type(value) == 'table' and next(value) == nil, 'A file with only a mark or blank space loads as no settings: ' .. tostring(why));
+    assert(store.write(path, { style = { font_size = 25 } }) and (store.read(path) or { style = {} }).style.font_size == 25,
+        'A file with only a mark or blank space is saved over.');
+end
 -- UTF-16, as PowerShell 5.1's Out-File writes, still doesn't load, and is never saved over.
 put('\255\254{\0}\0');
 value, why = store.read(path);

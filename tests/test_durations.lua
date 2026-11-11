@@ -12,9 +12,10 @@ local observer = require('core.observer');
 local hud = require('ui.hud');
 local layout = require('ui.party_layout');
 local SELF, ALLY, MOB, MOB2, BLM = 1001, 1002, 0x1000123, 0x1000124, 1004;
-local function snapshot()
+-- Your listing, when a test gives one.
+local function snapshot(own)
     return { valid = true, id = SELF, name = 'Tester', zone = 102, job = 4, level = 75, self_known = true, self_revision = 1,
-        self_timer_revision = 1, self_effects = {}, party = { { id = ALLY, name = 'Ally', scope = 'party' } },
+        self_timer_revision = 1, self_effects = own or {}, party = { { id = ALLY, name = 'Ally', scope = 'party' } },
         entities = { [SELF] = { id = SELF, name = 'Tester', kind = 'player' }, [ALLY] = { id = ALLY, name = 'Ally', kind = 'player' },
             [BLM] = { id = BLM, name = 'Blm', kind = 'player' }, [MOB] = { id = MOB, name = 'Goblin Smithy', kind = 'monster' },
             [MOB2] = { id = MOB2, name = 'Goblin Tinkerer', kind = 'monster' } },
@@ -48,8 +49,8 @@ local settings = { durations = durations.tidy({}) };
 local config = settings.durations;
 local tracker = require('core.tracker').new();
 -- One refresh as vantage.lua runs it: prepare, the tracker, then learning from the wear-offs it let through.
-local function step(now, packets)
-    local snap, observations = snapshot(), {};
+local function step(now, packets, own)
+    local snap, observations = snapshot(own), {};
     for _, packet in ipairs(packets) do for _, o in ipairs(observer.read(packet, now, snap)) do observations[#observations + 1] = o; end end
     durations.prepare(observations, settings, snap);
     tracker:observe(observations, now, snap); tracker:reconcile(snap, now);
@@ -62,7 +63,7 @@ local function step(now, packets)
 end;
 local function sleep(now) return step(now, { action(SELF, 4, 253, MOB, 236, 2) }); end;
 -- A wear-off, then the refresh a second and a half later that lets it through.
-local function wear(now, packets) step(now, packets); return step(now + 1.5, {}); end;
+local function wear(now, packets, own) step(now, packets, own); return step(now + 1.5, {}, own); end;
 local function key(spell, effect, name) return 'spell:' .. spell .. ':' .. effect .. ':' .. (name or 'goblin smithy'); end;
 assert(require('core.tracker').WEAR_OFF == observer.wear_off, 'Learning reads the reason the observer gives a wear-off.');
 
@@ -246,6 +247,20 @@ assert(samples(253, 2) == before, 'Nor with the hit in the next refresh.');
 step(2240, { action(SELF, 4, 258, MOB, 236, 11) }); wear(2244, { wearoff(SELF, MOB, 11), hit() });
 step(2250, { action(SELF, 4, 258, MOB, 236, 11) }); step(2254, { wearoff(SELF, MOB, 11) }); wear(2254.3, { hit() });
 assert(samples(258, 11) == 1, 'A Bind broken by a hit is no sample, in either refresh.');
+-- Spikes don't break Bind, so the bound mob's swing into your Blaze Spikes behind its wear-off spoils nothing. The swing
+-- hits you for 30 and the spikes deal 12 back (message 44 in the reaction slot).
+local function spikes()
+    local bytes, at = MOCK.bytes(256), 150;
+    putbits(bytes, 40, 32, MOB); putbits(bytes, 72, 6, 1); putbits(bytes, 82, 4, 1);
+    putbits(bytes, at, 32, SELF); putbits(bytes, at + 32, 4, 1); at = at + 36;
+    putbits(bytes, at + 27, 17, 30); putbits(bytes, at + 44, 10, 1); at = at + 86;
+    putbits(bytes, at, 1, 1); putbits(bytes, at + 11, 14, 12); putbits(bytes, at + 25, 10, 44); at = at + 35;
+    bytes.n = math.ceil(at / 8);
+    return MOCK.packet(0x028, bytes);
+end;
+local BLAZE = { { effect = 34, slot = 0 } };
+step(2256, { action(SELF, 4, 258, MOB, 236, 11) }, BLAZE); wear(2258, { wearoff(SELF, MOB, 11), spikes() }, BLAZE);
+assert(samples(258, 11) == 2 and config.learned[key(258, 11)].samples[2] == 2, 'Spikes behind a Bind\'s wear-off spoil nothing.');
 step(2260, { action(SELF, 4, 58, MOB, 236, 4) }); step(2268, { wearoff(SELF, MOB, 4) }); wear(2268.2, { action(MOB, 4, 15, MOB, 83, 4) });
 assert(samples(58, 4) == 1, 'A wear-off with a removal behind it is no sample.');
 step(2280, { action(SELF, 4, 58, MOB, 236, 4) }); wear(2290, { wearoff(SELF, MOB, 4), hit() });

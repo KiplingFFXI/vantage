@@ -194,6 +194,8 @@ function overhead.tidy(value)
         t.size_scale = number(t.size_scale, 0.5, 2, 1);
         types[id] = t;
     end
+    -- A type is a table, a newer Vantage's too. Anything else in the map goes, as the settings window reads each one.
+    for id, t in pairs(types) do if type(t) ~= 'table' then types[id] = nil; end end
     value.types = types;
     value.max_units = number(value.max_units, 1, 24, 10, true);
     value.distance_cap = number(value.distance_cap, 5, 50, 30);

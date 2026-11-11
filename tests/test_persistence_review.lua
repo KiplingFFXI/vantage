@@ -73,8 +73,9 @@ local loaded, problem, found = missing:load_layout(s);
 assert(loaded and not problem and found == false);
 s.panels.future_panel = false;
 assert(p:save_layout(s, 'placement') and p:save_layout(s, 'presentation'));
-local receiver = defaults.make(); receiver.panels.future_panel = false;
-assert(p:load_layout(receiver, 'presentation') and receiver.panels.future_panel == false);
+local receiver = defaults.make(); receiver.panels.future_panel = { zz_newer = 1 };
+assert(p:load_layout(receiver, 'presentation') and type(receiver.panels.future_panel) == 'table'
+    and receiver.panels.future_panel.zz_newer == 1);
 assert(p:save_layout(s, 'placement') and p:load_layout(receiver, 'placement'));
 local layout = profiles.capture_layout(s, 'presentation');
 layout.presentation.style.font, layout.presentation.window_style.font_size = 'Consolas', 25;

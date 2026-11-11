@@ -192,19 +192,23 @@ for slot = 0, 5 do slot_names[slot], slot_ids[slot + 1] = 'Slot ' .. (slot + 1),
 -- A row of Up and Down per slot would fill the search with results that are all the same, so they stay out of it.
 local function draw_slots(imgui, c)
     local order = ctx.p.groups[selection.group].order;
+    -- A move waits for the list to be drawn. Made in the loop, Down would draw the slot again further on and leave out
+    -- the one it changed places with.
+    local from, to;
     for index = 1, #order do
         imgui.PushID(slot_ids[index]);
         imgui.TextUnformatted(slot_names[order[index]]);
         if index > 1 then
             imgui.SameLine();
-            if imgui.Button('Up##party_slot') then c.changed(function() order[index], order[index - 1] = order[index - 1], order[index]; end, true, 'Member order'); end;
+            if imgui.Button('Up##party_slot') then from, to = index, index - 1; end;
         end;
         if index < #order then
             imgui.SameLine();
-            if imgui.Button('Down##party_slot') then c.changed(function() order[index], order[index + 1] = order[index + 1], order[index]; end, true, 'Member order'); end;
+            if imgui.Button('Down##party_slot') then from, to = index, index + 1; end;
         end;
         imgui.PopID();
     end;
+    if from then c.changed(function() order[from], order[to] = order[to], order[from]; end, true, 'Member order'); end;
 end;
 
 local place_rows = {

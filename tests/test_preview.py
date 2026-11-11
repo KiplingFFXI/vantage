@@ -64,7 +64,7 @@ class PreviewInputTests(unittest.TestCase):
                     "settings.panels.self_buffs.filter='Haste'; settings.panels.self_buffs.include[33]=true; "
                     "settings.panels.self_buffs.exclude[40]=true; settings.panels.self_buffs.gradient=true; "
                     "settings.panels.self_buffs.colors.label={0.2,0.4,0.6,1}; "
-                    "settings.panels.future_panel=false; "
+                    "settings.panels.future_panel={zz_newer=1}; "
                     "PREVIEW.original_style=require('core.store').copy(settings.style)",
                     '--input-script', str(PREVIEW / 'client_appearance_input.json'))
 

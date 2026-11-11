@@ -11,8 +11,8 @@ from pathlib import Path
 import re
 import subprocess
 
-PHOENIX = '071c401048bdb97bcbe12ad93651574fcf867407'
-DURATION_REV = 'a0d1df0c6984a436291ef973fb29f434a8a4d67a'
+PHOENIX = 'ed41f351f63b24e015059c5a58f1c29eb3f198ac'
+DURATION_REV = 'be61bc997d8c29f17532c223e1f8c63ae8d6f937'
 ROOT = Path(__file__).resolve().parents[1]
 # The effects that can't exist on Phoenix, by why, from an audit of all 668 judged at phoenix/live ed41f351f6 with its
 # era settings (docs/VALIDATION.md). The pin above doesn't move this list: recheck it when Phoenix opens WotG content
@@ -46,9 +46,8 @@ AUDITED_OUT = {
     'never_shown': '791-795, 797, 799-806',
 }
 # What players can have: spells and abilities of these content tags (NULL is the base game), on a job up to 18 at level
-# 75 or under. Phoenix's era SQL moves nothing across 75 (Reraise I to III, Banishga and Sekkanoki only), and the two
-# SQL files give the same lists at the pin and at phoenix/live ed41f351f6. Group 8 is the Trust spells, which every job
-# has at level 1 and nobody can cast on Phoenix.
+# 75 or under. Phoenix's era SQL moves nothing across 75 (Reraise I to III, Banishga and Sekkanoki only). Group 8 is the
+# Trust spells, which every job has at level 1 and nobody can cast on Phoenix.
 OPEN_CONTENT = {'NULL', 'ROTZ', 'COP', 'TOAU'}
 TRUST_GROUP = '8'
 
@@ -136,24 +135,143 @@ def statuses(text):
     return result
 
 
-def cut(text, pattern, expected, replacement=''):
-    text, count = re.subn(pattern, replacement, text, flags=re.M)
-    if count != expected:
-        raise RuntimeError('Duration artifact changed: ' + pattern)
-    return text
+def changed(what):
+    raise RuntimeError('Duration artifact changed: ' + what)
+
+
+STRING = r"'(?:[^'\\]|\\.)*'"
+
+
+def code(line):
+    # A line without its strings and the comment that ends it.
+    return re.sub(STRING, "''", line).split('--', 1)[0]
+
+
+def entries(lines, indent):
+    # The entries at this indent by key, each with the comment lines above it, in the source's order.
+    found, comments, depth, key = {}, [], 0, None
+    for line in lines:
+        if depth == 0 and line.startswith(indent + '--'):
+            comments.append(line)
+            continue
+        if depth == 0:
+            match = re.match(re.escape(indent) + r'(?:\[(\d+)\]|(\w+))\s*=', line)
+            if not match:
+                changed(line)
+            key = int(match[1]) if match[1] else match[2]
+            found[key], comments = comments + [line], []
+        else:
+            found[key].append(line)
+        depth += code(line).count('{') - code(line).count('}')
+    if comments or depth:
+        changed('unbalanced entries')
+    return found
+
+
+def keys(lines):
+    # The named keys in an entry's value, without its own name.
+    text = ' '.join(code(line) for line in lines if not line.lstrip().startswith('--'))
+    return set(re.findall(r'\b([a-z_]+) =', text.split('=', 1)[1]))
+
+
+VALUE = r"(?:%s|\{[^{}]*\}|[\w.-]+)" % STRING
+
+
+def strip(lines, unread):
+    names = '|'.join(unread)
+    out = []
+    for line in lines:
+        if not re.fullmatch(r' +(?:%s) = %s,' % (names, VALUE), line):
+            line = re.sub(r', (?:%s) = %s(?= \}|,)' % (names, VALUE), '', line)
+            out.append(re.sub(r'\{ (?:%s) = %s, ' % (names, VALUE), '{ ', line))
+    return out
+
+
+def body(lines):
+    # An entry's value alone, to compare two rows whatever their layout.
+    text = ' '.join(code(line) for line in lines).split('=', 1)[1]
+    return ' '.join(re.sub(r',\s*\}', ' }', text).split())
+
+
+def section(lines):
+    # A section's rows, between its opening and closing lines.
+    if not lines[-1] == '    },':
+        changed(lines[-1])
+    return entries(lines[lines.index(next(line for line in lines if not line.startswith('    --'))) + 1:-1], ' ' * 8)
+
+
+# The source's sections in order, and the ones the addon reads (core/catalog.lua).
+SOURCE = ['built', 'content', 'effects', 'spells', 'abilities', 'weaponskills', 'skills', 'automatons', 'pacts', 'pet_moves',
+          'charmed_skills', 'items', 'reactive', 'spikes', 'procs', 'proc_effects', 'proc_usual', 'gear', 'merits',
+          'pictured', 'troubadour']
+ACTIONS = ('spells', 'abilities', 'skills', 'pacts')
+KEPT = ('effects',) + ACTIONS + ('procs', 'proc_effects', 'gear', 'merits', 'troubadour')
+# What each kept section's rows may have that the addon reads, and what it never reads.
+READ = {'effects': {'drops'}, 'actions': {'effect', 'seconds', 'top', 'tier', 'merit', 'song', 'gear', 'deep', 'by_effect'},
+        'procs': set(), 'proc_effects': set(), 'gear': set(), 'merits': {'id', 'base', 'per_rank', 'most'}}
+UNREAD = {'effects': ('debuff', 'usual', 'name', 'description', 'icon'),
+          'actions': ('infer', 'success_messages', 'condition', 'requires_effect', 'requires_merit',
+                      'requires_owner_effect', 'default_tp'),
+          'procs': (), 'proc_effects': (), 'gear': (), 'merits': ('job', 'level')}
 
 
 def what_is_read(effects):
+    head, _, rest = effects.partition('return {\n')
+    if not rest.endswith('\n}\n'):
+        changed('the end')
+    infer = '-- infer marks a possible effect, not a confirmed application. default_tp is an assumed TP value.\n'
+    if head.count(infer) != 1:
+        changed('the header')
+    top = entries(rest[:-3].split('\n'), ' ' * 4)
+    if list(top) != SOURCE:
+        changed('sections ' + ', '.join(top))
+    rows = {name: section(top[name]) for name in KEPT[:-1]}
+    for name, table in rows.items():
+        kind = 'actions' if name in ACTIONS else name
+        for key, lines in table.items():
+            table[key] = strip(lines, UNREAD[kind])
+            if not keys(table[key]) <= READ[kind]:
+                changed('%s %s has %s' % (name, key, ', '.join(sorted(keys(table[key]) - READ[kind]))))
     # The addon reads an effect's row only for what it drops, so a row with nothing to drop is the same as no row.
-    effects = cut(effects, r'^    -- What an effect removes, and its usual duration\.$', 1, '    -- What an effect removes.')
-    effects = cut(effects, r', usual = \d+(?= \},)', 161)
-    effects = cut(effects, r'^ +usual = \d+,\n', 7)
-    effects = cut(effects, r'^ +\[\d+\] = \{ drops = \{  \} \},  -- \w+\n', 542)
+    rows['effects'] = {key: lines for key, lines in rows['effects'].items()
+                       if not re.search(r'drops = \{\s*\}', ' '.join(lines))}
+    if len(rows['effects']) != 126:
+        changed('effects that drop others')
+    # A jug pet's move comes with its monster skill's id, which the source keeps apart from the monsters' own. Each one
+    # with an effect is the same as the monsters', but Frenzied Rage, which no monster uses as a jug pet does.
+    added = 0
+    for key, lines in section(top['pet_moves']).items():
+        lines = strip(lines, UNREAD['actions'])
+        if 'effect' not in keys(lines):
+            continue
+        if key not in rows['skills']:
+            rows['skills'][key], added = lines, added + 1
+        elif body(rows['skills'][key]) != body(lines):
+            changed('pet move %d' % key)
+    if added != 1:
+        changed('pet moves')
     # The client names no effect at 640 or over and core/tracker.lua gives one no row, so a move that gives one shows nothing.
-    effects = cut(effects, r'^ +\[\d+\] = \{ effect = (?:6[4-9]\d|[7-9]\d\d),.*\n', 4)
-    effects = cut(effects, r"^    (?:built  |content) = '.*',\n", 2)
-    effects = cut(effects, r'^    -- The most common item duration.*\n    proc_usual = \{[^}]*\},\n', 1)
-    return cut(effects, r'^    -- Unique icon IDs\..*\n    pictured = \{[^}]*\},\n', 1)
+    dropped = 0
+    for name in ACTIONS:
+        table = rows[name]
+        for key in [key for key, lines in table.items() if int(re.search(r'\beffect = (\d+)', ' '.join(lines))[1]) >= 640]:
+            del table[key]
+            dropped += 1
+        rows[name] = dict(sorted(table.items()))
+    if dropped != 37:
+        changed('effects with no name')
+    out = [head.replace(infer, '') + 'return {']
+    for name in KEPT:
+        lines = top[name]
+        if name == 'effects':
+            if lines[0] != '    -- What an effect removes, and its usual duration.':
+                changed(lines[0])
+            lines = ['    -- What an effect removes.'] + lines[1:]
+        if name in rows:
+            opening = lines.index(next(line for line in lines if not line.startswith('    --'))) + 1
+            lines = lines[:opening] + [line for row in rows[name].values() for line in row] + lines[-1:]
+        out += lines
+    return '\n'.join(out) + '\n}\n'
 
 
 def main():

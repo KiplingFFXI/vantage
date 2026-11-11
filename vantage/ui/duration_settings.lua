@@ -115,10 +115,49 @@ local function picked_place(overrides)
     return pick.place;
 end
 
+-- What the buttons act on, set as each draw starts, so a draw makes no function for them.
+local now = {};
+local function edit(fn, label) now.c.changed(fn, true, label); end;
+
+local function add_override()
+    local c, overrides = now.c, now.overrides;
+    if not pick.effect then return; end;
+    if #overrides >= 128 then if c.note then c.note('Remove a duration override before adding another.'); end; return; end;
+    edit(function()
+        local rule = durations.override();
+        rule.kind, rule.id = pick.kind, pick.effect;
+        overrides[#overrides + 1] = rule;
+    end, 'Add duration override');
+    pick.rule, pick.place = overrides[#overrides], #overrides;
+end;
+
+local function use_target_name()
+    local rule, target = now.rule, now.target;
+    edit(function() rule.name = durations.unit_name(target.name); end, 'Only on a mob or player named');
+end;
+
+local function remove_override()
+    local overrides = now.overrides;
+    edit(function() table.remove(overrides, pick.place); end, 'Remove duration override');
+    -- The one that takes its place is picked next.
+    pick.rule = nil;
+end;
+
+local function clear_overrides()
+    local config = now.config;
+    edit(function() config.overrides = {}; end, 'Clear duration overrides');
+    pick.rule, pick.place = nil, 1;
+end;
+
+local function clear_learned()
+    local config = now.config;
+    edit(function() config.learned = {}; end, durations.CLEAR);
+end;
+
 function page.draw(imgui, settings, view, callbacks, c)
     local config = settings.durations;
     local overrides = config.overrides;
-    local function edit(fn, label) c.changed(fn, true, label); end;
+    now.c, now.config, now.overrides = c, config, overrides;
     imgui.TextWrapped('How long Vantage counts the effects it estimates: those on mobs, party members and other players. Your own effects follow the game\'s timers.');
 
     if c.section('Duration overrides', 'Your own time for a spell, ability or effect, on every mob and player or one by name.', true) then
@@ -133,16 +172,7 @@ function page.draw(imgui, settings, view, callbacks, c)
         if pick.effect then
             (c.choice or c.combo)('What to override', pick, 'effect', pick.ids, pick.labels);
         else imgui.TextWrapped('Nothing matches. Try another name.'); end;
-        c.button('Add duration override', function()
-            if not pick.effect then return; end;
-            if #overrides >= 128 then if c.note then c.note('Remove a duration override before adding another.'); end; return; end;
-            edit(function()
-                local rule = durations.override();
-                rule.kind, rule.id = pick.kind, pick.effect;
-                overrides[#overrides + 1] = rule;
-            end, 'Add duration override');
-            pick.rule, pick.place = overrides[#overrides], #overrides;
-        end, 'Adds a fixed time of 60 seconds for the pick above. Change it below.');
+        c.button('Add duration override', add_override, 'Adds a fixed time of 60 seconds for the pick above. Change it below.');
         if #overrides == 0 then
             imgui.TextWrapped('No duration overrides yet.');
         else
@@ -172,17 +202,11 @@ function page.draw(imgui, settings, view, callbacks, c)
             c.text('Only on a mob or player named', rule, 'name', 'The exact name as the game shows it. Leave it empty for every mob and player.', 40);
             local target = view and view.context and view.context.target;
             if target and type(target.name) == 'string' and target.name ~= '' then
-                c.button('Use my target\'s name', function() edit(function() rule.name = durations.unit_name(target.name); end, 'Only on a mob or player named'); end);
+                now.rule, now.target = rule, target;
+                c.button('Use my target\'s name', use_target_name);
             end;
-            c.button('Remove selected override', function()
-                edit(function() table.remove(overrides, pick.place); end, 'Remove duration override');
-                -- The one that takes its place is picked next.
-                pick.rule = nil;
-            end, 'Remove only this override. Undo restores it.');
-            c.button('Clear duration overrides', function()
-                edit(function() config.overrides = {}; end, 'Clear duration overrides');
-                pick.rule, pick.place = nil, 1;
-            end, 'Remove every duration override. Undo restores them.');
+            c.button('Remove selected override', remove_override, 'Remove only this override. Undo restores it.');
+            c.button('Clear duration overrides', clear_overrides, 'Remove every duration override. Undo restores them.');
         end;
     end;
 
@@ -203,11 +227,7 @@ function page.draw(imgui, settings, view, callbacks, c)
         imgui.TextWrapped(learned.count);
         for _, line in ipairs(learned.lines) do imgui.TextWrapped(line); end;
         if count > 0 and not config.learn then imgui.TextWrapped('With Learn from my casts off, these are kept but not used.'); end;
-        if count > 0 then
-            c.button('Clear learned durations', function()
-                edit(function() config.learned = {}; end, durations.CLEAR);
-            end, 'Forget every learned time. Undo brings them back.');
-        end;
+        if count > 0 then c.button('Clear learned durations', clear_learned, 'Forget every learned time. Undo brings them back.'); end;
     end;
 end;
 
