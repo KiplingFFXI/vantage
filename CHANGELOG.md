@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+This update fixes how the settings window looks in the game. Its text is sharp on the Original FFXI and XI View fonts, and the game no longer shows through its bottom right corner.
+
+- The settings window's text is sharp with the **Original FFXI** and **XI View** fonts. Before, each one pixel stroke came out as two grey columns side by side, which looked smeared. Vantage now asks Ashita to draw those fonts pixel for pixel.
+- That text stays at a whole multiple of 16 pixels on screen when Ashita's own style has a font scale. Before, a scale put it between two sizes, which blurred it.
+- On the Original FFXI skin, the game no longer shows through the settings window's bottom right corner. With Shift held, the frame now runs all the way around that corner.
+- The settings window's pages have the window's own background behind them, and its buttons, sliders and lists have no outline, as in the README's pictures. Before, Ashita's own style put a grey sheet over the pages and an outline on every box. Tick boxes and radio buttons keep their thin outline. The edit mode bar's buttons have no outline either.
+- `/vg report` now says whether each menu font is drawn sharp.
+
 ## 1.2.0
 
 This update adds a way to replace the game's own buff icons with Vantage's, and it can show an automaton's HP as a number.

@@ -36,6 +36,7 @@ local gui = {
     GetWindowPos = function() return 100, 80 end,
     GetWindowSize = function() return 420, 300 end,
     GetFrameHeight = function() return 20 end,
+    GetFontSize = function() return 16 end,
     GetStyle = function() return style end,
 }
 

@@ -125,8 +125,28 @@ local function noted_fonts(source)
     return list
 end
 
--- add(path, size) gives the face for the font file at path: the last load's while the atlas still holds it, else one
--- added now. save() notes them all for the next load.
+-- A client menu font is whole pixels on a 16 pixel grid. ImGui draws a font under 36 pixels at twice its width and
+-- narrows it again, which spreads each pixel over two columns. So the font's own source, the first one, asks for its
+-- own width. That is set before the font draws its first glyph, as ImGui keeps the glyphs it has drawn. The source is
+-- looked up each time and never kept: ImGui moves its sources when another font is added.
+local function make_sharp(face)
+    face.Sources[1].OversampleH = 1
+end
+
+local function widening(face)
+    return face.Sources[1].OversampleH
+end
+
+-- Whether face draws at its own width: true or false, or nil when ImGui doesn't say.
+local function is_sharp(face)
+    local ok, value = pcall(widening, face)
+    if ok and type(value) == 'number' then return value == 1 end
+end
+
+-- add(path, size, sharp) gives the face for the font file at path: the last load's while the atlas still holds it,
+-- else one added now. sharp is for a font made of whole pixels (make_sharp). Such a font is noted under its path with
+-- a star, which no file name holds, so one an older load added and never made sharp isn't used again. save() notes
+-- them all for the next load.
 local function font_adder(imgui)
     local source = environment()
     local previous = source and noted_fonts(source) or {}
@@ -140,19 +160,21 @@ local function font_adder(imgui)
             notes[#notes + 1] = (';%s,%d,%d,%.2f,%s,%d'):format(hex(path), size, id, legacy, hex(name), bytes)
         end
     end
-    local function add(path, size)
+    local function add(path, size, sharp)
         local bytes = file_size(path)
-        local last = previous[path:lower()]
+        local key = sharp and path .. '*' or path
+        local last = previous[key:lower()]
         local kept = last and last.size == size and last.bytes == bytes and held[last.id]
         if kept and kept.size == last.legacy and kept.name == last.name then
             atlas_counts.kept = atlas_counts.kept + 1
-            note(path, size, kept.font, bytes)
+            note(key, size, kept.font, bytes)
             return kept.font
         end
         local ok, face = pcall(imgui.AddFontFromFileTTF, path, size)
         if not ok or not face then return nil end
+        if sharp then pcall(make_sharp, face) end
         atlas_counts.added = atlas_counts.added + 1
-        note(path, size, face, bytes)
+        note(key, size, face, bytes)
         return face
     end
     local function save()
@@ -256,13 +278,32 @@ function fonts.pop()
     require('imgui').PopFont()
 end
 
+local function style_scales(imgui)
+    local style = imgui.GetStyle()
+    return style.FontScaleMain, style.FontScaleDpi
+end
+
+-- What ImGui multiplies a pushed font size by before it draws: the style's main font scale times its DPI scale. 1
+-- when the style doesn't give them.
+local function font_scale(imgui)
+    local ok, main, dpi = pcall(style_scales, imgui)
+    local scale = ok and type(main) == 'number' and type(dpi) == 'number' and main * dpi or 1
+    if scale ~= scale or scale <= 0 or scale == math.huge then return 1 end
+    return scale
+end
+
 -- A client menu font is drawn at the multiple of 16 nearest size, as its glyphs are made on a 16 pixel grid and any
--- other size blurs them: 17, the default, draws at 16. The saved size isn't changed, and another font draws at it.
+-- other size blurs them: 17, the default, draws at 16. That is the size on screen, so with a font scale in Ashita's
+-- style the size pushed is that multiple of 16 divided by the scale. The saved size isn't changed, and another font
+-- draws at it.
 function fonts.push_window(name, size)
     local imgui = require('imgui')
     local menu = menu_fonts.face(name)
     size = size or 16
-    if menu then size = math.max(16, math.floor((size + 8) / 16) * 16) end
+    if menu then
+        local scale = font_scale(imgui)
+        size = math.max(16, math.floor((size * scale + 8) / 16) * 16) / scale
+    end
     imgui.PushFont(menu or faces[name] or default_face or imgui.GetFont(), size)
 end
 
@@ -282,13 +323,18 @@ function fonts.reason(name)
 end
 
 -- The fonts and the client art for /vg report, as plain values: the chosen font and why it isn't drawn as chosen, the
--- menu fonts, the custom font files left out, how many fonts ImGui's atlas held at load and how many this load used
--- again or added, the client art (client_assets.report) and why the last action icon wasn't drawn.
+-- menu fonts, each with whether ImGui draws it at its own width (sharp), the custom font files left out, how many
+-- fonts ImGui's atlas held at load and how many this load used again or added, the client art (client_assets.report)
+-- and why the last action icon wasn't drawn.
 function fonts.report(name)
     local actions_ok, actions = pcall(require, 'ui.action_icons')
     local out = { font = type(name) == 'string' and name or nil, menu = menu_fonts.report(), skipped = skipped,
         atlas = { fonts = atlas_counts.fonts, kept = atlas_counts.kept, added = atlas_counts.added },
         client = require('ui.client_assets').report(), action_icon = actions_ok and actions.reason() or nil }
+    for menu_name, entry in pairs(out.menu) do
+        local face = menu_fonts.face(menu_name)
+        if face then entry.sharp = is_sharp(face) end
+    end
     if out.font then out.reason = fonts.reason(out.font) end
     return out
 end

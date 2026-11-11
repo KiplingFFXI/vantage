@@ -51,7 +51,12 @@ It renders in a hidden window. Generated fonts, screenshots, and Python caches
 stay out of runtime archives. Game icons use a neutral fallback in the preview.
 Preview tests and scripts write to folders under tests/out (for example
 tests/out/apply-setup-fit). FreeType draws the fonts without hinting, which is
-closer to the stb_truetype atlas the game's ImGui uses.
+closer to the stb_truetype atlas the game's ImGui uses. It isn't the same. The
+game draws a font under 36 pixels at twice its width and narrows it again, and
+Ashita has a style of its own (a slate child background, a border on every
+button and box). So a picture can't show how sharp a font is in the game, nor
+what a window that leaves a color or size to the style looks like there. Check
+those in the game (docs/RELEASING.md, "The settings window in the game").
 
 Use --client-assets to decode locally installed FFXI window/font DATs for an
 Original FFXI preview. --client-xiview-root can point at a local XI View

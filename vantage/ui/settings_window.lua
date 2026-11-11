@@ -813,11 +813,13 @@ local function draw_open(s, view, cb)
     local flags = require('bit').bor(ImGuiWindowFlags_NoSavedSettings or 0, ImGuiWindowFlags_NoDocking or 0)
     if callbacks.focused == false then flags = require('bit').bor(flags, ImGuiWindowFlags_NoInputs or 0) end
     if peeking then flags = require('bit').bor(flags, ImGuiWindowFlags_NoInputs or 0, ImGuiWindowFlags_NoBackground or 0, ImGuiWindowFlags_NoDecoration or ImGuiWindowFlags_NoTitleBar or 0) end
-    if shift or resize_gesture then flags = require('bit').bor(flags, ImGuiWindowFlags_NoResize or 0, ImGuiWindowFlags_NoMove or 0,
+    -- With Shift held or a Shift drag going on, the window is sized by that drag and ImGui draws no resize grip.
+    local fixed = (shift or resize_gesture) and true or false
+    if fixed then flags = require('bit').bor(flags, ImGuiWindowFlags_NoResize or 0, ImGuiWindowFlags_NoMove or 0,
         ImGuiWindowFlags_NoCollapse or 0, ImGuiWindowFlags_NoScrollbar or 0, ImGuiWindowFlags_NoScrollWithMouse or 0) end
     if not peeking then skin.prepare_menu(imgui, look) end
     if imgui.Begin('Vantage##settings', window_open, flags) and not peeking then
-        skin.menu(imgui, look, 'window')
+        skin.menu(imgui, look, 'window', fixed)
         local focused = imgui.IsWindowFocused and imgui.IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows or 0) or false
         local escape = imgui.IsKeyPressed and ImGuiKey_Escape and imgui.IsKeyPressed(ImGuiKey_Escape, false) or false
         if callbacks.focused ~= false and window.can_escape(escape_busy, imgui.IsAnyItemActive(), popup, focused, escape) then

@@ -359,6 +359,7 @@ local function font_file(assets, kind, name)
 end
 
 -- Called once while startup font loading is allowed. Draw-time accessors never read or write files.
+-- load(path, size, sharp) adds a font file to ImGui. These are whole pixels at 16, so they ask to be drawn sharp.
 function menu_fonts.prepare(load)
     if prepared then return end
     prepared = true
@@ -367,7 +368,7 @@ function menu_fonts.prepare(load)
         local ok, path, why = pcall(font_file, assets, kind, name)
         local result = { path = ok and path or nil, reason = not ok and 'The menu font could not be made.' or why }
         if ok and path then
-            local loaded, face = pcall(load, path, 16)
+            local loaded, face = pcall(load, path, 16, true)
             if loaded and face then faces[name] = face
             else result.reason = 'ImGui could not load the menu font.' end
         end

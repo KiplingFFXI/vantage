@@ -21,7 +21,7 @@ or never moved), 3 failed and the old addon could not be put back, or with no ol
 be moved out (the receipt says where they are).
 
 .EXAMPLE
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.2.0-addon.zip -Sha256 <hash> -Game C:\Games\PhoenixXI
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.2.1-addon.zip -Sha256 <hash> -Game C:\Games\PhoenixXI
 #>
 param(
     [Parameter(Mandatory = $true)] [string] $Zip,

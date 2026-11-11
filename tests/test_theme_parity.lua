@@ -28,19 +28,33 @@ local malformed = { style = 'bad', window_style = { linked = false, font_size = 
 theme.tidy_window(malformed);
 assert(require('core.store').equal(malformed.window_style, { font_size = 17 }), 'The text size is all a save keeps.');
 local imgui = require('imgui');
-local colors, vars, popped_colors = {}, {}, 0;
+local colors, vars, popped_colors, popped_vars = {}, {}, 0, 0;
 imgui.PushStyleColor = function(key, value) assert(key ~= nil); colors[#colors + 1] = {key, value}; end;
 imgui.PushStyleVar = function(key, value) assert(key ~= nil); vars[#vars + 1] = {key, value}; end;
 imgui.PopStyleColor = function(n) popped_colors = popped_colors + n; end;
+imgui.PopStyleVar = function(n) popped_vars = popped_vars + n; end;
 local index = 0;
 for _, entry in ipairs(theme.WINDOW_COLORS) do
     if entry.paints then _G['ImGuiCol_' .. entry.paints] = index; index = index + 1; end
     if entry.also then _G['ImGuiCol_' .. entry.also] = index; index = index + 1; end
 end
+ImGuiCol_ChildBg, ImGuiStyleVar_FrameBorderSize = index, 500;
+-- The page is drawn in child windows and the look has no key for their background or for an outline on buttons and
+-- boxes, so the window sets both: a clear child background, and no frame border. Ashita's own style gives a slate
+-- child background and a border of 1.
+local function own_inside(label)
+    local child;
+    for _, entry in ipairs(colors) do
+        if entry[1] == ImGuiCol_ChildBg then assert(not child, label .. ': the child background is pushed once.'); child = entry[2]; end
+    end
+    assert(child and child[1] == 0 and child[2] == 0 and child[3] == 0 and child[4] == 0, label .. ': the child background is clear.');
+    assert(#vars == 1 and vars[1][1] == ImGuiStyleVar_FrameBorderSize and vars[1][2] == 0, label .. ': buttons and boxes get no outline, and nothing else is resized.');
+end
 local nc = theme.push(s);
-assert(nc == #colors and nc > 30 and #vars == 0);
+assert(nc == #colors and nc > 30);
+own_inside('Phoenix');
 theme.pop(nc);
-assert(popped_colors == nc);
+assert(popped_colors == nc and popped_vars == 1, 'Every color and the one size come off again.');
 -- Vantage's windows don't dock, so they draw no tab: no Tabs color is pushed, under any name an Ashita build gives them.
 local tab_names, kept = { 'Tab', 'TabHovered', 'TabSelected', 'TabActive', 'TabSelectedOverline', 'TabDimmed',
     'TabUnfocused', 'TabDimmedSelected', 'TabUnfocusedActive', 'TabDimmedSelectedOverline' }, {};
@@ -53,7 +67,8 @@ for _, name in ipairs(tab_names) do _G['ImGuiCol_' .. name] = kept[name]; end
 s = defaults.make();
 colors, vars = {}, {};
 nc = theme.push(s);
-assert(nc == #colors and nc > 30 and #vars == 0, 'Defaults apply the complete menu palette without new size overrides.');
+assert(nc == #colors and nc > 30, 'Defaults apply the complete menu palette.');
+own_inside('Defaults');
 theme.pop(nc);
 local native = defaults.make();
 native.style.window_type = 8;
@@ -65,7 +80,8 @@ native.style.window_type = 3;
 assert(theme.window(native).window_type == 3, 'The window follows the window type of the timer panels.');
 colors, vars = {}, {};
 local original_nc = theme.push(native);
-assert(original_nc > 30 and #vars == 0);
+assert(original_nc > 30);
+own_inside('Original FFXI');
 for _, entry in ipairs(colors) do
     if entry[1] == ImGuiCol_WindowBg or entry[1] == ImGuiCol_PopupBg then assert(entry[2][1] < 0.2); end
 end

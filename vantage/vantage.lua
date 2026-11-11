@@ -1,6 +1,6 @@
 addon.name = 'vantage';
 addon.author = 'Kipling';
-addon.version = '1.2.0';
+addon.version = '1.2.1';
 addon.desc = 'Customizable buff, debuff and recast timers, with buffs beside the game party list, for Phoenix.';
 addon.link = 'https://github.com/KiplingFFXI/vantage';
 

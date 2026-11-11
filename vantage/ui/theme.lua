@@ -218,6 +218,10 @@ end
 
 -- ImGui copies a pushed color during the call, so one table takes each tinted one.
 local pushed = { 0, 0, 0, 0 }
+local CLEAR = { 0, 0, 0, 0 }
+-- The window's colors, and two things its look has no key for, which would come from Ashita's own style: the page is
+-- drawn in child windows, so their background is clear and the window's own shows, and buttons and boxes get no
+-- outline. A tick box draws its own (controls.lua). Returns how many colors theme.pop takes off.
 function theme.push(settings, resolved)
     local imgui = require('imgui')
     local count = 0
@@ -228,11 +232,14 @@ function theme.push(settings, resolved)
         key = entry.also and _G['ImGuiCol_' .. entry.also]
         if key then imgui.PushStyleColor(key, w[entry.key]); count = count + 1 end
     end
+    if ImGuiCol_ChildBg then imgui.PushStyleColor(ImGuiCol_ChildBg, CLEAR); count = count + 1 end
+    if ImGuiStyleVar_FrameBorderSize then imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0) end
     return count
 end
 
 function theme.pop(colors)
     local imgui = require('imgui')
+    if ImGuiStyleVar_FrameBorderSize then imgui.PopStyleVar(1) end
     if (colors or 0) > 0 then imgui.PopStyleColor(colors) end
 end
 

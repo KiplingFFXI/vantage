@@ -80,7 +80,7 @@ assert(skin.window_reason(3) == nil and status_types[#status_types] == 3,
 assert(skin.reason(3) == 'The client gauge artwork is unavailable.')
 missing_gauge = false
 
-local frame_height, rounding, clip_depth = 20, 0, 0
+local frame_height, rounding, clip_depth, font_size = 20, 0, 0, 16
 local window_bounds, clip_bounds = { 10, 30, 400, 300 }, { 12, 50, 398, 320 }
 local active_clip, recorded, triangles, fallbacks = nil, {}, {}, {}
 local draw = {
@@ -112,6 +112,7 @@ local gui = {
     GetWindowPos = function() return window_bounds[1], window_bounds[2] end,
     GetWindowSize = function() return window_bounds[3], window_bounds[4] end,
     GetFrameHeight = function() return frame_height end,
+    GetFontSize = function() return font_size end,
     GetStyle = function() return { WindowRounding = rounding } end,
     Begin = function() error('The menu painter must not create or replace a window.') end,
     GetBackgroundDrawList = function() error('The menu painter must not escape popup ordering.') end,
@@ -123,16 +124,56 @@ s.style.minimal = true
 requested_types = {}
 assert(skin.menu(gui, look, 'window') and #recorded > 0 and clip_depth == 0,
     'Native settings artwork is independent of Minimal HUD mode and keeps clip calls balanced.')
-assert(#triangles == 1 and triangles[1][1][1] == 380 and triangles[1][1][2] == 300,
-    'The area beside the native resize grip has a backdrop rather than a bare square hole.')
+-- ImGui's resize grip reaches floor(max(font * 1.10, rounding + 1 + font * 0.2)) along the bottom and right edges from
+-- the window's corner, here 17 from 410, 330. The art stops at that square and no further from the corner, as the
+-- window has no backdrop of its own and anything left bare shows the game.
+local function corner_filled(reach, label)
+    local cut_x, cut_y = 410 - reach, 330 - reach
+    assert(#triangles == 1, label .. ': one fill beside the grip.')
+    local a, b, c = triangles[1][1], triangles[1][2], triangles[1][3]
+    assert(a[1] == cut_x and a[2] == cut_y and b[1] == 411 and b[2] == cut_y and c[1] == cut_x and c[2] == 331,
+        label .. ': the half of the square the grip leaves is filled, a pixel past the long edge of the grip.')
+    local above, beside = false, false
+    for _, painted in ipairs(recorded) do
+        assert(not (painted.x2 > cut_x and painted.y2 > cut_y), label .. ': the native resize corner must stay visible.')
+        if painted.id == 'newtex' then
+            above = above or painted.x2 == 398 and painted.y2 == math.min(320, cut_y)
+            beside = beside or painted.x2 == math.min(398, cut_x) and painted.y2 == 320
+        end
+    end
+    assert(above and beside, label .. ': the art reaches the square from above and from its left.')
+end
+corner_filled(17, 'Font 16')
 for _, chosen in ipairs(requested_types) do assert(chosen == 6, 'Settings artwork has its own selected window type.') end
 for _, painted in ipairs(recorded) do
     assert(painted.x1 >= 12 and painted.y1 >= 50 and painted.x2 <= 398 and painted.y2 <= 320,
         'Menu paint stays below the title and inside the existing clip, leaving scrollbar space intact.')
-    assert(not (painted.x2 > 380 and painted.y2 > 300), 'The native resize corner must stay visible.')
     assert(painted.tint == theme.u32(painted.id == 'newtex' and look.background or look.border),
         'Independent background and border colors tint the artwork.')
 end
+-- A taller title bar doesn't widen the square: the grip follows the font and the corner rounding alone.
+frame_height, recorded, triangles = 40, {}, {}
+assert(skin.menu(gui, look, 'window'))
+corner_filled(17, 'A tall title bar')
+frame_height, font_size, recorded, triangles = 20, 32, {}, {}
+assert(skin.menu(gui, look, 'window'))
+corner_filled(35, 'Font 32')
+font_size, rounding, recorded, triangles = 16, 20, {}, {}
+assert(skin.menu(gui, look, 'window'))
+corner_filled(24, 'Rounded corners')
+rounding = 0
+-- With Shift held ImGui draws no grip, so the whole body is painted and nothing is cut.
+recorded, triangles = {}, {}
+assert(skin.menu(gui, look, 'window', true) and #triangles == 0 and clip_depth == 0)
+local whole = false
+for _, painted in ipairs(recorded) do whole = whole or painted.id == 'newtex' and painted.x2 == 398 and painted.y2 == 320 end
+assert(whole, 'A window with no resize grip is painted to its corner.')
+for _, bad in ipairs({ 0, -16, 0 / 0, math.huge, 'big' }) do
+    font_size, recorded, triangles = bad, {}, {}
+    assert(not skin.menu(gui, look, 'window') and #recorded == 0 and #triangles == 0 and clip_depth == 0,
+        'A font size that is no size paints nothing.')
+end
+font_size = 16
 
 recorded, requested_types = {}, {}
 look.window_type = 8

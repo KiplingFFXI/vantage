@@ -124,7 +124,7 @@ assert(#pieces(assets.texture('window', 'hfr1', 4).id) > 2 and #pieces(assets.te
 local gui = {
     GetWindowDrawList = function() return list; end,
     GetWindowPos = function() return 100, 50; end, GetWindowSize = function() return 960, 680; end,
-    GetFrameHeight = function() return 20; end, GetStyle = function() return { WindowRounding = 0 }; end,
+    GetFrameHeight = function() return 20; end, GetFontSize = function() return 16; end, GetStyle = function() return { WindowRounding = 0 }; end,
 };
 local function key(piece)
     local parts = {};

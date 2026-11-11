@@ -170,8 +170,14 @@ local function grip_corner(list, look, cut_x, cut_y, far_x, far_y)
     list:AddTriangleFilled(point_a, point_b, point_c, grip_color)
 end
 
+-- How far ImGui's resize grip reaches along the bottom and right edges from the corner, as Begin works it out.
+local function grip_reach(font, rounding)
+    return math.floor(math.max(font * 1.10, rounding + 1 + font * 0.2))
+end
+
 -- Paint before the controls, in their own window layer. ImGui keeps ownership of its chrome.
-local function paint_menu(imgui, look, kind, fallback)
+-- fixed is true for a window ImGui draws no resize grip on this frame.
+local function paint_menu(imgui, look, kind, fallback, fixed)
     if not look or look.theme ~= 'Original FFXI' then return false end
     if kind ~= 'window' and kind ~= 'popup' and kind ~= 'tooltip' then return false end
     local ok, list, x, y, width, height, left, top, right, bottom = pcall(window_box, imgui, fallback)
@@ -187,34 +193,39 @@ local function paint_menu(imgui, look, kind, fallback)
     menu_box.x, menu_box.y, menu_box.width, menu_box.height = left, top, right - left, bottom - top
     menu_style.theme, menu_style.window_type, menu_style.border_color = look.theme, look.window_type, look.border
     menu_style.background_color = kind == 'window' and look.background or look.dropdowns
-    if kind ~= 'window' then return paint(list, look, kind, fallback, left, top, right, bottom) end
+    if kind ~= 'window' or fixed then return paint(list, look, kind, fallback, left, top, right, bottom) end
     local gui_style = imgui.GetStyle and imgui.GetStyle() or nil
     local rounding = gui_style and gui_style.WindowRounding or 0
-    -- ImGui draws the resize grip in Begin, before this paint, so the corner triangle under it stays unpainted.
-    local grip = math.max(frame * 1.5, rounding + frame * 0.25)
+    local font = imgui.GetFontSize()
+    if not finite(font) or font <= 0 or not finite(rounding) or rounding < 0 then return false end
+    -- ImGui draws the resize grip in Begin, before this paint, so the corner triangle under it stays unpainted. The
+    -- window has no backdrop of its own here, so the art stops at the square the grip sits in, and the square's other
+    -- half is filled. That fill goes a pixel past the grip's long edge, so the two leave no see-through line between.
+    local grip = grip_reach(font, rounding)
     local cut_x, cut_y = x + width - grip, y + height - grip
     local painted = paint(list, look, kind, fallback, left, top, right, math.min(bottom, cut_y))
     painted = paint(list, look, kind, fallback, left, math.max(top, cut_y), math.min(right, cut_x), bottom) or painted
     if cut_x < right and cut_y < bottom then
         clip_min[1], clip_min[2], clip_max[1], clip_max[2] = left, top, right, bottom
         list:PushClipRect(clip_min, clip_max, true)
-        local success, problem = pcall(grip_corner, list, look, cut_x, cut_y, x + width, y + height)
+        local success, problem = pcall(grip_corner, list, look, cut_x, cut_y, x + width + 1, y + height + 1)
         list:PopClipRect()
         if not success then error(problem) end
     end
     return painted
 end
 
-function skin.menu(imgui, look, kind)
+-- fixed, for a window, is whether ImGui draws no resize grip on it this frame: its whole body is then painted.
+function skin.menu(imgui, look, kind, fixed)
     -- The settings window's tooltips and lists come here, so a sample drawn over the window steps back from them.
     if kind == 'tooltip' or kind == 'popup' then require('ui.resize').cover(imgui, kind == 'popup') end
     local prepared = prepared_menu
     prepared_menu = nil
     if prepared and prepared.look == look and not prepared.suppressed then return false end
-    local ok, painted = pcall(paint_menu, imgui, look, kind, false)
+    local ok, painted = pcall(paint_menu, imgui, look, kind, false, fixed)
     if not ok or not painted then
         if prepared and prepared.look == look and prepared.suppressed then
-            paint_menu(imgui, look, kind, true)
+            paint_menu(imgui, look, kind, true, fixed)
         elseif not ok then
             error(painted)
         end

@@ -17,8 +17,16 @@ local cb = {
     end,
 };
 MOCK.hovered = true;
+-- What the window tells the skin about its resize grip each frame: true when ImGui draws none.
+local skin, no_grip = require('ui.client_skin'), nil;
+local paint_menu = skin.menu;
+skin.menu = function(gui, look, kind, fixed)
+    if kind == 'window' then no_grip = fixed; end
+    return paint_menu(gui, look, kind, fixed);
+end;
 local function frame()
     MOCK.imgui_calls = {};
+    no_grip = nil;
     window.draw(s, view, cb);
     clicked = false;
     assert(#MOCK.font_stack == 0);
@@ -37,8 +45,11 @@ local function release()
 end;
 frame();
 assert(saves == 0);
+assert(require('bit').band(flags(), ImGuiWindowFlags_NoResize) == 0 and no_grip == false,
+    'Without Shift ImGui draws its resize grip, and the skin is told to leave room for it.');
 press(1059, 759);
 assert(require('bit').band(flags(), ImGuiWindowFlags_NoResize) ~= 0, 'Shift resizing suppresses the competing ordinary grip.');
+assert(no_grip == true, 'With no grip drawn, the skin is told to paint the whole body, so no corner is left bare.');
 MOCK.mouse_x, MOCK.mouse_y = 1159, 819;
 frame();
 assert(s.window.width == 960 and s.window.height == 680 and saves == 0, 'Shift resizing stays transient while held.');
