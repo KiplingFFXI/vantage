@@ -171,7 +171,7 @@ function customization.reset(settings, section)
 end
 
 local editable = {enabled=true,recast_display=true,style=true,panels=true,party_ui=true,effect_filters=true,visibility=true,tracking=true,alerts=true,
-    window=true,window_style=true,preview=true,shared_layout=true,shared_scope=true,
+    window=true,window_style=true,preview=true,shared_layout=true,shared_scope=true,replace_game_buffs=true,
     chat_colors=true,diagnostics=true,overhead=true,durations=true,recast_tints=true,ready_pulse=true,party_cooldowns=true,rolls=true,pet=true,
     edit_mode=true};
 

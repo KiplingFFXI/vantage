@@ -11,6 +11,7 @@ local defaults = require('ui.defaults');
 local effect_filters = require('core.effect_filters');
 local elements = require('ui.elements');
 local fonts = require('ui.fonts');
+local game_buffs = require('core.game_buffs');
 local icons = require('ui.icons');
 local party_defaults = require('ui.party_defaults');
 local shared_look = require('ui.shared_look');
@@ -96,6 +97,13 @@ local hide_game_row = option('Hide Vantage in cutscenes, on the map and when the
 local hide_typing_row = option('Hide timer panels while I type', 'hide_typing', 'Hides the timer panels while the chat line is open.');
 local hover_row = option('Show details when I point at a timer', 'hover', 'Point at an effect for a moment to see its timing and full details. Clicks still pass through.');
 local typing_and_hover = hide_typing_row.text .. hover_row.text;
+local replace_row = option('Replace the game\'s buff icons', 'replace_buffs',
+    'Hides the game\'s own buff and debuff icons, so Self buffs and Self debuffs are the only ones on screen. It needs both of those on. '
+    .. 'The game\'s + menu still cancels buffs: its cursor shows on Vantage\'s icons and the game does the cancel, so Vantage still sends nothing. '
+    .. 'To do this, Vantage changes how the game draws its buff icons, in the game\'s memory, and puts that back when this is off or Vantage unloads. '
+    .. 'If a game update changes that part of the game, this stops working until Vantage is updated. A line here says so, and the game draws its own icons. '
+    .. 'An effect your filters hide shows nowhere while this is on, except by name while the + menu is on it.');
+local typing_hover_and_replace = typing_and_hover .. replace_row.text;
 local hide_keys = { 'hide_events', 'hide_map', 'hide_ui' };
 
 local resume = listed({ text = 'Resume', label = 'Resume##main_resume', help = 'Restore the timer panels already chosen below.' });
@@ -558,9 +566,10 @@ local function second_rows(imgui, settings, c)
 end;
 
 -- Two columns while each holds the Recasts row, the widest one, with its Edit.
--- Two short ticks share a line when the window has the room.
-local function beside(imgui, both)
-    if imgui.CalcTextSize(both) + 2 * imgui.GetFrameHeight() + 40 <= imgui.GetContentRegionAvail() then imgui.SameLine(); end;
+-- Short ticks share a line when the window has the room for them all: two, or as many as count says.
+local function beside(imgui, labels, count)
+    count = count or 2;
+    if imgui.CalcTextSize(labels) + count * (imgui.GetFrameHeight() + 20) <= imgui.GetContentRegionAvail() then imgui.SameLine(); end;
 end;
 
 local function two_columns(imgui)
@@ -597,6 +606,17 @@ local function what_to_show(imgui, settings, view, c)
     if tick(imgui, c, hover_row, settings.style.hover) then
         local on = hover_row.value[1];
         edit(c, hover_row.text, function() settings.style.hover = on; end);
+    end;
+    beside(imgui, typing_hover_and_replace, 3);
+    if tick(imgui, c, replace_row, settings.replace_game_buffs) then
+        local on = replace_row.value[1];
+        edit(c, replace_row.text, function() settings.replace_game_buffs = on; end);
+    end;
+    -- Ticked but not in effect: a line says why, from the settings first, then from the game client.
+    if settings.replace_game_buffs then
+        local asked, why = defaults.game_buffs_replaced(settings);
+        if asked then why = game_buffs.problem(); end;
+        if why then shaded(imgui, c, why, 'problem_messages'); end;
     end;
 end;
 

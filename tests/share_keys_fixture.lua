@@ -181,7 +181,7 @@ return {
     ['party_ui.strips'] = 'alliance1 alliance2 party',
     ['party_ui.style'] = 'icon_art opacity',
     ['pet'] = 'anchor blink_icons blink_seconds conditions countdown_bold countdown_outline countdown_outline_color'
-        .. ' countdown_shadow effects_as enabled exclude height hp_color include kinds locked max_effects max_recasts'
+        .. ' countdown_shadow effects_as enabled exact_hp exclude height hp_color include kinds locked max_effects max_recasts'
         .. ' mp_color preview shared_rules show_charm show_countdowns show_effects show_maneuvers show_recasts'
         .. ' show_vitals tp_color width x y',
     ['pet.anchor'] = 'align dx dy element gap offset point side to',

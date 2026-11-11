@@ -41,16 +41,18 @@ client_check.py checks that a game client has every pattern the addon looks
 for, each exactly once. Those are the patterns for the chat windows and menu
 scale (core/chat.lua), the event, interface and map focus flags
 (core/client.lua), the game's party list and the Treasure Pool window
-(core/native_party_ui.lua), the game clock (core/clock.lua), and the game's
-name point and cameras (core/name_anchor.lua). While the addon loads
-ffxi.itemdata, they also include that library's patterns and those of the ffxi
-libraries it loads. It reads the patterns from those files, prints each one
-with where it was found, and exits 0 only when every one is found once. It only
-reads the client. It decodes a DLL in memory with the research decoder in
-tests/out/native-solo-research. That folder isn't in the repository. Without
-it, pass a decoded client image. The libraries default to the addons/libs
-folder of the Ashita install the client is in, or ASHITA_LIBS. --libs picks
-another.
+(core/native_party_ui.lua), the game clock (core/clock.lua), the game's name
+point and cameras (core/name_anchor.lua), and the game's own buff icons and +
+menu for Replace the game's buff icons (core/game_buffs.lua). For those it
+checks where each routine starts and each routine whole. While the addon
+loads ffxi.itemdata, they also include that library's patterns and those of
+the ffxi libraries it loads. It reads the patterns from those files, prints
+each one with where it was found, and exits 0 only when every one is found
+once. It only reads the client. It decodes a DLL in memory with the research
+decoder in tests/out/native-solo-research. That folder isn't in the
+repository. Without it, pass a decoded client image. The libraries default to
+the addons/libs folder of the Ashita install the client is in, or ASHITA_LIBS.
+--libs picks another.
 
 The catalog exporter reads pinned Git objects from the source repositories,
 never dirty checkout files. --phoenix picks the Phoenix checkout. If you leave

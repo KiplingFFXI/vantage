@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0
+
+This update adds a way to replace the game's own buff icons with Vantage's, and it can show an automaton's HP as a number.
+
+- **Replace the game's buff icons**, on the main page, hides the game's own buff and debuff icons, so Self buffs and Self debuffs are the only ones on screen. It starts off, and it needs both of those panels on.
+- You still cancel a buff with the game's + menu. With the game's icons replaced, its cursor shows on Vantage's icon for the buff it's on, and Confirm cancels that buff. The game does the cancel, and Vantage still sends nothing. Clicking an icon does nothing.
+- When the + menu is on an effect no self panel shows, because a filter hides it or the panel has no room for it, a small line by Self buffs shows its name, like `+ menu: Protect`.
+- While the game's icons are replaced, Vantage changes how the game draws them, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn the setting off or unload Vantage. If a game update changes that part of the game, the game draws its own icons, and a line under the tick says why.
+- **Replace the game's buff icons** is each character's own setting. Profiles, exports and shared layouts don't carry it, and an import can't turn it on.
+- **Show automaton HP as a number**, on Pet's **Show** tab, shows your automaton's HP and max HP on its bar, like 812/1040, instead of a percent. It starts off. Only automatons get this, because the game sends every other pet's HP as a percent, and the number shows only while it agrees with the percent the game shows.
+- `/vg report` now says whether the game's buff icons are replaced, and why not when they should be.
+- An export made with 1.2.0 that holds the new Pet tick, such as the Pet display or a whole profile, can't be read by 1.1.1 or older. It asks you to update Vantage.
+
 ## 1.1.1
 
 This update fixes bugs found since 1.1.0 and brings the effect data up to date with Phoenix. A mob's Stoneskin now goes away once damage gets through.

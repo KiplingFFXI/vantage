@@ -80,7 +80,7 @@ function defaults.make()
         edit_mode = require('core.anchors').make_edit(),
         enabled = true, recast_display = 'separate', window = { open = false, x = 100, y = 80, width = 960, height = 680, tab = 'Home',
             sections = {}, peek = true },
-        preview = false,
+        preview = false, replace_game_buffs = false,
         shared_layout = false, shared_scope = 'placement', job_profiles = {}, active_profile = '',
         visibility = { hide_events = true, hide_map = true, hide_ui = true, hide_typing = false },
         style = { theme = 'Phoenix', window_type = 1, gauge_art = 'Original FFXI', icon_art = 'Client', recast_icon_art = 'Original FFXI', recast_icon_source = 'effect', font = 'Agave', font_size = 16, scale = 1, opacity = 0.92, background = true, minimal = false,
@@ -158,6 +158,18 @@ function defaults.any_timer_on(settings)
         if settings.enabled and defaults.panel_enabled(settings, id) then return true end
     end
     return false
+end
+
+-- Replace the game's buff icons (core/game_buffs.lua): whether the settings ask for it now, and when its tick is on
+-- but they don't, a line saying why. The game's row holds your buffs and your debuffs, so both self panels must be on
+-- to stand in for it, and samples aren't your effects.
+function defaults.game_buffs_replaced(settings)
+    if settings.replace_game_buffs ~= true then return false end
+    if not settings.enabled or not defaults.panel_enabled(settings, 'self_buffs') or not defaults.panel_enabled(settings, 'self_debuffs') then
+        return false, 'This needs Self buffs and Self debuffs on. Until then the game draws its own buff icons.'
+    end
+    if settings.preview then return false, 'While samples show, the game draws its own buff icons.' end
+    return true
 end
 
 -- The panel for all recasts shows nothing with no kind ticked, so turning it on ticks them all.

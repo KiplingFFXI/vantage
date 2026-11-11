@@ -1,6 +1,6 @@
 addon.name = 'vantage';
 addon.author = 'Kipling';
-addon.version = '1.1.1';
+addon.version = '1.2.0';
 addon.desc = 'Customizable buff, debuff and recast timers, with buffs beside the game party list, for Phoenix.';
 addon.link = 'https://github.com/KiplingFFXI/vantage';
 
@@ -956,6 +956,8 @@ function callbacks.export_report(quiet)
         observed_self_effects=store.copy(state.snapshot.self_effects or {}),
         party_roster=store.copy(state.roster or {valid=false,members={}}),
         party_display=store.copy(state.settings.party_ui),native_party=native_party.status(),
+        -- Replace the game's buff icons: whether it is in effect, why not, and how often the game's + menu was moved.
+        game_buffs=require('core.game_buffs').status(),
         recasts=store.copy(state.recasts or {}),
         chat=chat_window.describe and chat_window.describe() or 'Unavailable',
         rows=store.copy(state.view.rows or {}),history=store.copy(state.report),pet=store.copy(pet_watch:report()),
@@ -1506,6 +1508,14 @@ local function present()
     callbacks.effect_recipients=visibility.active and state.filter_recipients or nil;
     state.view.effect_recipients=callbacks.effect_recipients;
     local blocked=state.ready==false or hidden_by_rules(s,state.snapshot);
+    -- Replace the game's buff icons (core/game_buffs.lua) is in effect while the settings ask for it, the displays are
+    -- ready, and neither /vg hide nor the game's hidden interface hides them. It hands back what the game's + menu is
+    -- on, for the cursor on the self panels (ui/hud.lua), and a line to say when it could not start or had to stop.
+    local replace=not displays_hidden and state.ready~=false and defaults.game_buffs_replaced(s)==true;
+    local watched,pick,notice=pcall(require('core.game_buffs').update,replace);
+    callbacks.menu_pick=watched and pick or nil;
+    if not watched then keeps_failing('The game\'s buff icons could not be replaced.',pick);
+    elseif notice then say(notice); end;
     measured=performance and performance.now();
     -- Size labels drawn this Present keep clear of the displays drawn in it and in the last one.
     require('ui.resize').frame();
@@ -1662,6 +1672,11 @@ ashita.events.register('unload','vantage_unload',function()
         local ok,why=pcall(callback);
         if not ok then pcall(say,'A display could not close cleanly. '..tostring(why)); end;
     end;
+    -- Replace the game's buff icons puts back what it changed in the game (core/game_buffs.lua).
+    close(function()
+        local clean,why=require('core.game_buffs').release();
+        if not clean then say(why); end;
+    end);
     -- No warmup step runs after this. What the steps uploaded so far is released below with the rest.
     close(warmup.reset);
     close(function()finish_layout(true);end);

@@ -102,7 +102,8 @@ assert(require('ui.search_index').controls.Display['Hidden everywhere'], 'effect
 -- The rest of a save: where a player sets each key, as a page and the control's name in the search.
 local HIDE_WITH_GAME = 'Home/Hide Vantage in cutscenes, on the map and when the game hides its menus';
 local homes = {
-    enabled = 'Home/Resume', preview = 'Home/Show samples', active_profile = 'Profiles/Load profile', job_profiles = 'Profiles/Load this profile when I change to',
+    enabled = 'Home/Resume', preview = 'Home/Show samples', replace_game_buffs = 'Home/Replace the game\'s buff icons',
+    active_profile = 'Profiles/Load profile', job_profiles = 'Profiles/Load this profile when I change to',
     shared_layout = 'Profiles/Share settings across my characters', shared_scope = 'Profiles/What to share across characters',
     watch_ids = 'Display/Watching', recast_display = 'Display/Show as',
     ['tracking.follow_subtarget'] = 'Display/Follow the cursor while I am choosing a target',

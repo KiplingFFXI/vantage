@@ -1,6 +1,6 @@
 # Install Vantage
 
-Vantage is an Ashita v4 addon for FFXI on Phoenix. It shows buff, debuff and recast timers that you can move, size and style, and it can put buffs beside the game's party list. It doesn't hide or replace any of the game's windows. You need Ashita v4, version 4.3.2.1 or later. That's the build the Phoenix launcher installs.
+Vantage is an Ashita v4 addon for FFXI on Phoenix. It shows buff, debuff and recast timers that you can move, size and style, and it can put buffs beside the game's party list. It doesn't hide or replace any of the game's windows unless you turn on **Replace the game's buff icons**, which hides the game's own buff icons. You need Ashita v4, version 4.3.2.1 or later. That's the build the Phoenix launcher installs.
 
 ## Install
 

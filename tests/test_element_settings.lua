@@ -108,6 +108,8 @@ local rows = {
         function(s) return not s.pet.enabled and not s.pet.preview; end, 'Show this display', 'pet' },
     { 'Pet/show', 'Locked', nil, click('Locked##frame'), function(s) return s.pet.locked == false; end, 'Locked', 'pet' },
     { 'Pet/show', 'Show HP, MP and TP', nil, click('Show HP, MP and TP##frame'), function(s) return s.pet.show_vitals == false; end, 'Show HP, MP and TP', 'pet' },
+    { 'Pet/show', 'Show automaton HP as a number', nil, click('Show automaton HP as a number##frame'), function(s) return s.pet.exact_hp == true; end,
+        'Show automaton HP as a number', 'pet' },
     { 'Pet/show', 'Show charm and jug time', nil, click('Show charm and jug time##frame'), function(s) return s.pet.show_charm == false; end, 'Show charm and jug time', 'pet' },
     { 'Pet/show', 'Effects: None', nil, click('None##frame_Effects_none'), function(s) return s.pet.show_effects == false and s.pet.kinds == 'all'; end, 'Effects', 'pet' },
     { 'Pet/show', 'Effects: Debuffs only', nil, click('Debuffs only##frame_Effects_debuff'), function(s) return s.pet.show_effects and s.pet.kinds == 'debuff'; end, 'Effects', 'pet' },

@@ -3,8 +3,8 @@ local observer = {};
 local client = require('core.client');
 local catalog = require('core.catalog');
 local bit = require('bit');
-local packets = { [0x00A]=true, [0x00B]=true, [0x00E]=true, [0x028]=true, [0x029]=true, [0x037]=true, [0x063]=true, [0x068]=true,
-    [0x076]=true, [0x08C]=true };
+local packets = { [0x00A]=true, [0x00B]=true, [0x00E]=true, [0x028]=true, [0x029]=true, [0x037]=true, [0x044]=true, [0x063]=true,
+    [0x068]=true, [0x076]=true, [0x08C]=true };
 local wanted = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [6] = true, [11] = true, [13] = true };
 local sources = { [4] = 'spells', [6] = 'abilities', [11] = 'skills', [13] = 'pacts' };
 local landed = { [127] = true, [186] = true, [230] = true, [236] = true, [237] = true, [242] = true,

@@ -2,7 +2,8 @@
 -- some, TP, the buffs and debuffs Vantage saw on it with their timers, the recasts of your pet commands, for a pet you
 -- charmed an estimate of the charm's time left from Phoenix's formula, for a jug the time until it leaves, and for a
 -- PUP your maneuvers and the overload chance they reported. The pet and its HP, MP and TP come from the client, which
--- the game keeps up to date (0x068 at most every 250 ms, src/map/entities/pet_entity.cpp :212-227); no packet lists a
+-- the game keeps up to date (0x068 at most every 250 ms, src/map/entities/pet_entity.cpp :212-227). An automaton's HP and
+-- max HP as numbers come from the 0x044 the server sends a PUP, and nothing gives them for any other pet. No packet lists a
 -- pet's effects, so they are only what Vantage saw land on it, as on any other unit, and when an effect on a pet ends,
 -- only the player it came from is told, so only effects from you end exactly. It shows the pet the client shows,
 -- whether or not a jug pet stays through a zone change on the server. Nothing here sends anything. ui/pet_display.lua
@@ -42,7 +43,7 @@ local BURDEN_TICK = 3;
 
 function pet.make()
     return { enabled = false, preview = false, x = 1300, y = 520, width = 280, height = 0, locked = true,
-        show_vitals = true, show_charm = true, show_effects = true, show_recasts = true, show_countdowns = true,
+        show_vitals = true, exact_hp = false, show_charm = true, show_effects = true, show_recasts = true, show_countdowns = true,
         show_maneuvers = true, effects_as = 'icons', blink_icons = true, blink_seconds = 15,
         max_effects = 8, max_recasts = 6, kinds = 'all', include = {}, exclude = {}, shared_rules = true,
         countdown_bold = false, countdown_shadow = true, countdown_outline = false,
@@ -86,7 +87,7 @@ end
 function pet.tidy(value)
     value = table_of(value);
     local fresh = pet.make();
-    for _, key in ipairs({ 'enabled', 'locked', 'show_vitals', 'show_charm', 'show_effects', 'show_recasts', 'show_countdowns',
+    for _, key in ipairs({ 'enabled', 'locked', 'show_vitals', 'exact_hp', 'show_charm', 'show_effects', 'show_recasts', 'show_countdowns',
         'show_maneuvers', 'blink_icons', 'shared_rules', 'countdown_bold', 'countdown_shadow', 'countdown_outline' }) do
         if type(value[key]) ~= 'boolean' then value[key] = fresh[key]; end
     end
@@ -410,6 +411,16 @@ function methods:refresh(now, settings, snapshot, subjects, recast_rows)
     shown.hpp = finite(hpp) and math.max(0, math.min(100, hpp)) or nil;
     shown.mpp = finite(mpp) and math.max(0, math.min(100, mpp)) or nil;
     shown.tp = finite(tp) and math.max(0, math.min(3000, tp)) or nil;
+    -- An automaton's HP as a number, from the 0x044 core/client.lua matched to it, only while it agrees with the percent.
+    -- The server works the percent out from the same HP, rounded down in single precision and never 0 above 0 HP
+    -- (src/map/entities/battle_entity.cpp GetHPP :307-315). At 0 HP it sends the max HP as the HP
+    -- (src/map/packets/s2c/0x044_extended_job_pup.cpp :56), so that one is left out too.
+    local hp, most = mine.hp, mine.max_hp;
+    shown.hp, shown.max_hp = nil, nil;
+    if finite(hp) and finite(most) and hp >= 1 and hp <= most and (shown.hpp or 0) > 0
+        and math.abs(math.max(1, math.floor(hp * 100 / most)) - shown.hpp) <= 1 then
+        shown.hp, shown.max_hp = hp, most;
+    end
     -- A pet with no MP sends 0 (src/map/entities/battle_entity.cpp GetMPP :328-336), so MP shows once it is above 0.
     shown.has_mp = shown.has_mp or (shown.mpp or 0) > 0;
     shown.charm, shown.jug = self.charms[id], self.jug;
@@ -454,6 +465,13 @@ end
 function pet.jug_details(jug)
     return 'Your jug pet leaves when its time is up: ' .. math.floor(jug.seconds / 60) .. ' minutes for ' .. tostring(jug.name)
         .. ' on Phoenix, counted from your Call Beast.';
+end
+
+-- The tooltip of an automaton's HP shown as a number.
+function pet.hp_details()
+    return 'Your automaton\'s HP and max HP, from the automaton status the server sends you as a PUP. Every other pet\'s HP only '
+        .. 'comes as a percent. Vantage shows the number only while it agrees with the percent the game shows. When they '
+        .. 'don\'t agree, like at 0 HP, the bar shows the percent.';
 end
 
 -- The tooltip of one maneuver line.
@@ -505,6 +523,7 @@ local SAMPLES = {
         { { 300, 'Fire', 2, 40, 23 }, { 304, 'Thunder', 1, 52 } }),
 };
 SAMPLES[9].jug = sample_jug;
+SAMPLES[18].hp, SAMPLES[18].max_hp = 798, 1050;
 function pet.samples(now, job)
     local sample = SAMPLES[job] or charmed;
     sample.hpp, sample.mpp, sample.tp = 76, 40, 1250;

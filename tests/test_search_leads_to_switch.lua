@@ -121,6 +121,8 @@ for _, row in ipairs({
     { 'Display', 'When the pulse plays', 'Pulse when a long recast is ready', nil, pulse_on, nil, 'spell_recasts' },
     { 'Display', 'Not reached color', 'Show who got it', function(s) s.rolls.show_members = false; end, function(s) s.rolls.show_members = true; end, nil, 'rolls' },
     { 'Display', 'HP bar', 'Show HP, MP and TP', function(s) s.pet.show_vitals = false; end, function(s) s.pet.show_vitals = true; end, nil, 'pet', 'show' },
+    { 'Display', 'Show automaton HP as a number', 'Show HP, MP and TP', function(s) s.pet.show_vitals = false; end, function(s) s.pet.show_vitals = true; end, nil,
+        'pet', 'show' },
     { 'Display', 'Space between lines', 'Layout', layout('single'), layout('lines'), true, 'overhead' },
     { 'Display', 'Faded opacity', 'Fade starts at', function(s) s.overhead.fade_start = s.overhead.distance_cap; end, nil, true, 'overhead' },
     { 'Display', 'Player name', 'Who', function(s) hide_rule(s); s.effect_filters.rules[1].scope = 'enemy'; end, hide_rule, nil, 'hidden' },

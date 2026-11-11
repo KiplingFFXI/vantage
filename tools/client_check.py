@@ -9,6 +9,8 @@ Vantage finds a few things in the client by byte patterns, as Ashita's ashita.me
   core/clock.lua           the game clock, for self timer countdowns
   core/name_anchor.lua     the game's name point, for overhead icons just above the name, and the client's
                            cameras, for the camera check in /vg report
+  core/game_buffs.lua      the game's own buff icons and + menu, for Replace the game's buff icons: where
+                           each routine starts, and each routine whole as it was written for
 Item recasts load Ashita's ffxi.itemdata, which finds its own two patterns and the ones of the ffxi
 libraries it loads (ffxi.time). Those are checked too while the addon loads ffxi.itemdata.
 
@@ -182,6 +184,11 @@ def addon_patterns(addon=ADDON):
     where = 'core/name_anchor.lua'
     text = source(addon/where)
     for start, count, label in (('\nlocal patterns = {', 16, 'name point'), ('\nlocal check_patterns = {', 7, 'camera check')):
+        for name, pattern in counted(re.findall(r"(\w+) = %s" % HEX, block(text, start, where)), count, where):
+            result.append((where, '%s %s' % (label, name.replace('_', ' ')), pattern))
+    where = 'core/game_buffs.lua'
+    text = source(addon/where)
+    for start, count, label in (('\nlocal patterns = {', 7, 'game buffs'), ('\nlocal bodies = {', 6, 'game buffs whole')):
         for name, pattern in counted(re.findall(r"(\w+) = %s" % HEX, block(text, start, where)), count, where):
             result.append((where, '%s %s' % (label, name.replace('_', ' ')), pattern))
     return result

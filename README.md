@@ -49,6 +49,8 @@ If you turn it on, a mob's buff lights up on your target and watched enemies whe
 
 *Debuffs a White Mage can cleanse now.*
 
+**Replace the game's buff icons** hides the game's own buff and debuff icons, so your Self buffs and Self debuffs panels are the only ones on screen. You still cancel a buff with the game's + menu, and its cursor shows on Vantage's icons. It starts off.
+
 **Timer durations** lets you set your own time for a spell, ability or effect, or make it count up. If you turn it on, it also learns times from your own casts.
 
 ### Recasts
@@ -134,6 +136,8 @@ Each display's editor has its layout, fields, filters, colors and placement. It 
 Your own timers come from the game. For everyone else, Vantage shows what it saw cast, with an estimated countdown or none at all. So an enemy panel isn't a full list of that enemy's effects. [Read a timer](docs/GUIDE.md#read-a-timer) explains each kind.
 
 Vantage doesn't send anything to the game. It never casts, uses items, changes your target or posts to chat.
+
+With **Replace the game's buff icons** on, Vantage changes how the game draws its own buff icons, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn that off or unload Vantage. Cancelling a buff is still done by the game's own + menu.
 
 ## Source and license
 

@@ -58,7 +58,9 @@ return function()
             elseif name == 'draw:PopClipRect' then stack[#stack] = nil;
             elseif name == 'draw:AddText' and type(call[6]) == 'string' then texts[#texts + 1] = call[6];
             elseif name == 'draw:AddImage' and type(call[2]) == 'number' and call[2] >= 5000 and call[2] < 6024 then
-                local a, b, top = call[3], call[4], stack[#stack] or open;
+                -- The hud refills one pair of corners for every picture, so each is read as it was when drawn.
+                local drawn = MOCK.drawn[call];
+                local a, b, top = drawn[3], drawn[4], stack[#stack] or open;
                 if math.min(b[1], top[3]) > math.max(a[1], top[1]) and math.min(b[2], top[4]) > math.max(a[2], top[2]) then
                     local effect = call[2] - 5000;
                     counts[effect] = (counts[effect] or 0) + 1;

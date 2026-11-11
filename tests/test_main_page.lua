@@ -260,6 +260,47 @@ MOCK.content_width = 400;
 draw();
 assert(not one_line(TYPING, HOVER) and not one_line(PEEK, GRID), 'Narrow, each has its own.');
 MOCK.content_width = nil;
+-- Replace the game's buff icons shares that line too while all three fit, so the page is no taller for it.
+local REPLACE_TICK = 'Replace the game\'s buff icons##main_replace_buffs';
+MOCK.content_width = 900;
+draw();
+assert(one_line(TYPING, HOVER) and one_line(HOVER, REPLACE_TICK), 'With room the third shares the line.');
+MOCK.content_width = nil;
+draw();
+assert(one_line(TYPING, HOVER) and not one_line(HOVER, REPLACE_TICK), 'With room for two only, the third has its own line.');
+-- Replace the game's buff icons: a tick that starts off and writes its own key as one Undo step. Ticked but not in
+-- effect, a line under it says why, from the settings first and then from the game side (core/game_buffs.lua).
+fresh();
+local REPLACE = 'Replace the game\'s buff icons##main_replace_buffs';
+local NEEDS = 'This needs Self buffs and Self debuffs on. Until then the game draws its own buff icons.';
+local SAMPLES = 'While samples show, the game draws its own buff icons.';
+local CLIENT = 'This game client\'s menu mover is missing, so the game\'s buff icons stay as they are.';
+local said;
+require('core.game_buffs').problem = function() return said; end;
+said = CLIENT;
+draw();
+assert(s.replace_game_buffs == false and not texts[NEEDS] and not texts[SAMPLES] and not texts[CLIENT], 'It starts off, and off it says nothing.');
+draw({ [REPLACE] = true });
+assert(s.replace_game_buffs == true and one('Replace the game\'s buff icons'), 'A click turns it on as one step.');
+said = nil;
+draw();
+assert(not texts[NEEDS] and not texts[SAMPLES] and not texts[CLIENT], 'In effect, it says nothing.');
+said = CLIENT;
+draw();
+assert(texts[CLIENT], 'What the game side says shows under it.');
+for _, case in ipairs({ { 'Self buffs off', function(on) s.panels.self_buffs.enabled = on; end }, { 'Self debuffs off', function(on) s.panels.self_debuffs.enabled = on; end },
+    { 'the timer panels paused', function(on) s.enabled = on; end } }) do
+    case[2](false);
+    draw();
+    assert(texts[NEEDS] and not texts[CLIENT] and not texts[SAMPLES], case[1] .. ' comes first.');
+    case[2](true);
+end;
+s.preview = true;
+draw();
+assert(texts[SAMPLES] and not texts[CLIENT] and not texts[NEEDS], 'Samples say so.');
+s.preview, said = false, nil;
+draw({ [REPLACE] = true });
+assert(s.replace_game_buffs == false, 'A click turns it off again.');
 -- Hidden everywhere names the effects hidden, by what the player knows them as.
 fresh();
 draw();

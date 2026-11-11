@@ -1,5 +1,6 @@
 -- The pet display (settings.pet): your pet's name and, for a pet you charmed, the charm's estimated time left, or for a
--- jug the time until it leaves; its HP, MP once the client has given some, and TP as bars; the buffs and debuffs Vantage
+-- jug the time until it leaves; its HP, MP once the client has given some, and TP as bars, with an automaton's HP as a
+-- number when Show automaton HP as a number is on; the buffs and debuffs Vantage
 -- saw on it, through the display's own filters and the shared hide rules, with their countdowns, as icons that wrap and
 -- blink near their end or as a list with names; for a PUP your maneuvers and overload risk; and the recasts of your pet
 -- commands, soonest first. It uses the timer panels' look, and its countdown text follows More look on the main page. What doesn't fit, or is
@@ -130,6 +131,15 @@ local function vital(kind, value)
     return text;
 end
 
+local hp_texts, hp_most = {}, nil;
+-- 'HP 812/1040', made once for each HP while the max HP stays the same.
+local function hp_text(hp, most)
+    if most ~= hp_most then hp_texts, hp_most = {}, most; end
+    local text = hp_texts[hp];
+    if not text then text = 'HP ' .. tostring(hp) .. '/' .. tostring(most); hp_texts[hp] = text; end
+    return text;
+end
+
 local percents = {};
 -- '23%', made once for each value.
 local function percent_text(value)
@@ -138,8 +148,8 @@ local function percent_text(value)
     return text;
 end
 
--- Draws the display and returns what is under the mouse, for its tooltip: { kind = 'effect', 'charm', 'jug', 'maneuver'
--- or 'recast', item }, or nil. moving holds what hud.draw worked out; callbacks.effect_filters is the frame's shared hide rules.
+-- Draws the display and returns what is under the mouse, for its tooltip: { kind = 'hp', 'effect', 'charm', 'jug',
+-- 'maneuver' or 'recast', item }, or nil. moving holds what hud.draw worked out; callbacks.effect_filters is the frame's shared hide rules.
 function display.draw(view, settings, now, callbacks, moving)
     local config = settings.pet;
     if type(config) ~= 'table' or not config.enabled then frame:cancel(); return nil; end
@@ -201,7 +211,10 @@ function display.draw(view, settings, now, callbacks, moving)
         if vitals > 0 then
             local bar_width = right - left;
             if top + line <= bottom then
-                bar(list, left, top, bar_width, line, (shown.hpp or 0) / 100, config.hp_color, s, shown.hpp and vital('hp', shown.hpp) or 'HP', text_ink);
+                local number = config.exact_hp and shown.hp;
+                bar(list, left, top, bar_width, line, (shown.hpp or 0) / 100, config.hp_color, s,
+                    number and hp_text(shown.hp, shown.max_hp) or shown.hpp and vital('hp', shown.hpp) or 'HP', text_ink);
+                if number and box.over(moving, movable, left, top, bar_width, line) then hovered.kind, hovered.item = 'hp', shown; end
                 top = top + line + 2 * scale;
             end
             if shown.has_mp and top + line <= bottom then
@@ -310,6 +323,7 @@ end
 -- The tooltip of what display.draw returned. An effect's is a timer panel's, read as one at the panels' first span.
 local SPAN = { horizon = 300 };
 function display.details(found, now)
+    if found.kind == 'hp' then return pet.hp_details(); end
     if found.kind == 'charm' then return pet.charm_details(found.item, now); end
     if found.kind == 'jug' then return pet.jug_details(found.item); end
     if found.kind == 'maneuver' then return pet.maneuver_details(found.item, now); end

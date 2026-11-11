@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import client_check
 
 CLIENTS = ROOT / 'tests/fixtures/clients'
-SOURCES = ('core/chat.lua', 'core/client.lua', 'core/native_party_ui.lua', 'core/clock.lua', 'core/name_anchor.lua')
+SOURCES = ('core/chat.lua', 'core/client.lua', 'core/native_party_ui.lua', 'core/clock.lua', 'core/name_anchor.lua',
+           'core/game_buffs.lua')
 LIBRARY = {
     'ffxi/itemdata.lua': "local time = require 'ffxi.time';\n"
                          "itemdata.ptrs.parse_augments = ashita.memory.find(0, 0, '8B5424040F', 0, 0);\n",
@@ -25,9 +26,12 @@ LIBRARY = {
 
 
 def image(patterns, twice=()):
-    """A decoded-image-shaped PE: one section holding each pattern once, wildcards as zero, twice two times."""
+    """A decoded-image-shaped PE: one section holding each pattern once, wildcards as zero, twice two times. A pattern
+    that starts a longer one is planted with it: core/game_buffs.lua's starts are the first bytes of its routines."""
     body = bytearray(0x40)
     for pattern in patterns:
+        if any(other != pattern and other.startswith(pattern) for other in patterns):
+            continue
         planted = bytes.fromhex(pattern.replace('??', '00')) + bytes(0x40)
         body += planted * (2 if pattern in twice else 1)
     data = bytearray(0x1000) + body
@@ -82,7 +86,17 @@ class ClientCheckTests(unittest.TestCase):
                 'lift', 'name index', 'arrow index', 'root', 'skeleton', 'scale', 'node', 'handle', 'generator offset',
                 'bones', 'generators', 'entity', 'model pick', 'gate mount', 'gate chocobo', 'gate chair')]
             + [('core/name_anchor.lua', 'camera check ' + name) for name in (
-                'app view', 'app projection', 'wrapper transforms', 'wrapper', 'wrapper again', 'viewport', 'sizes')])
+                'app view', 'app projection', 'wrapper transforms', 'wrapper', 'wrapper again', 'viewport', 'sizes')]
+            + [('core/game_buffs.lua', 'game buffs ' + name) for name in (
+                'icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild', 'registry')]
+            + [('core/game_buffs.lua', 'game buffs whole ' + name) for name in (
+                'icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild')])
+        # Each routine's start is the first 32 bytes of the routine whole.
+        by_name = dict(((where, name), pattern) for where, name, pattern in found)
+        for name in ('icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild'):
+            start = by_name['core/game_buffs.lua', 'game buffs ' + name]
+            self.assertEqual(len(start), 64)
+            self.assertTrue(by_name['core/game_buffs.lua', 'game buffs whole ' + name].startswith(start), name)
         treasure = dict(((where, name), pattern) for where, name, pattern in found)['core/native_party_ui.lua', 'treasure pool']
         # Three menu names, 16 bytes each, with 28 bytes of window pointers between them.
         self.assertEqual(len(treasure), 2 * (16 * 3 + 28 * 2))
@@ -101,7 +115,7 @@ class ClientCheckTests(unittest.TestCase):
     def test_every_pattern_once_passes(self):
         code, out = self.run_check(image(self.patterns()))
         self.assertEqual(code, 0, out)
-        self.assertIn('All 34 patterns found exactly once.', out)
+        self.assertIn('All 47 patterns found exactly once.', out)
         self.assertRegex(out, r'core/clock\.lua\s+game time\s+once at 0x1000')
         self.assertRegex(out, r'libs/ffxi/time\.lua\s+local time\s+once at 0x1000')
 
@@ -110,7 +124,7 @@ class ClientCheckTests(unittest.TestCase):
         code, out = self.run_check(image(patterns, twice={patterns[0]}))
         self.assertEqual(code, 1, out)
         self.assertRegex(out, r'core/chat\.lua\s+chat windows\s+FOUND 2 TIMES')
-        self.assertIn('1 of 34 patterns are not found exactly once.', out)
+        self.assertIn('1 of 47 patterns are not found exactly once.', out)
 
     def test_a_missing_pattern_fails(self):
         clock = [p for where, _, p in client_check.addon_patterns(self.addon) if where == 'core/clock.lua']
@@ -123,7 +137,7 @@ class ClientCheckTests(unittest.TestCase):
         shutil.rmtree(self.libs)
         code, out = self.run_check(image(self.patterns_without_libs()))
         self.assertEqual(code, 0, out)
-        self.assertIn('All 32 patterns found exactly once.', out)
+        self.assertIn('All 45 patterns found exactly once.', out)
         self.assertNotIn('libs/', out)
 
     def patterns_without_libs(self):
@@ -168,7 +182,7 @@ class ClientCheckTests(unittest.TestCase):
             with redirect_stdout(out):
                 code = client_check.main([str(CLIENTS / name), '--libs', os.environ['ASHITA_LIBS']])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn('All 47 patterns found exactly once.', out.getvalue())
+            self.assertIn('All 60 patterns found exactly once.', out.getvalue())
 
 
 if __name__ == '__main__':

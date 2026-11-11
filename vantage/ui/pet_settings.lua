@@ -28,6 +28,8 @@ local header = {
 
 local show_rows = {
     frame.tick('Show HP, MP and TP', 'show_vitals', 'Bars for the pet\'s HP, MP and TP, as the client has them.'),
+    frame.tick('Show automaton HP as a number', 'exact_hp', 'As a PUP, main or support: your automaton\'s HP bar shows its HP and max HP, like 812/1040, instead of a percent. This only works for automatons. The game sends every other pet\'s HP as a percent. The number comes from the automaton status the server sends you, and it only shows while it agrees with the percent the game shows. Until the server sends it, like right after a reload, and whenever the two don\'t agree, like at 0 HP, the bar shows the percent.', {
+        only = vitals_on, shown_by = 'Show HP, MP and TP' }),
     frame.tick('Show charm and jug time', 'show_charm', 'For a charmed pet, its estimated time left, next to its name. Familiar adds at least 25 minutes once. With no /check before the charm it shows with no countdown. For a jug pet, the time until it leaves, counted from your Call Beast.', {
         alias = 'Show charm time' }),
     frame.radio('Effects', nil, { 'all', 'buff', 'debuff', 'none' }, { all = 'Buffs and debuffs', buff = 'Buffs only', debuff = 'Debuffs only', none = 'None' },

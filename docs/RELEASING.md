@@ -1,6 +1,6 @@
 # Release checklist
 
-A Vantage release is one addon archive, `vantage-1.1.1-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
+A Vantage release is one addon archive, `vantage-1.2.0-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
 
 Don't change the version unless the author tells you to release. Keep `vantage/vantage.lua` and the newest changelog heading at the same version.
 
@@ -16,7 +16,7 @@ Don't change the version unless the author tells you to release. Keep `vantage/v
 8. To install it on a game folder, run `tools/install_addon.ps1` in Windows PowerShell. The game can be open:
 
    ```text
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.1.1-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.2.0-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
    ```
 
    It refuses an archive whose SHA-256 differs. It notes the hash of every file under `config/addons/vantage` (settings, profiles, shared layout and the rest). It moves the current `addons/vantage` to `vantage-addon-backup-<UTC time>` in your Documents folder. You can pass `-BackupParent` to use a folder outside the game folder and on the same drive instead. Then it copies the new addon in and checks every copied file's hash. It also checks that no settings file changed. If anything fails, it puts the backup back. Each folder moves whole or not at all, so an old addon with a file held open stays where it is. A JSON receipt goes beside the backup. It never touches a startup script or the launcher. With the game open, a loaded Vantage keeps its old code until you run `/addon reload vantage` in game. Don't change any setting in game while the install runs. A saved settings file counts as a change and puts the old addon back.
@@ -307,3 +307,32 @@ These need a second character in your party, in East Ronfaure (`!pos 100 -50 120
 229. As SMN (`!changejob smn 75`, `!addspell 301`), go to South Gustaberg (`!pos -484 40 -478 107`), call Garuda and use Claw on a Land Crab far enough away that Garuda runs a few seconds before it hits. Its Rage recast shows its full length from the start.
 230. With a second character in your party in East Ronfaure (`!pos 100 -50 120 101`), make them a MNK (`!changejob mnk 75`, typed on that character) and have them use Boost and Focus. On Party members' timers, Boost counts down from 3 minutes and Focus from 2.
 231. Under **More look** on the main page, set **Settings text size** to 36. Scroll the page to its very bottom. It ends one line above the window's bottom edge, so no row sits under the corners. Click the lowest tick box on the left, and it toggles. Dragging the lower-left corner still resizes the window. Set the size back to 17.
+
+### Automaton HP as a number
+
+232. In South Gustaberg (`!pos -484 40 -478 107`), run `!changejob pup 75` and use Activate. With Pet on, the HP bar reads a percent. On Pet's **Show** tab, tick **Show automaton HP as a number**. The bar reads the automaton's HP and max HP, like `HP 812/1040`. Untick **Show HP, MP and TP**, and the row goes. Tick it again.
+233. Run `!exec player:getPet():setHP(300)`. The bar reads `HP 300/` and the max HP, and its fill drops to match. With **Show details when I point at a timer** on, point at the number, and the tooltip says where it comes from.
+234. Let the automaton fight a Land Crab. The number goes down with each hit, in step with the fill. Put Automaton Oil in your ammo slot (`!additem 18731`) and use Repair, and the number goes back up. Untick **Show automaton HP as a number**, and the bar reads a percent again. Tick it again.
+235. While it fights, walk about 55 yalms away. The number keeps up with the fill. Then come back.
+236. Run `/addon reload vantage`. The bar reads a percent until the automaton next moves or its HP changes, then the number again.
+237. Zone with the automaton out. Once it's back, the bar reads the number.
+238. Run `!exec player:getPet():setHP(0)`. The bar reads `HP 0%` until the automaton is gone, as the server sends the max HP as the HP at 0.
+239. As BST with PUP support (`!changejob bst 75`, `!changesjob pup 37`), /check a Land Crab and Charm it. Its HP bar reads a percent, as it isn't your automaton.
+
+### Replace the game's buff icons
+
+240. In South Gustaberg (`!pos -484 40 -478 107`), run `!changejob whm 75` and cast Protect and Shell on yourself, with Self buffs and Self debuffs on. On the main page, tick **Replace the game's buff icons**. The game's own buff icons go, and Vantage's panels keep showing your buffs. Untick it, and the game's icons come back at once. Tick it again.
+241. Open the game's + menu. No cursor and no icon shows at the game's own buff row. A box in the accent color sits on Vantage's Protect. Move the cursor, and the box follows it to Shell. Close the menu, and the box goes.
+242. Open the + menu, move to Shell and press Confirm. Shell is cancelled and leaves Self buffs. Click Vantage's Protect icon, and nothing happens.
+243. Run `!exec player:addStatusEffect(xi.effect.POISON, 1, 3, 120)`. Poison shows on Self debuffs. Open the + menu and move to Poison. The box sits on it on Self debuffs.
+244. On Self buffs' **Filters** tab, hide Protect with **Hide here**. Open the + menu on Protect. A line by Self buffs reads `+ menu: Protect`. Move to another buff, and the line goes. Take Protect off the list again.
+245. Set Self buffs to **Bars** and open the + menu. The box is around the whole row. Set it back to **Icons**.
+246. Turn Self debuffs off on the main page. The game's icons come back, and a line under the tick says it needs Self buffs and Self debuffs on. Turn Self debuffs on again, and they go.
+247. Click **Show samples**. The game's icons come back while samples show. Click **End samples**, and they go.
+248. Type `/vg hide`. The game's icons come back. Type `/vg show`, and they go.
+249. With **Hide Vantage in cutscenes, on the map and when the game hides its menus** on, open the map. The panels hide, and the game's icons stay hidden.
+250. Zone. The game's icons are still hidden afterwards, and the + menu still puts its box on Vantage's icons.
+251. Run `/addon reload vantage`. The game's icons show while Vantage loads and go again once it's ready, as the tick is saved. Run `/addon unload vantage`. The game's icons come back, and the + menu is the game's own again. Load Vantage again.
+252. With the tick on, log out to the character list and back in. Nothing crashes, and the game's icons are hidden again once Vantage is ready.
+253. Run `/vg report`. In `reports/latest.json`, `game_buffs` has `on` true and no `problem`. `moved` is a small number. It goes up by one each time the game puts its own menu back, as at a zone.
+254. Save a profile and load another one. The tick stays as you set it.

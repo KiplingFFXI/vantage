@@ -1,7 +1,9 @@
 local store = require('core.store');
 local profiles = {};
 local excluded = { window = true, job_profiles = true, shared_layout = true, shared_scope = true,
-    active_profile = true, profile_job = true, preview = true, watch_ids = true };
+    active_profile = true, profile_job = true, preview = true, watch_ids = true,
+    -- It changes how the game draws on this computer, so it stays with the character who ticked it.
+    replace_game_buffs = true };
 local positions = { x = true, y = true, width = true, height_limit = true, auto_width = true, auto_height = true,
     stack_direction = true, growth = true, item_width = true,
     min_width = true, max_width = true, dock_match_width = true,

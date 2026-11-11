@@ -112,6 +112,14 @@ return function()
         end
         MOCK.fire('packet_in', MOCK.packet(0x068, bytes));
     end
+    -- A 0x044 job extra with your automaton's name, HP and max HP, on the PUP page (job 18) unless job says another.
+    function fx.automaton(name, hp, max_hp, job)
+        local bytes = MOCK.bytes(0xA0);
+        MOCK.put(bytes, 4, 1, job or 18);
+        for i = 1, #name do bytes[0x57 + i] = name:byte(i); end
+        MOCK.put(bytes, 0x68, 2, hp); MOCK.put(bytes, 0x6A, 2, max_hp);
+        MOCK.fire('packet_in', MOCK.packet(0x044, bytes));
+    end
     -- A 0x00E of a unit: despawned with the flag, else an ordinary update.
     function fx.unit(id, index, despawn)
         local bytes = MOCK.bytes(32);

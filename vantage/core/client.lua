@@ -19,8 +19,9 @@ local pending_party, party_window;
 local party_awaiting_ready = false;
 local roster_snapshot;
 -- Your pet: pet_known as the last read left it, held while it is out of your view (away); pet_sync what the last 0x068
--- said of it; pet_gone the one a 0x068 said left, which the client can still name for a moment.
-local pet_known, pet_sync, pet_gone;
+-- said of it; pet_gone the one a 0x068 said left, which the client can still name for a moment. automaton is what the
+-- last 0x044 for PUP said of your automaton: its name, HP and max HP.
+local pet_known, pet_sync, pet_gone, automaton;
 -- Your status icons as the last 0x037 gave them, and whether they changed since the last ask.
 local icons_low, icons_high, icons_changed = nil, nil, false;
 -- Ids no index answered, kept until the next read: an observation about someone out of view, or a watched id out of
@@ -200,7 +201,7 @@ function client.reset()
     native_blocked, native_bootstrap = {}, true;
     pending_party, party_window = nil, nil;
     party_awaiting_ready = false;
-    pet_known, pet_sync, pet_gone = nil, nil, nil;
+    pet_known, pet_sync, pet_gone, automaton = nil, nil, nil, nil;
     icons_low, icons_high = nil, nil;
     if unresolved_count > 0 then unresolved, unresolved_count = {}, 0; end
 end
@@ -324,6 +325,11 @@ local function read_pet(out, entities, now)
     local sync = pet_sync and pet_sync.index == pet_known.index and pet_sync or nil;
     local row = { id = pet_known.id, index = pet_known.index, name = pet_known.name or sync and sync.name, kind = 'pet',
         away = pet_known.away, hpp = sync and sync.hpp, mpp = sync and sync.mpp, tp = sync and sync.tp };
+    -- The 0x044 tells of your automaton whatever your pet is, so only a pet with its name takes its HP. The server names
+    -- the automaton from the same field (src/map/utils/petutils.cpp :641).
+    if automaton and (automaton.name == row.name or sync and automaton.name == sync.name) then
+        row.hp, row.max_hp = automaton.hp, automaton.max_hp;
+    end
     out.pet, out.entities[row.id] = row, row;
 end
 
@@ -462,7 +468,7 @@ function client.read(now, settings)
         party_cache, merit_cache, entity_cache, deadline_cache = {}, {}, {}, {};
         cached_entities=0;
         native_blocked,native_bootstrap={},false;
-        pet_known, pet_sync, pet_gone = nil, nil, nil;
+        pet_known, pet_sync, pet_gone, automaton = nil, nil, nil, nil;
     end
     owner, zone, expected_id, expected_zone = id, here, nil, nil;
     local status = entity.StatusServer;
@@ -682,6 +688,12 @@ function client.accept(e, now, snapshot, size, data)
             pet_sync = { index = index, hpp = data:byte(0x0F), mpp = data:byte(0x10), tp = u16(data, 0x10), name = name ~= '' and name or nil };
             if pet_known and pet_known.index == index then pet_known.at = now; end
         end
+    elseif id == 0x044 and size >= 0x6C and data:byte(5) == 18 then
+        -- Your automaton, on the job extra's PUP page (src/map/packets/s2c/0x044_extended_job_pup.h :53-55): its name in
+        -- 16 bytes at 0x58, then its HP and max HP. A PUP, main or support, gets it each time the automaton changes
+        -- (src/map/entities/automaton_entity.cpp :140-151), in the same tick as its HP percent.
+        local name = data:sub(0x59, 0x68):match('^[^%z]*');
+        automaton = name ~= '' and { name = name, hp = u16(data, 0x68), max_hp = u16(data, 0x6A) } or nil;
     elseif id == 0x00E and size >= 11 and pet_known and u32(data, 4) == pet_known.id then
         -- Any other update of it says it is back in view.
         pet_known.away = bit.band(data:byte(11), 0x20) ~= 0 or nil;

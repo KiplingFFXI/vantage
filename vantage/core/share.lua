@@ -510,8 +510,8 @@ local function merge_into(target, data, fresh)
 end
 
 -- What stays yours through any import: every lock and the samples, which panels show which members, the watched
--- enemies, the settings window and the profile links, your diagnostics settings and chat colors, and the times
--- learned from your casts.
+-- enemies, the settings window and the profile links, your diagnostics settings and chat colors, whether the game's
+-- buff icons are replaced, and the times learned from your casts.
 local function keep_own(candidate, settings)
     local elements = require('ui.elements');
     for _, element in ipairs(elements.movable) do
@@ -527,7 +527,7 @@ local function keep_own(candidate, settings)
         if type(panel) == 'table' and type(settings.panels[id]) == 'table' then panel.members = copy(settings.panels[id].members); end
     end
     for _, key in ipairs({ 'window', 'watch_ids', 'job_profiles', 'active_profile', 'profile_job', 'shared_layout', 'shared_scope',
-        'diagnostics', 'chat_colors' }) do
+        'diagnostics', 'chat_colors', 'replace_game_buffs' }) do
         candidate[key] = copy(settings[key]);
     end
     if type(candidate.durations) == 'table' then candidate.durations.learned = copy(settings.durations.learned); end
@@ -674,7 +674,8 @@ function share.changes(settings, candidate)
         lines[#lines + 1] = label .. ': ' .. #before .. (#before == 1 and ' rule' or ' rules') .. ' now, ' .. #after .. ' after.';
     end
     local seen = { panels = true, alerts = true, effect_filters = true, window = true, watch_ids = true, job_profiles = true,
-        active_profile = true, profile_job = true, shared_layout = true, shared_scope = true, preview = true };
+        active_profile = true, profile_job = true, shared_layout = true, shared_scope = true, preview = true,
+        replace_game_buffs = true };
     for _, element in ipairs(elements.list) do
         if element.panel then line(element.label, leaves(settings.panels[element.id], candidate.panels[element.id]), 'setting'); end
     end

@@ -562,7 +562,8 @@ local function show_help()
         imgui.TextWrapped('On the main page, choose Original FFXI or XI View as the Skin, with all eight client window skins under Window frame in More look. Skin reaches this window too. Font is one choice for every display and this window; if this window can\'t use it, it uses its plain font and a line under Font says so. Icon and gauge choices are in More look, and missing assets are reported there. Classic FFXI is colors only.')
     end
     if section('Files and behavior') then
-        imgui.TextWrapped('Vantage only reads what the game client has and the packets it receives. It never sends anything, casts spells, uses items or changes targets. Settings, profiles and custom sounds stay in ' .. require('core.identity').relative('') .. '. You can replace the addon folder without touching those files.')
+        imgui.TextWrapped('Vantage reads what the game client has and the packets it receives. It never sends anything, casts spells, uses items or changes targets. Settings, profiles and custom sounds stay in ' .. require('core.identity').relative('') .. '. You can replace the addon folder without touching those files.')
+        imgui.TextWrapped('Replace the game\'s buff icons, on the main page, is the one setting that changes the game itself. While it is on, the game doesn\'t draw its own buff icons and its + menu sits off screen. Vantage puts both back when you turn it off or unload Vantage.')
     end
 end
 

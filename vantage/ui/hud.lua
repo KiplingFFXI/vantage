@@ -1382,6 +1382,19 @@ local function draw_run(run, tx, ty, clipped)
     end
 end
 
+-- The game's + menu cursor, while Replace the game's buff icons is in effect (core/game_buffs.lua). picking is the
+-- effect the cursor is on while a self panel is painted, and picked says a row has taken it. Copy Image's shadow
+-- icons leave the tracker as 66, so a cursor on one of them is on 66.
+local picking, picked = nil, false
+local PICK_FOLD = { [444] = 66, [445] = 66, [446] = 66 }
+local PICK_PANELS = { self_buffs = true, self_debuffs = true }
+-- The cursor on a row: a box in the accent color over a faint wash of it.
+local function mark_pick(list, x, y, width, height, style)
+    corner[1], corner[2], far[1], far[2] = x, y, x + width, y + height
+    list:AddRectFilled(corner, far, theme.u32(style.accent_color, 0.25), 2)
+    list:AddRect(corner, far, theme.u32(style.accent_color), 2, 0, 2)
+end
+
 local function paint_icons(view,settings,key,rows,rect,now,mouse,panel,into)
     local list,style=into or require('imgui').GetWindowDrawList(),settings.style
     local scale,hovered=style.scale,nil
@@ -1427,6 +1440,10 @@ local function paint_icons(view,settings,key,rows,rect,now,mouse,panel,into)
                 theme.u32(emphasis and emphasis_color or entry.color),entry,true,countdown_point)
             list:PopClipRect()
             timer_y=timer_y+entry_height(entry,scale)+1
+        end
+        if picking and not picked and row.effect==picking and row.domain~='recast' then
+            mark_pick(list,icon_x,top,rect.icon_width,rect.icon_width,style)
+            picked=true
         end
         if mouse and inside(mouse.x,mouse.y,left,top,rect.cell_width,rect.row_height) then hovered=row end
     end
@@ -1624,6 +1641,10 @@ local function paint(view, settings, key, rows, rect, now, mouse, effective, edg
                 countdown.draw(list, s.font, lock_text, lock_x + lock_size * 0.8 + 2 * scale, lock_y, lock_size, theme.u32(s.text_color), LOCK_TIME, true,
                     countdown_point)
             end
+        end
+        if picking and not picked and row.effect == picking and row.domain ~= 'recast' then
+            mark_pick(list, left, top, width, rect.row_height, s)
+            picked = true
         end
         if mouse and inside(mouse.x, mouse.y, left, top, width, rect.row_height) then hovered = row end
     end
@@ -1974,6 +1995,29 @@ local function place_panels(view, settings, now, context, screen, filtering, edi
     layout.resolve(drawing.panels, drawing.rects, context, screen.x, screen.y, settings)
 end
 
+-- The game's + menu is on an effect no self panel shows, hidden by a filter or past a panel's room. Its name goes in
+-- a small box under the Self buffs panel, or over it at the bottom of the screen, so what Confirm would cancel is
+-- always in sight. The text is made once for each effect.
+local pick_text = {}
+local function pick_line(imgui, settings, effect, screen)
+    local list = imgui.GetForegroundDrawList()
+    if not list then return end
+    local s = settings.style
+    if pick_text.effect ~= effect then pick_text.effect, pick_text.text = effect, '+ menu: ' .. tostring(catalog.get(effect).name) end
+    local text, scale = pick_text.text, s.scale
+    local size = s.font_size * scale
+    local rect, p = drawing.rects.self_buffs or drawing.rects.self_debuffs, settings.panels.self_buffs
+    local width, height = metrics.width(s.font, text, size, size) + 12 * scale, size + 8 * scale
+    local x, top, bottom = rect and rect.x or p.x, rect and rect.y or p.y, rect and rect.y + rect.height or p.y
+    local y = bottom + 2 * scale
+    if y + height > screen.y then y = top - height - 2 * scale end
+    x, y = math.max(0, math.min(x, screen.x - width)), math.max(0, y)
+    corner[1], corner[2], far[1], far[2] = x, y, x + width, y + height
+    list:AddRectFilled(corner, far, theme.u32(skin.fallback_background(s), s.opacity), 2)
+    list:AddRect(corner, far, theme.u32(s.accent_color), 2, 0, 2)
+    draw_text(list, x + 6 * scale, y + 4 * scale, text, s.text_color, size, s.text_shadow, s)
+end
+
 function hud.draw(view, settings, now, callbacks)
     local imgui = require('imgui')
     local interaction_now = now
@@ -2064,6 +2108,10 @@ function hud.draw(view, settings, now, callbacks)
     spot_frame, recording = spot_frame + 1, type(pulses) == 'table' and pulses.enabled and pulses.spot == 'row'
     -- Sample panels go over an open settings window (resize.sample_list), outside edit mode.
     local samples_over = settings.preview and settings.window.open and not editing
+    -- What the game's + menu is on, for its cursor on the self panels.
+    local pick = callbacks.menu_pick
+    local pick_effect = pick and (PICK_FOLD[pick.effect] or pick.effect) or nil
+    picked = false
     for _, key in ipairs(defaults.panel_order) do
         local p, rect = settings.panels[key], drawing.rects[key]
         local label = elements.label(key)
@@ -2091,7 +2139,9 @@ function hud.draw(view, settings, now, callbacks)
                     mouse = drawing.mouse
                     mouse.x, mouse.y = mx, my
                 end
+                picking = PICK_PANELS[key] and pick_effect or nil
                 local row = paint(view, settings, key, drawing.rows[key], rect, now, mouse, drawing.panels[key], outline, list)
+                picking = nil
                 if row then hovered, hovered_panel = row, p end
                 -- Icon panels have no heading to say Sample, so a previewed one wears a tag.
                 if settings.preview and drawing.panels[key].mode == 'icons' then
@@ -2126,6 +2176,7 @@ function hud.draw(view, settings, now, callbacks)
         end
     end
     recording = false
+    if pick_effect and not picked then pick_line(imgui, settings, pick_effect, screen) end
     draw_overlays(live, settings, interaction_now, callbacks, can_gesture, over_settings, mx, my, down, screen, hover, spots, hovered)
     if hovered then
         if hover_key ~= hovered.key then hover_key, hover_at = hovered.key, interaction_now end
