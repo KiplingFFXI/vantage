@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+This update adds a way to keep Target timers away while you target yourself. The settings window's text also keeps the soft edges of the game's own letters now.
+
+- **Hide while I target myself**, on the **Show** tab of Target timers, keeps the panel away while your target is you. Your own effects already show on Self buffs and Self debuffs, so they don't show twice. It starts off. **Show samples** and edit mode still show the panel, and a line under the tick says when it's hiding it.
+- The settings window's text with the **Original FFXI** and **XI View** fonts keeps the soft grey pixels at the edges of the game's letters. Before, those pixels came out full white, which made the text look heavy and blocky next to the game's own. The letters' dark shadow is still left out, because the window draws its text in one color. Vantage makes these fonts again the first time this version loads.
+- When something else in the game, such as another addon or plugin, has changed the game's menu mover, the line under **Replace the game's buff icons** says so. Before, it said the menu mover was missing. Vantage still leaves the game's buff icons alone then.
+- An export made with 1.3.0 that holds the new Target timers tick, such as that display or a whole profile, can't be read by 1.2.1 or older. It asks you to update Vantage.
+
 ## 1.2.1
 
 This update fixes how the settings window looks in the game. Its text is sharp on the Original FFXI and XI View fonts, and the game no longer shows through its bottom right corner.

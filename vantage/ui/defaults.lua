@@ -13,6 +13,12 @@ function defaults.panel_enabled(settings, id)
     if id == 'recasts' then return settings.recast_display == 'combined' end
     return not defaults.recast_panels[id] or settings.recast_display ~= 'combined'
 end
+-- Whether Target timers stays away now: its Hide while I target myself is on and the target is you. context is the
+-- client snapshot the displays draw from, where the target is the one every display means by "my target".
+function defaults.hides_own_target(settings, context)
+    local target = context and context.target
+    return settings.panels.target.hide_self == true and target ~= nil and target.id ~= nil and target.id == context.id
+end
 defaults.panel_names = { self_buffs = 'Self buffs', self_debuffs = 'Self debuffs', target = 'Target timers', party = 'Party members\' timers',
     watch = 'Watched enemy timers', spell_recasts = 'Spell recasts', ability_recasts = 'Ability recasts', item_recasts = 'Item recasts', recasts = 'Recasts' }
 defaults.field_ids = { 'name', 'target', 'source', 'elapsed', 'total', 'time' }
@@ -56,6 +62,8 @@ local function panel(id, x, y, enabled)
     if id == 'watch' then result.list_debuffed = false end
     -- Party members' timers can show only what job abilities put on.
     if id == 'party' then result.abilities_only = false end
+    -- Target timers can stay away while your target is you, as the self panels show your own effects.
+    if id == 'target' then result.hide_self = false end
     return result
 end
 

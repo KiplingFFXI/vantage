@@ -1,6 +1,6 @@
 local identity=require('core.identity');
 local app=dofile(ADDON_DIR..'/vantage.lua');
-assert(app and addon.name=='vantage' and addon.version=='1.2.1');
+assert(app and addon.name=='vantage' and addon.version=='1.3.0');
 assert(MOCK.events.command.vantage_command);
 assert(MOCK.events.load.vantage_load and MOCK.events.unload.vantage_unload);
 for _,alias in ipairs({'/vantage','/vg','/VANTAGE','/VG'}) do

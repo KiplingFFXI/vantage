@@ -44,7 +44,9 @@ scale (core/chat.lua), the event, interface and map focus flags
 (core/native_party_ui.lua), the game clock (core/clock.lua), the game's name
 point and cameras (core/name_anchor.lua), and the game's own buff icons and +
 menu for Replace the game's buff icons (core/game_buffs.lua). For those it
-checks where each routine starts and each routine whole. While the addon
+checks where each routine starts and each routine whole. The menu mover's
+later bytes, which the addon looks for only when the mover's start isn't
+found, are a part of its whole routine and have no check of their own. While the addon
 loads ffxi.itemdata, they also include that library's patterns and those of
 the ffxi libraries it loads. It reads the patterns from those files, prints
 each one with where it was found, and exits 0 only when every one is found

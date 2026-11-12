@@ -49,6 +49,8 @@ If you turn it on, a mob's buff lights up on your target and watched enemies whe
 
 *Debuffs a White Mage can cleanse now.*
 
+**Hide while I target myself**, on Target timers, keeps that panel away while your target is you, so your own effects don't show twice. It starts off.
+
 **Replace the game's buff icons** hides the game's own buff and debuff icons, so your Self buffs and Self debuffs panels are the only ones on screen. You still cancel a buff with the game's + menu, and its cursor shows on Vantage's icons. It starts off.
 
 **Timer durations** lets you set your own time for a spell, ability or effect, or make it count up. If you turn it on, it also learns times from your own casts.
@@ -95,7 +97,7 @@ Overhead icons start off. They show buffs and debuffs above the heads of your ta
 
 ### Looks
 
-There are ten skins, Original FFXI and XI View client artwork with all eight client window skins, 17 fonts plus your own, and countdown bold, shadow and outline for every display.
+There are ten skins, Original FFXI and XI View client artwork with all eight client window skins, 17 fonts plus your own, and countdown bold, shadow and outline for every display. With the Original FFXI or XI View font, the settings window's text is made from the game's own letters and keeps their soft edges.
 
 ![The same panel in nine skins](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/skins.png)
 
@@ -137,7 +139,7 @@ Your own timers come from the game. For everyone else, Vantage shows what it saw
 
 Vantage doesn't send anything to the game. It never casts, uses items, changes your target or posts to chat.
 
-With **Replace the game's buff icons** on, Vantage changes how the game draws its own buff icons, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn that off or unload Vantage. Cancelling a buff is still done by the game's own + menu.
+With **Replace the game's buff icons** on, Vantage changes how the game draws its own buff icons, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn that off or unload Vantage. Cancelling a buff is still done by the game's own + menu. Before it changes anything, Vantage checks that this part of the game is exactly the one it knows. If a game update has changed it, or something else in the game has, such as another addon or plugin, Vantage leaves the game's icons alone, and a line under the tick says why.
 
 ## Source and license
 

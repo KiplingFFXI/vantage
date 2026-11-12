@@ -6,7 +6,7 @@ local app=dofile(ADDON_DIR..'/vantage.lua');
 MOCK.fire('load');app.refresh(1);
 MOCK.fire('command',{command='/vg report'});
 local report=assert(store.read(path));
-assert(report.version=='1.2.1');
+assert(report.version=='1.3.0');
 assert(report.jit.applied==true and report.jit.problem==nil and report.jit.maxtrace==12000 and report.jit.maxmcode==16384,
     'The trace limits take in this LuaJIT.');
 assert(type(report.jit.enabled)=='boolean' and type(report.jit.flags)=='table','LuaJIT\'s own state is reported.');
@@ -49,4 +49,4 @@ local said=#MOCK.printed;
 MOCK.fire('command',{command='/vg report'});
 report=store.read(path);
 local message=MOCK.printed[said+1] or '';
-assert(report and report.version=='1.2.1' and message:find('Report saved to',1,true),'A broken old report is replaced: '..message);
+assert(report and report.version=='1.3.0' and message:find('Report saved to',1,true),'A broken old report is replaced: '..message);

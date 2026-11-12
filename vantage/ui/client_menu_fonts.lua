@@ -5,7 +5,7 @@ local prepared, faces, serial = false, {}, 0
 local results = {}
 local MAX_FONT = 1048576
 -- Raise this whenever generate makes different bytes, so fonts cached by older code are made again.
-local GENERATOR = 1
+local GENERATOR = 2
 -- The tables generate writes, all of which a cached font must hold.
 local TABLES = { 'OS/2', 'cmap', 'glyf', 'head', 'hhea', 'hmtx', 'loca', 'maxp', 'name', 'post' }
 
@@ -43,6 +43,11 @@ local function channels(value)
     return { math.floor(value / 2048) * 255 / 31, math.floor(value / 32) % 64 * 255 / 63, value % 32 * 255 / 31 }
 end
 
+-- How lit the pixel at x, y is, from 0 to 1. The client's font is a bright core with softer grey pixels at its edges
+-- and a dark shadow. A pixel under half opaque or under half bright is the shadow or nothing, and counts as 0. One at
+-- 224 of 255 or more counts as the core, 1. A grey one between is its brightness times its opacity, so the font keeps
+-- the soft edges the game draws.
+local CORE = 224 / 255
 local function ink_reader(raw)
     local blocks = {}
     return function(x, y)
@@ -50,7 +55,7 @@ local function ink_reader(raw)
         local index = y % 4 * 4 + x % 4
         local alpha = raw.dds:byte(129 + block * 16 + math.floor(index / 2))
         alpha = index % 2 == 0 and alpha % 16 or math.floor(alpha / 16)
-        if alpha < 8 then return false end
+        if alpha < 8 then return 0 end
         local colors = blocks[block]
         if not colors then
             local a, b, c, d = raw.dds:byte(137 + block * 16, 140 + block * 16)
@@ -63,11 +68,18 @@ local function ink_reader(raw)
         end
         local indices = raw.dds:byte(141 + block * 16 + math.floor(index / 4))
         local color = colors[math.floor(indices / 4 ^ (index % 4)) % 4 + 1]
-        return math.max(color[1], color[2], color[3]) >= 128
+        local bright = math.max(color[1], color[2], color[3])
+        if bright < 128 then return 0 end
+        local lit = bright / 255 * alpha / 15
+        return lit >= CORE and 1 or lit
     end
 end
 
--- Each row of visible pixels becomes a closed outline. ImGui owns normal text layout and editing.
+-- Each row's run of fully lit pixels becomes a closed outline, 64 font units to the pixel. A part-lit pixel becomes a
+-- smaller square in the middle of its pixel, as much of the pixel's area as the pixel is lit: ImGui fills a pixel by
+-- how much of it an outline covers, so that pixel comes out grey, and evenly so at twice the size too. The square's
+-- side is a whole even count of units, which keeps it centered on whole units. ImGui owns normal text layout and
+-- editing.
 local function outline(code, ink)
     if code == 32 then return '', 0, 0, 0 end
     local index, rectangles = code - 32, {}
@@ -76,12 +88,19 @@ local function outline(code, ink)
     for y = 0, 15 do
         local start
         for x = 0, 16 do
-            local filled = x < 16 and ink(u + x, v + y)
+            local lit = x < 16 and ink(u + x, v + y) or 0
+            local filled = lit >= 1
             if filled and not start then start = x end
             if not filled and start then
-                rectangles[#rectangles + 1] = { start, y, x, y + 1 }
+                rectangles[#rectangles + 1] = { start * 64, y * 64, x * 64, (y + 1) * 64 }
                 left, bottom, right, top = math.min(left, start), math.min(bottom, y), math.max(right, x), math.max(top, y + 1)
                 start = nil
+            end
+            if lit > 0 and not filled then
+                local side = 2 * math.floor(32 * math.sqrt(lit) + 0.5)
+                local inset = (64 - side) / 2
+                rectangles[#rectangles + 1] = { x * 64 + inset, y * 64 + inset, x * 64 + inset + side, y * 64 + inset + side }
+                left, bottom, right, top = math.min(left, x), math.min(bottom, y), math.max(right, x + 1), math.max(top, y + 1)
             end
         end
     end
@@ -90,7 +109,7 @@ local function outline(code, ink)
     for i, r in ipairs(rectangles) do
         ends[i] = u16(i * 4 - 1)
         for _, point in ipairs({ { r[1], r[4] }, { r[1], r[2] }, { r[3], r[2] }, { r[3], r[4] } }) do
-            local x, y = point[1] * 64, (13 - point[2]) * 64
+            local x, y = point[1], 13 * 64 - point[2]
             xs[#xs + 1], ys[#ys + 1] = u16(x - last_x), u16(y - last_y)
             last_x, last_y = x, y
         end

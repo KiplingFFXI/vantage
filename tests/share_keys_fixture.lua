@@ -143,7 +143,7 @@ return {
         .. ' colors conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow direction'
         .. ' dispel_color dispel_glow dispel_light dock_match_width effect_colors empty enabled exclude'
         .. ' field_alignments field_colors field_dividers field_labels field_newlines field_order field_priority'
-        .. ' fill_direction filter gradient group_by groups growth height_limit horizon icon_countdown_gap'
+        .. ' fill_direction filter gradient group_by groups growth height_limit hide_self horizon icon_countdown_gap'
         .. ' icon_countdown_position icon_countdown_size include item_width known_only label_position label_separator'
         .. ' labels locked max_rows max_width members min_width mine_only mode order pinned priority_overflow'
         .. ' row_height separator show_elapsed show_fill show_heading show_icon show_name show_source show_target'

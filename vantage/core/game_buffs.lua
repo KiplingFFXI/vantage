@@ -38,6 +38,12 @@ local bodies = {
     menu_move = '83EC0C668B44241453558B6C2418568BF15733FF8D5E1466896E528BCB66894654897C2414897C2418E8????????3BC7894424100F848B0000008D4C2410518BCBE8????????8BF8668B076685C07523668B5724668B4722668B4E546A006A006A0152668B56525051528BCEE8????????EB34663D010075248A86990000008B4C24245051558BCFE8????????668B573A663B564C7510897C2414EB0A663D02007504897C24188B44241085C0758B8B44241485C0740E8B4C241885C9740650E8????????8B460C85C0740CC64010018B4E0C8B01FF50145F5E5D5B83C40CC20800',
     rebuild = '83EC1856576A028BF1E8????????8A4E6583C40484C00F94C03AC8740A8BCE884665E8????????53E8????????8B4E0833DB85C9895C240C7403885969B9????????552BC88BF88D6840894C2414C744241020000000668B14396681FAFFFF743A6685D274358BCB81E1FFFF000085C06689944E900200007411663917750C8B550089948EF0020000EB0BC7848EF0020000FFFFFF7F8B4C2414438B54241083C50483C7024A8954241075AAB898FDFFFF8D4E682BC6895C24108DAE68020000894C241489442418807D00007434E8????????8BFB33D281E7FFFF00007E1B8D9E9002000033C9668B0B3BC174084283C3023BD77CEF8B5C24103BD77504C64500008B4C24148B54241883C1104503D5894C241483FA207CAF8BC36A0025FFFF00008BCE50E8????????663B9E740300005D74078BCEE8????????66899E740300006685DB5B75298B4E0851B9????????E8????????3C010F85320100008B0D????????E8????????5F5E83C418C204008B5608B9????????52E8????????84C00F84AC0000008B464085C00F8EA10000008A867603000084C00F85930000008B46306681BC4690020000FFFF0F848000000033C9668B8C4690020000518BCEE8????????8BF885FF7C688D4C2414E8????????C1E7046A028D4C3768E8????????8B0D????????50E8????????8B563033C08D4C2414668B84569002000050518B0D????????E8????????6A028D4C2418E8????????8B0D????????50E8????????8D4C2414C6867603000001E8????????D9868C020000D81D????????DFE02500410000750ED905????????D8A68C020000EB06D9868C020000D80D????????D99E88020000E8????????D8AE8C020000D9968C020000D81D????????DFE0F6C4057A0AC7868C020000000020425F5E83C418C20400',
 };
+-- A routine another addon or plugin hooks has a jump written over its first bytes. Its pattern starts on those
+-- bytes, so it then finds nothing, though the rest of the routine is still there. So the mover has a second pattern:
+-- the 48 bytes of it from 17 on, past anything a hook writes. That one is looked for only when the mover's own
+-- pattern finds nothing, and only to say why.
+local LATER = { menu_move = 'menu_move_later' };
+patterns.menu_move_later = bodies.menu_move:sub(17 * 2 + 1, (17 + 48) * 2);
 local ORDER = { 'icon_paint', 'timer_paint', 'icon_draw', 'timer_draw', 'menu_move', 'rebuild', 'registry' };
 local LABELS = { icon_paint = 'buff icon painting', timer_paint = 'buff timer painting', icon_draw = 'icon drawing',
     timer_draw = 'timer drawing', menu_move = 'menu mover', rebuild = 'buff list rebuild', registry = 'menu registry' };
@@ -169,7 +175,11 @@ local function look()
         for _, name in ipairs(ORDER) do
             local where, reason = platform.find(name);
             if not where then
-                return nil, ('This game client\'s %s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name], reason or 'is missing');
+                reason = reason or 'is missing';
+                if LATER[name] and reason == 'is missing' and platform.find(LATER[name]) then
+                    return nil, ('Something else in the game, such as another addon or plugin, has changed this game client\'s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name]);
+                end
+                return nil, ('This game client\'s %s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name], reason);
             end
             at[name] = where;
         end

@@ -209,5 +209,21 @@ assert(#loaded == 1 and loaded[1].bytes == generated and reads == 1
 named(loaded[1].path)
 assert(contents(fourth) == nil and untouched(),
     'It replaces the kind\'s other fonts too; the older version\'s file and the files not named as this code names them stay.')
+
+-- A font the first generator made for this same client file has other shapes, so it is named apart: it is never
+-- loaded, the font is made again, and that one goes.
+stat = true
+menu = session()
+local current = named(loaded[1].path)
+local source_path = upvalue(upvalue(menu.prepare, 'font_file'), 'source_path')
+local digest = upvalue(source_path, 'digest')
+local before = named(folder .. '/original_font-v2-' .. digest('generator 1|original_font|' .. assets.source_identity('original_font')) .. '.ttf')
+assert(#before:match('%-v2%-(%x+)%.ttf$') == 16 and before ~= current, 'This generator names its fonts apart from the first one\'s.')
+os.remove(current)
+write(before, generated)
+menu = session()
+assert(#loaded == 1 and loaded[1].path == current and loaded[1].bytes == generated and reads == 1 and parses == 1,
+    'A font the first generator cached is not loaded: the font is made again.')
+assert(contents(before) == nil and contents(current) == generated and untouched(), 'The first generator\'s font is removed.')
 assets.clear()
 return true

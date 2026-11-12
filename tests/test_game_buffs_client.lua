@@ -30,9 +30,14 @@ local count = 0;
 for name, pattern in pairs(game_buffs._patterns) do
     count = count + 1;
     local body = game_buffs._bodies[name];
-    assert(name == 'registry' and body == nil or body:sub(1, #pattern) == pattern and #pattern == 64, name .. ' starts its routine.');
+    if name == 'menu_move_later' then
+        assert(pattern == game_buffs._bodies.menu_move:sub(35, 130) and #pattern == 96,
+            'The mover\'s later bytes are its own: 48 of them, 17 on from its start.');
+    else
+        assert(name == 'registry' and body == nil or body:sub(1, #pattern) == pattern and #pattern == 64, name .. ' starts its routine.');
+    end
 end
-assert(count == 7, 'Seven pieces: ' .. count);
+assert(count == 8, 'Seven pieces and the mover\'s later bytes: ' .. count);
 
 for _, case in ipairs({ { 'new', 0x10000000 }, { 'old', 0x10000000 }, { 'new', 0x0F300000 } }) do
     local image = fixture.load(case[1], case[2]);
@@ -43,6 +48,8 @@ for _, case in ipairs({ { 'new', 0x10000000 }, { 'old', 0x10000000 }, { 'new', 0
         assert(image:find(image.base, #image.data, pattern, 0) ~= 0 and image:find(image.base, #image.data, pattern, 1) == 0,
             label .. ': ' .. name .. ' once');
     end
+    assert(image:find(image.base, #image.data, game_buffs._patterns.menu_move_later, 0)
+        == image:find(image.base, #image.data, game_buffs._patterns.menu_move, 0) + 17, label .. ': the later bytes are the mover\'s.');
     local pick, why = game_buffs.update(true);
     assert(pick == nil and why == nil and game_buffs.status().on, label .. ': ' .. tostring(why));
     assert(#writes == 2 and writes[1] == image.base + ICON and writes[2] == image.base + TIMER, label .. ': the two calls are written.');
@@ -93,6 +100,26 @@ refused('a registry that names another slot', function(image)
 end, 'This game client\'s buff window was not found where Vantage looks');
 refused('a rebuild that isn\'t there', function(image) image:write(at(image, 'rebuild'), '\204'); end,
     'This game client\'s buff list rebuild is missing, so the game\'s buff icons stay as they are.');
+-- A hook from another addon or plugin: a jump written over the mover's first bytes, alone or with the rest of the
+-- instructions it cut through filled in. The mover's later bytes are still there, so Vantage says what happened.
+local CHANGED = 'Something else in the game, such as another addon or plugin, has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
+refused('a menu mover with a jump over its start', function(image)
+    image:write(at(image, 'menu_move'), '\233' .. fixture.le32(0x1000));
+end, CHANGED);
+refused('a menu mover with a longer jump over its start', function(image)
+    image:write(at(image, 'menu_move'), '\233' .. fixture.le32(0x1000) .. '\144\144\144');
+end, CHANGED);
+refused('a menu mover with a jump through an address over its start', function(image)
+    image:write(at(image, 'menu_move'), '\255\37' .. fixture.le32(image.base + 0x2000) .. '\144\144');
+end, CHANGED);
+-- Changed further in, it is simply not the code Vantage knows. Changed at its start and further in, it isn't found.
+refused('a menu mover changed past its start', function(image) image:write(at(image, 'menu_move') + 0x40, '\204'); end,
+    'This game client\'s menu mover is not the code Vantage knows');
+refused('a menu mover changed at its start and further in', function(image)
+    local mover = at(image, 'menu_move');
+    image:write(mover, '\233' .. fixture.le32(0x1000));
+    image:write(mover + 0x18, '\204');
+end, 'This game client\'s menu mover is missing, so the game\'s buff icons stay as they are.');
 refused('a menu mover found twice', function(image)
     local pattern = game_buffs._patterns.menu_move;
     assert(not pattern:find('?', 1, true), 'Fixture: the menu mover\'s start has no wildcard.');

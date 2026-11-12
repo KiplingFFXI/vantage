@@ -88,7 +88,7 @@ assert(#app.state.settings.watch_ids==0, 'Undo never revives watched IDs from an
 command('/vg watch 777'); command('/vg undo');
 assert(#app.state.settings.watch_ids==0, 'Watch edits within the same zone remain undoable.');
 command('/vg report');
-assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.2.1');
+assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.3.0');
 local report=require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json');
 assert(report.snapshot.valid and report.snapshot.self_known and report.snapshot.self_effects==0,
     'A local report distinguishes a complete empty snapshot from unavailable self-status data.');

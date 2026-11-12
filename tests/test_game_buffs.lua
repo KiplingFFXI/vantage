@@ -344,8 +344,30 @@ local function refused(name, change, wanted)
     assert(same_reason == reason and finds == looked, name .. ': asked for again, it gives the same answer without another search.');
     assert(game_buffs.release() == true and #calls.writes == 0, name .. ': an unload changes nothing either.');
 end
-refused('a routine that is missing', function() missing.menu_move = 'is missing'; end,
-    'This game client\'s menu mover is missing, so the game\'s buff icons stay as they are.');
+-- The mover's own pattern starts on its first bytes, which a hook from another addon or plugin writes a jump over.
+-- Its later bytes are then still there, 17 on from its start, and Vantage says what happened. It still changes
+-- nothing: the routine isn't the one it knows.
+where.menu_move_later = where.menu_move + 17;
+local CHANGED = 'Something else in the game, such as another addon or plugin, has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
+local MISSING = 'This game client\'s menu mover is missing, so the game\'s buff icons stay as they are.';
+refused('a mover whose start something else changed', function() missing.menu_move = 'is missing'; end, CHANGED);
+assert(finds == 6, 'The later bytes are looked for once the mover isn\'t found, and nothing after it: ' .. finds);
+refused('a routine that is missing', function() missing.menu_move, missing.menu_move_later = 'is missing', 'is missing'; end, MISSING);
+refused('a mover missing whose later bytes are there twice',
+    function() missing.menu_move, missing.menu_move_later = 'is missing', 'matches more than once'; end, MISSING);
+refused('a mover found twice', function() missing.menu_move = 'matches more than once'; end,
+    'This game client\'s menu mover matches more than once, so the game\'s buff icons stay as they are.');
+assert(finds == 5, 'A mover found twice is not looked for by its later bytes: ' .. finds);
+refused('another routine that is missing', function() missing.timer_draw = 'is missing'; end,
+    'This game client\'s timer drawing is missing, so the game\'s buff icons stay as they are.');
+assert(finds == 4, 'Only the mover has later bytes to look for: ' .. finds);
+-- A search that finds nothing and gives no reason counts as a routine that is missing.
+local kept = where.rebuild;
+refused('a routine a search gives no reason for', function() where.rebuild = nil; end,
+    'This game client\'s buff list rebuild is missing, so the game\'s buff icons stay as they are.');
+where.rebuild, kept = kept, where.menu_move;
+refused('a mover a search gives no reason for', function() where.menu_move = nil; end, CHANGED);
+where.menu_move = kept;
 refused('a routine found twice', function() missing.icon_paint = 'matches more than once'; end,
     'This game client\'s buff icon painting matches more than once, so the game\'s buff icons stay as they are.');
 refused('a routine with other bytes', function() put(where.menu_move + 0xE0, '\204'); end,

@@ -1,6 +1,6 @@
 # Release checklist
 
-A Vantage release is one addon archive, `vantage-1.2.1-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
+A Vantage release is one addon archive, `vantage-1.3.0-addon.zip`. It holds `addons/vantage/` (the addon) and `LICENSE`, `README.md`, `CHANGELOG.md`, `docs/GUIDE.md` and `docs/INSTALL.md`.
 
 Don't change the version unless the author tells you to release. Keep `vantage/vantage.lua` and the newest changelog heading at the same version.
 
@@ -16,7 +16,7 @@ Don't change the version unless the author tells you to release. Keep `vantage/v
 8. To install it on a game folder, run `tools/install_addon.ps1` in Windows PowerShell. The game can be open:
 
    ```text
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.2.1-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.3.0-addon.zip -Sha256 <the printed SHA-256> -Game <game folder>
    ```
 
    It refuses an archive whose SHA-256 differs. It notes the hash of every file under `config/addons/vantage` (settings, profiles, shared layout and the rest). It moves the current `addons/vantage` to `vantage-addon-backup-<UTC time>` in your Documents folder. You can pass `-BackupParent` to use a folder outside the game folder and on the same drive instead. Then it copies the new addon in and checks every copied file's hash. It also checks that no settings file changed. If anything fails, it puts the backup back. Each folder moves whole or not at all, so an old addon with a file held open stays where it is. A JSON receipt goes beside the backup. It never touches a startup script or the launcher. With the game open, a loaded Vantage keeps its old code until you run `/addon reload vantage` in game. Don't change any setting in game while the install runs. A saved settings file counts as a change and puts the old addon back.
@@ -264,7 +264,7 @@ These need a second character in the alliance's other party, with both ticked un
 
 204. Start the game with Vantage loading at startup, or run `/addon load vantage` for the first time since the game started, then run `/vg report`. Under `art` in `reports/latest.json`, `font` is the font picked under **Font** with no `reason`, `skipped` is empty, `atlas.kept` is 0 and `atlas.added` is the number of fonts loaded. Write down `atlas.fonts` and `atlas.added`. Under `art.client`, `window` is `window` for Window Type 1 (`window7` for Type 7). That frame and `original_font` under `kinds` have `available` true. The other frames read `Not needed yet.`, and so does `xiview_font` unless the look uses XI View.
 205. Run `/addon reload vantage` and `/vg report`. `art.atlas.kept` is the `added` you wrote down, `art.atlas.added` is 0 and `art.atlas.fonts` is your two numbers added together. Reload ten more times, and check that `art.atlas.fonts` stays the same. Pick a few fonts under **Font**, a custom one too, then zone. Each one draws, and the game keeps running. If `kept` stays 0 and `fonts` grows by `added` at each reload, the atlas can't be read and each reload adds the fonts again. If `kept` stays 0 and `fonts` doesn't grow, Ashita lets go of an addon's fonts at unload. Write down which.
-206. With **Settings text size** at 17, as it starts, and the font on Original FFXI, type `/vg` and check that the text is sharp: each stroke is one pixel wide and white, not two grey columns side by side. Set the size to 20, and the text doesn't change size. Set it to 24, and the text is twice as big. Set it back to 17. In `/vg report`, `art.menu` has `sharp` true for Original FFXI.
+206. With **Settings text size** at 17, as it starts, and the font on Original FFXI, type `/vg` and check the text against the game's own menus. Each letter has a white core with softer grey pixels at its edges, as the game's letters do, and no stroke is spread into two grey columns. Set the size to 20, and the text doesn't change size. Set it to 24, and the text is twice as big. Set it back to 17. In `/vg report`, `art.menu` has `sharp` true for Original FFXI.
 207. In the settings folder's `cache/client-fonts` subfolder, rename the `original_font-v2-` file to `original_font-v2-0000000000000000.ttf`, and make `original_font-v2-old.ttf` and `notes.txt` there with any text. Run `/addon reload vantage`. Vantage makes the menu font again under the name the file had, and `original_font-v2-0000000000000000.ttf` is gone. `original_font-v2-old.ttf` and `notes.txt` are still there. Delete them.
 208. With an XI View overlay set up, set only **Icons** under **More look** to XI View, then run `/addon reload vantage` and `/vg report`. Under `art.client`, `icons.xiview.available` is true, `kinds.xiview_font.reason` is `Not needed yet.` and each file under `actions.xiview` reads `Not needed yet.` Pick XI View under **Font**, and it shows within a frame or so.
 209. Turn on **Show samples** and switch **Icons** between Original FFXI and XI View a few times, in an alliance if you can, with several recasts on the Recasts panel. New icons come in over a few frames with no hitch, and none shows a different art's picture first. In `/vg report`, the `max` of `frame.render` is under about 20 ms.
@@ -347,3 +347,15 @@ The offline pictures can't show these. They use ImGui's plain style and a differ
 258. Pick **Classic FFXI** as the **Skin**. The pages have the window's own color behind them, and buttons have no outline. Set the skin back.
 259. Type `/vg edit`. The bar's buttons have no outline. Leave edit mode.
 260. With the font on Original FFXI, run `/addon reload vantage` and `/vg report`. `art.menu` still has `sharp` true, `art.atlas.added` is 0, and the text is as sharp as before.
+
+### Hide while I target myself
+
+261. In South Gustaberg (`!pos -484 40 -478 107`), run `!changejob whm 75` and cast Protect on yourself, with Self buffs, Self debuffs and Target timers on. Target yourself. Target timers shows Protect, as Self buffs does. On Target timers' **Show** tab, **Hide while I target myself** is unticked.
+262. Tick it. Target timers goes, and a line under the tick reads "Hidden now, because you're targeting yourself." Self buffs still shows Protect. Target a Land Crab, and Target timers is back and the line is gone. Target yourself again, and it goes.
+263. With yourself targeted, click **Show samples**. Target timers shows its samples. Click **End samples**, and it goes again. Type `/vg edit`. Its box shows, so you can place it. Leave edit mode.
+264. With a Land Crab targeted and **Follow the cursor while I am choosing a target** on, start a Cure and move the cursor to yourself. Target timers goes while the cursor is on you and comes back when it moves off. Cancel the spell.
+265. Untick **Hide while I target myself** and target yourself. Target timers shows Protect again.
+
+### Something else on the menu mover
+
+266. If you have an addon or plugin that hides or moves the game's own windows, load it, run `/addon reload vantage` and tick **Replace the game's buff icons**. The game's buff icons stay, and the line under the tick says something else in the game, such as another addon or plugin, has changed the menu mover. Unload it and run `/addon reload vantage` again. The tick works as in step 240.

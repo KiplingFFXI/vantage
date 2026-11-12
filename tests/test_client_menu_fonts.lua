@@ -43,6 +43,125 @@ for index = 0, 95 do
         assert(u16(glyph, 1) == 16 and u16(glyph, 11 + 30) == 63, 'All filled rows retain closed pixel contours.')
     end
 end
+-- The client's font is a bright core with softer grey pixels at its edges and a dark shadow. A fully lit pixel joins
+-- its row's run. A part-lit one becomes a square in the middle of its pixel, as much of the pixel's area as the pixel
+-- is lit, so ImGui draws it grey. A dark or see-through one is left out. A DXT3 block is 8 bytes of alpha (4 bits a
+-- pixel), two 565 colors and 2 bits a pixel picking one of them or one of the two colors between.
+local function block(alphas, first, second, picks)
+    local alpha, pick = {}, {}
+    for at = 1, 16, 2 do alpha[#alpha + 1] = string.char(alphas[at] + alphas[at + 1] * 16) end
+    for row = 0, 3 do
+        pick[#pick + 1] = string.char(picks[row * 4 + 1] + picks[row * 4 + 2] * 4 + picks[row * 4 + 3] * 16 + picks[row * 4 + 4] * 64)
+    end
+    return table.concat(alpha) .. string.char(first % 256, math.floor(first / 256), second % 256, math.floor(second / 256))
+        .. table.concat(pick)
+end
+-- raw's texture with the blocks at the given places changed. A place is the block's column and row.
+local function sheet(edits)
+    local at, parts, places = 1, {}, {}
+    for place in pairs(edits) do places[#places + 1] = place end
+    table.sort(places)
+    for _, place in ipairs(places) do
+        local offset = 128 + place * 16
+        parts[#parts + 1] = raw.dds:sub(at, offset)
+        parts[#parts + 1] = edits[place]
+        at = offset + 17
+    end
+    parts[#parts + 1] = raw.dds:sub(at)
+    return { width = raw.width, height = raw.height, format = raw.format, dds = table.concat(parts) }
+end
+local function place(column, row) return row * 256 + column end
+local full = { 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15 }
+local WHITE, BLACK = 0xFFFF, 0x0000
+-- White and black give the picks 0 white (255), 1 black (0), 2 grey (170) and 3 dark (85).
+local edits = {}
+-- '!' is the second cell, so its top left block is column 4. Its other blocks stay white.
+edits[place(4, 0)] = block({ 15, 15, 15, 15, 8, 7, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15 }, WHITE, BLACK,
+    { 0, 2, 0, 0, 2, 0, 0, 3, 1, 1, 1, 1, 2, 2, 2, 2 })
+-- '"' is all black but for one grey pixel at 5, 7 of its cell: column 9, row 1, the pixel at 1, 3 of that block.
+for row = 0, 3 do
+    for column = 8, 11 do edits[place(column, row)] = block(full, WHITE, BLACK, { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }) end
+end
+edits[place(9, 1)] = block(full, WHITE, BLACK, { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1 })
+-- '#': greens of 56 and 55 of 63 are 226.7 and 222.6, and the two between are 225.3 and 223.97, either side of the 224
+-- a core pixel starts at.
+edits[place(12, 0)] = block(full, 56 * 32, 55 * 32, { 0, 2, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 })
+-- '$': greens of 32 and 31 are 129.5 and 125.5, and the two between are 128.2 and 126.8, either side of the 128 a lit
+-- pixel starts at.
+edits[place(16, 0)] = block(full, 32 * 32, 31 * 32, { 0, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 })
+local soft = assert(fonts.generate(sheet(edits), 'Original FFXI'))
+assert(soft ~= bytes and soft == fonts.generate(sheet(edits), 'Original FFXI'))
+local soft_tables = {}
+for i = 1, u16(soft, 5) do
+    local at = 13 + (i - 1) * 16
+    soft_tables[soft:sub(at, at + 3)] = soft:sub(u32(soft, at + 8) + 1, u32(soft, at + 8) + u32(soft, at + 12))
+end
+local function signed(value) return value >= 32768 and value - 65536 or value end
+-- A glyph's box and its outlines, each as the pixel-space rectangle it covers in 64ths of a pixel from the cell's top
+-- left: left, top, right, bottom.
+local function shapes(code)
+    local index = code - 31
+    local at, finish = u32(soft_tables.loca, index * 4 + 1), u32(soft_tables.loca, index * 4 + 5)
+    local glyph = soft_tables.glyf:sub(at + 1, finish)
+    local count = u16(glyph, 1)
+    local box = { signed(u16(glyph, 3)), signed(u16(glyph, 5)), signed(u16(glyph, 7)), signed(u16(glyph, 9)) }
+    local points = count * 4
+    assert(u16(glyph, 11 + (count - 1) * 2) == points - 1 and u16(glyph, 11 + count * 2) == 0, 'Four points to an outline, no instructions.')
+    local flags = 11 + count * 2 + 2
+    local xs, ys = flags + points, flags + points + points * 2
+    local out, x, y = {}, 0, 0
+    for outline = 0, count - 1 do
+        local corner = {}
+        for point = 0, 3 do
+            local n = outline * 4 + point
+            assert(glyph:byte(flags + n) == 1, 'Every point is on its outline.')
+            x, y = x + signed(u16(glyph, xs + n * 2)), y + signed(u16(glyph, ys + n * 2))
+            corner[point + 1] = { x, 13 * 64 - y }
+        end
+        assert(corner[1][1] == corner[2][1] and corner[3][1] == corner[4][1] and corner[2][2] == corner[3][2]
+            and corner[1][2] == corner[4][2] and corner[1][1] < corner[3][1] and corner[2][2] < corner[1][2],
+            'Each outline is a rectangle, drawn the way a filled outline goes.')
+        out[#out + 1] = { corner[1][1], corner[2][2], corner[3][1], corner[1][2] }
+    end
+    return out, box, signed(u16(soft_tables.hmtx, index * 4 + 3))
+end
+local function same(found, wanted, label)
+    assert(#found == #wanted, label .. ': ' .. #found .. ' outlines, not ' .. #wanted)
+    for index, rect in ipairs(wanted) do
+        for side = 1, 4 do
+            assert(found[index][side] == rect[side], ('%s: outline %d is %s, not %s'):format(label, index,
+                table.concat(found[index], ' '), table.concat(rect, ' ')))
+        end
+    end
+end
+-- '!': the top left block's rows, then the cell's other twelve rows whole.
+local wanted = {
+    -- white, grey, white, white: a run of one, a square of 52 (170 of 255 lit, as 52 * 52 is of 64 * 64), the rest.
+    { 0, 0, 64, 64 }, { 70, 6, 122, 58 }, { 128, 0, 1024, 64 },
+    -- Grey at 8 of 15 opaque is a smaller square of 38. White under half opaque is left out. White at 14 of 15 is
+    -- core, and the dark pixel after it ends its run.
+    { 13, 77, 51, 115 }, { 128, 64, 192, 128 }, { 256, 64, 1024, 128 },
+    -- Black is left out.
+    { 256, 128, 1024, 192 },
+    -- Four grey pixels in a row stay four squares: a run is for fully lit pixels only.
+    { 6, 198, 58, 250 }, { 70, 198, 122, 250 }, { 134, 198, 186, 250 }, { 198, 198, 250, 250 }, { 256, 192, 1024, 256 },
+}
+for row = 4, 15 do wanted[#wanted + 1] = { 0, row * 64, 1024, row * 64 + 64 } end
+local found, box, bearing = shapes(33)
+same(found, wanted, '!')
+assert(box[1] == 0 and box[2] == -192 and box[3] == 1024 and box[4] == 832 and bearing == 0)
+-- '"': one grey pixel. Its box and bearing are the whole pixel's, so ImGui gives the glyph the pixel's place.
+found, box, bearing = shapes(34)
+same(found, { { 5 * 64 + 6, 7 * 64 + 6, 5 * 64 + 58, 7 * 64 + 58 } }, 'One grey pixel')
+assert(box[1] == 320 and box[2] == (13 - 8) * 64 and box[3] == 384 and box[4] == (13 - 7) * 64 and bearing == 320,
+    'A part-lit pixel at a glyph\'s edge counts as its whole pixel for the glyph\'s box.')
+-- '#': 226.7 and 225.3 are core and join one run. 223.97 is a square of 60, the largest there is. 222.6 is one too.
+found = shapes(35)
+same({ found[1], found[2], found[3], found[4] },
+    { { 0, 0, 128, 64 }, { 130, 2, 190, 62 }, { 194, 2, 254, 62 }, { 256, 0, 1024, 64 } }, 'Either side of core')
+-- '$': 129.5 and 128.2 are lit, as squares of 46, the smallest there is. 126.8 and 125.5 are left out.
+found = shapes(36)
+same({ found[1], found[2], found[3] }, { { 9, 9, 55, 55 }, { 73, 9, 119, 55 }, { 256, 0, 1024, 64 } }, 'Either side of lit')
 local cmap = tables.cmap:sub(13)
 assert(u16(cmap, 1) == 4 and u16(cmap, 3) == #cmap)
 local function mapped(code)

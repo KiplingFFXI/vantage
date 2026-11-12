@@ -1974,8 +1974,10 @@ local function place_panels(view, settings, now, context, screen, filtering, edi
     local s = settings.style
     for _, key in ipairs(defaults.panel_order) do
         local p = settings.panels[key]
-        -- A panel When to show hides isn't drawn, unless samples or edit mode show it.
-        if defaults.panel_enabled(settings, key) and (editing or settings.preview or conditions.shown(key)) then
+        -- A panel When to show hides isn't drawn, unless samples or edit mode show it. Nor is Target timers while it
+        -- hides for a target that is you.
+        if defaults.panel_enabled(settings, key) and (editing or settings.preview
+            or conditions.shown(key) and not (key == 'target' and defaults.hides_own_target(settings, context))) then
             local rows = drawing.rows[key]
             if not rows then
                 local list = drawing.lists[key]

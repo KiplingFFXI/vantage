@@ -28,7 +28,7 @@ Each character gets its own `settings.json`, in its own folder under `config/add
 
 ## Check it
 
-Run `/vg report` after loading. It writes `reports/latest.json` in the settings folder. The report says whether Vantage found the game clock for your own countdowns, the item data for item recasts, the game's party list rows and the chat window. It also says where the client art and fonts came from, or why one isn't drawn the way you picked. If Vantage can't find a part, that part turns off on its own and everything else keeps working. If your own buffs show no countdown, the report says why. A report can hold the names of characters and targets Vantage saw.
+Run `/vg report` after loading. It writes `reports/latest.json` in the settings folder. The report says whether Vantage found the game clock for your own countdowns, the item data for item recasts, the game's party list rows and the chat window. It also says where the client art and fonts came from, why one isn't drawn the way you picked, and whether the settings window's client fonts are drawn sharp. If Vantage can't find a part, that part turns off on its own and everything else keeps working. If your own buffs show no countdown, the report says why. A report can hold the names of characters and targets Vantage saw.
 
 ## Remove it
 

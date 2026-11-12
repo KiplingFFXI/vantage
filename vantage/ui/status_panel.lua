@@ -264,6 +264,10 @@ for _, item in ipairs({
         of = function(c) return c.s.tracking; end, only = only_on('target'), alias = 'Follow target-selection cursor subtarget' }),
     frame.note('While the cursor is out, "my target" means the unit under it, for every display and alert.', {
         only = function(c) return c.id == 'target' and c.s.tracking.follow_subtarget; end }),
+    frame.tick('Hide while I target myself', 'hide_self', 'Your own effects already show on Self buffs and Self debuffs.', {
+        only = only_on('target'), alias = 'Hide target timers when targeting myself self own target' }),
+    frame.note('Hidden now, because you\'re targeting yourself.', {
+        only = function(c) return c.id == 'target' and defaults.hides_own_target(c.s, c.view and c.view.context); end }),
     frame.custom('Members', 'Leave everyone unticked to show every member.', draw_members, { only = only_on('party'), alias = 'Selected members Show all members party members' }),
     frame.custom('Watching', 'Watch keeps what was seen on an enemy when you change targets. It does not show effects nobody saw land.', draw_watching, {
         only = only_on('watch'), alias = 'Watched enemies watch' }),
