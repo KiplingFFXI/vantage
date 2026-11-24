@@ -7,11 +7,10 @@ local conditions = require('core.conditions');
 local imgui = require('imgui');
 rawset(imgui, 'GetBackgroundDrawList', function() return imgui.GetWindowDrawList(); end);
 rawset(imgui, 'GetForegroundDrawList', function() return imgui.GetWindowDrawList(); end);
-local combo, opened, tips = nil, nil, {};
+local combo, opened = nil, nil;
 rawset(imgui, 'BeginCombo', function(label) return label == combo; end);
 rawset(imgui, 'EndCombo', function() end);
 rawset(imgui, 'IsItemHovered', function() return true; end);
-rawset(imgui, 'SetTooltip', function(text) tips[text] = true; end);
 local s = defaults.tidy(defaults.make());
 s.rolls.enabled, s.pet.enabled, s.ready_pulse.enabled, s.ready_pulse.spot = true, true, true, 'screen';
 s.party_cooldowns.enabled, s.party_cooldowns.list.enabled = true, true;
@@ -22,7 +21,7 @@ local function all_drawn()
 end;
 local function draw(click, list)
     all_drawn();
-    MOCK.imgui_calls, tips, combo = {}, {}, list;
+    MOCK.imgui_calls, combo = {}, list;
     if click then MOCK.clicks[click] = true; end;
     edit.draw(s, callbacks);
     assert(not click or not MOCK.clicks[click], 'The control is on the bar: ' .. tostring(click));
@@ -75,7 +74,7 @@ s.party_ui.groups[1].native_detached = true;
 draw();
 assert(said('Moves with: Nothing'), 'A group in a panel of its own moves with nothing.');
 s.party_ui.groups[1].native_detached = false;
-assert(tips['Locks the party list buffs. Unlocked, each group can be moved here.'], 'A group\'s Locked says what it locks, in plain words.');
+assert(not called('Checkbox', 'Locked##edit_lock'), 'The bar has no Locked tick, for a group or any display.');
 
 -- The bar has no typed spot and no Anchor button: Place settings is the way there, for each display.
 assert(not called('InputInt', 'X##edit_x') and not called('InputInt', 'Y##edit_y'), 'The bar has no typed spot.');
@@ -84,7 +83,7 @@ for _, call in ipairs(MOCK.imgui_calls) do
 end;
 local before = store.copy(s);
 for _, case in ipairs({ { 'self_buffs', 'self_buffs' }, { 'target', 'target' }, { 'strip_1', 'party_ui' }, { 'strip_3', 'party_ui' },
-    { 'pulse', 'recasts' }, { 'cooldown_list', 'cooldown_list' }, { 'rolls', 'rolls' } }) do
+    { 'pulse', 'pulse' }, { 'cooldown_list', 'cooldown_list' }, { 'rolls', 'rolls' } }) do
     pick(case[1]);
     opened = nil;
     draw('Size and place##edit_place');
@@ -101,17 +100,17 @@ assert(store.equal(before, s), 'Place settings changes no setting, and no lock.'
 
 -- The line for a display its rules hide, and the help that stays.
 pick('self_buffs');
-assert(not said('Its When to show rules hide it right now. Edit mode shows it anyway.'), 'No line while its rules show it.');
+assert(not said('Its When to show rules hide it right now. Arrange on screen shows it anyway.'), 'No line while its rules show it.');
 local shown = conditions.shown;
 conditions.shown = function(id) return id ~= 'self_buffs'; end;
 draw();
-assert(said('Its When to show rules hide it right now. Edit mode shows it anyway.'), 'Its rules hide it: the bar says so.');
+assert(said('Its When to show rules hide it right now. Arrange on screen shows it anyway.'), 'Its rules hide it: the bar says so.');
 conditions.shown = function(id) return id ~= 'party_ui'; end;
 pick('strip_2');
-assert(said('Its When to show rules hide it right now. Edit mode shows it anyway.'), 'A party group goes by the party list buffs\' rules.');
+assert(said('Its When to show rules hide it right now. Arrange on screen shows it anyway.'), 'A party group goes by Party list\' rules.');
 conditions.shown = shown;
 draw();
-assert(not said('Its When to show rules hide it right now. Edit mode shows it anyway.'), 'The line goes with the rule.');
+assert(not said('Its When to show rules hide it right now. Arrange on screen shows it anyway.'), 'The line goes with the rule.');
 assert(said('Click a display to pick it. Hold Shift and drag to move it. Arrow keys move it 1 pixel, 10 with Shift. Esc ends.'), 'The bar says how to move a display.');
 
 -- The bar sits at the top middle of the screen, or at the bottom middle while the open settings window reaches its spot
@@ -119,7 +118,7 @@ assert(said('Click a display to pick it. Hold Shift and drag to move it. Arrow k
 local spot, placed;
 local set_pos, begin = imgui.SetNextWindowPos, imgui.Begin;
 rawset(imgui, 'SetNextWindowPos', function(pos, cond, pivot) spot = { pos[1], pos[2], pivot and pivot[2] }; return set_pos(pos, cond, pivot); end);
-rawset(imgui, 'Begin', function(name, ...) if name == 'Vantage edit mode##vantage_edit_bar' then placed = spot; end; return begin(name, ...); end);
+rawset(imgui, 'Begin', function(name, ...) if name == 'Arrange on screen##vantage_edit_bar' then placed = spot; end; return begin(name, ...); end);
 MOCK.screen, MOCK.window_size = { 1280, 720 }, { 970, 82 };
 edit.stop(); edit.start();
 local function bar_at(area)

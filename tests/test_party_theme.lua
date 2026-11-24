@@ -37,21 +37,21 @@ for _, key in ipairs(theme.color_keys) do
 end
 look.colors.text[1] = 0;
 assert(colored.colors.text[1] == 0.1);
--- The party list buffs wear the timer panels' look, with the party's own icons and opacity.
+-- Party list wears the timer panels' look, with the party's own icons and opacity.
 config.style.icon_art, config.style.opacity = 'XI View', 0.5;
-local timer_style = { theme = 'Mint', window_type = 3, font = 'Consolas', font_size = 20, icon_art = 'Client', opacity = 0.9,
+local timer_style = { theme = 'Mint', window_type = 3, font = 'Consolas', font_size = 20, icon_art = 'My icons', opacity = 0.9,
     rounding = 7, minimal = true, background = false, border = false };
 local party = theme.party(config, timer_style);
 local main = theme.resolve(timer_style);
 assert(party.theme == 'Mint' and party.window_type == 3 and party.font == 'Consolas' and party.font_size == 20 and party.rounding == 7
-    and party.minimal and not party.background and not party.border, 'The party list buffs wear the timer panels\' look.');
+    and party.minimal and not party.background and not party.border, 'Party list wears the timer panels\' look.');
 assert(party.icon_art == 'XI View' and party.opacity == 0.5, 'with their own icons and opacity');
 for _, key in ipairs(theme.color_keys) do
     assert(store.encode(party.colors[key]) == store.encode(main.colors[key]), 'and the timer panels\' colors: ' .. key);
 end
 config.style.icon_art, config.style.opacity = nil, nil;
 party = theme.party(config, timer_style);
-assert(party.icon_art == 'Client' and party.opacity == 0.9, 'Without icons or opacity of their own they take the timer panels\'.');
+assert(party.icon_art == 'My icons' and party.opacity == 0.9, 'Without icons or opacity of their own they take the timer panels\'.');
 -- Given the settings revision the look is kept until that revision or those settings change, and without one it is new.
 local kept = theme.party(config, timer_style, 1);
 assert(theme.party(config, timer_style, 1) == kept, 'A revision has one look.');

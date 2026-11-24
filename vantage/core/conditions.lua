@@ -1,14 +1,16 @@
 -- When to show: when each display shows (ui/elements.lua names them). Each condition set holds your main and sub
 -- jobs, a level range, Level Sync, the kinds of zone, solo or party or alliance, engaged and a pet out. Every condition
--- that is set must hold; one that names several choices holds for any of them. A display with none always shows.
--- They change only what shows: tracking and alerts go on. update reads where you are at each refresh and keeps each
+-- that is set must hold; one that names several choices holds for any of them, or set to All but these, for any other.
+-- A display with none always shows.
+-- They change only what shows: tracking goes on, and so do alerts, but for the conditions of Alerts itself, which hold
+-- every alert back (vantage.lua). update reads where you are at each refresh and keeps each
 -- display's result; shown answers the draws. It reads the client and sends nothing.
 local conditions = {};
 local numbers = require('ui.numbers');
 local finite = numbers.finite;
 local ZONES = require('data.zones');
 
-conditions.jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+conditions.jobs = require('data.shared_ids').jobs;
 conditions.zone_kinds = { 'town', 'field', 'dungeon', 'battlefield', 'dynamis', 'limbus', 'assault', 'salvage', 'nyzul', 'ashu_talif',
     'mog_house', 'other' };
 conditions.zone_names = { town = 'Towns', field = 'Fields', dungeon = 'Dungeons', battlefield = 'Battlefields', dynamis = 'Dynamis',
@@ -26,16 +28,11 @@ for kind, ids in pairs(ZONES) do for _, id in ipairs(ids) do kind_of[id] = kind;
 if VANTAGE_TEST_MODE then conditions.kind_of = kind_of; end
 
 function conditions.make()
-    return { main_jobs = {}, sub_jobs = {}, level_min = 1, level_max = 99, level_sync = 'any', zones = {}, group = {},
-        engaged = 'any', pet = 'any' };
+    return { main_jobs = {}, sub_jobs = {}, main_except = false, sub_except = false, level_min = 1, level_max = 99, level_sync = 'any',
+        zones = {}, zones_except = false, group = {}, engaged = 'any', pet = 'any' };
 end
 
-local function table_of(value) return type(value) == 'table' and value or {}; end
-
-local function choice(value, choices, fallback)
-    for _, item in ipairs(choices) do if value == item then return value; end end
-    return fallback;
-end
+local table_of, choice = numbers.table_of, numbers.choice;
 
 -- Job ids kept as a map, from a map (keys may be text after a save) or a list.
 local function jobs(value)
@@ -65,9 +62,13 @@ function conditions.tidy(value)
     value = table_of(value);
     local out = conditions.make();
     out.main_jobs, out.sub_jobs = jobs(value.main_jobs), jobs(value.sub_jobs);
+    out.main_except, out.sub_except, out.zones_except = value.main_except == true, value.sub_except == true, value.zones_except == true;
     out.level_min = numbers.clamp_round(value.level_min, 1, 99, 1);
     out.level_max = numbers.clamp_round(value.level_max, 1, 99, 99);
     if out.level_max < out.level_min then out.level_min, out.level_max = out.level_max, out.level_min; end
+    -- The From box stops at Phoenix's cap of 75, as 1.3.0's didn't. A lowest level above it would hide the display for good
+    -- while the box read 75, so it's 75.
+    out.level_min = math.min(out.level_min, 75);
     out.level_sync = choice(value.level_sync, conditions.states, 'any');
     out.zones = names(value.zones, conditions.zone_kinds);
     out.group = names(value.group, conditions.groups);
@@ -90,14 +91,7 @@ local place = { valid = false, job = 0, sub_job = 0, level = 0, synced = false, 
 conditions.place = place;
 local in_mog_house = false;
 
-local function index_of(object, key) return object[key]; end
-local function call(object, name, ...)
-    if object == nil then return nil; end
-    local ok, fn = pcall(index_of, object, name);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local done, value = pcall(fn, object, ...);
-    if done then return value; end
-end
+local call = require('core.guard').call;
 local function memory() return call(AshitaCore, 'GetMemoryManager'); end
 
 -- The zone-in packet's login state (0x00A at 0x80, src/map/packets/s2c/0x00a_login.h) is 1 in a Mog House
@@ -141,16 +135,22 @@ local function state_holds(state, value)
     return state == 'any' or (state == 'yes') == value;
 end
 
+-- Whether a list holds: what it picks, or with All but these, what it doesn't.
+local function listed(inside, except)
+    return inside ~= (except == true);
+end
+
 -- Whether a condition set holds at place.
 function conditions.holds(value, at)
     at = at or place;
     if type(value) ~= 'table' then return true; end
     if not at.valid then return true; end
-    if next(value.main_jobs) ~= nil and not value.main_jobs[at.job] then return false; end
-    if next(value.sub_jobs) ~= nil and not value.sub_jobs[at.sub_job] then return false; end
+    if next(value.main_jobs) ~= nil and not listed(value.main_jobs[at.job] == true, value.main_except) then return false; end
+    if next(value.sub_jobs) ~= nil and not listed(value.sub_jobs[at.sub_job] == true, value.sub_except) then return false; end
     if (value.level_min > 1 or value.level_max < 99) and (at.level < value.level_min or at.level > value.level_max) then return false; end
     if not state_holds(value.level_sync, at.synced) then return false; end
-    if next(value.zones) ~= nil and not value.zones[at.kind] and not (at.battlefield and value.zones.battlefield) then return false; end
+    local inside = value.zones[at.kind] == true or at.battlefield and value.zones.battlefield == true;
+    if next(value.zones) ~= nil and not listed(inside, value.zones_except) then return false; end
     if next(value.group) ~= nil and not value.group[at.group] then return false; end
     if not state_holds(value.engaged, at.engaged) then return false; end
     if not state_holds(value.pet, at.pet) then return false; end
@@ -174,32 +174,50 @@ function conditions.shown(id)
     return not hidden[id];
 end
 
-local function list(words)
+-- joiner is or, or and for All but these.
+local function list(words, joiner)
     if #words <= 1 then return words[1] or ''; end
-    return table.concat(words, ', ', 1, #words - 1) .. ' or ' .. words[#words];
+    return table.concat(words, ', ', 1, #words - 1) .. ' ' .. (joiner or 'or') .. ' ' .. words[#words];
 end
 
-local function job_names(set)
+local function job_names(set, joiner)
     local out = {};
     for id, name in ipairs(conditions.jobs) do if set[id] then out[#out + 1] = name; end end
-    return list(out);
+    return list(out, joiner);
+end
+
+local function zone_words(set, joiner)
+    local words = {};
+    for _, kind in ipairs(conditions.zone_kinds) do if set[kind] then words[#words + 1] = conditions.zone_names[kind]; end end
+    return list(words, joiner);
+end
+
+-- What a list of jobs or zones picks, for the title of its fold: any, the picks, or all but them.
+function conditions.picks(value, key)
+    local set, except = value[key], value[key == 'zones' and 'zones_except' or key == 'main_jobs' and 'main_except' or 'sub_except'];
+    if next(set) == nil then return 'any'; end
+    local named = key == 'zones' and zone_words or job_names;
+    return except and 'all but ' .. named(set, 'and') or named(set);
 end
 
 -- The conditions in plain words: what must hold, one line each, or that it always shows.
 function conditions.describe(value)
     if not conditions.any(value) then return { 'always shows.' }; end
     local out = {};
-    if next(value.main_jobs) ~= nil then out[#out + 1] = 'Main job ' .. job_names(value.main_jobs) .. '.'; end
-    if next(value.sub_jobs) ~= nil then out[#out + 1] = 'Support job ' .. job_names(value.sub_jobs) .. '.'; end
+    if next(value.main_jobs) ~= nil then
+        out[#out + 1] = (value.main_except and 'Any main job but ' .. job_names(value.main_jobs, 'and') or 'Main job ' .. job_names(value.main_jobs)) .. '.';
+    end
+    if next(value.sub_jobs) ~= nil then
+        out[#out + 1] = (value.sub_except and 'Any support job but ' .. job_names(value.sub_jobs, 'and') or 'Support job ' .. job_names(value.sub_jobs)) .. '.';
+    end
     if value.level_min > 1 or value.level_max < 99 then
         out[#out + 1] = value.level_min == value.level_max and 'Level ' .. value.level_min .. '.'
+            or value.level_max == 99 and 'Level ' .. value.level_min .. ' and up.'
             or 'Level ' .. value.level_min .. ' to ' .. value.level_max .. '.';
     end
     if value.level_sync ~= 'any' then out[#out + 1] = value.level_sync == 'yes' and 'While Level Synced.' or 'While not Level Synced.'; end
     if next(value.zones) ~= nil then
-        local words = {};
-        for _, kind in ipairs(conditions.zone_kinds) do if value.zones[kind] then words[#words + 1] = conditions.zone_names[kind]; end end
-        out[#out + 1] = 'In ' .. list(words) .. '.';
+        out[#out + 1] = (value.zones_except and 'Anywhere but ' .. zone_words(value.zones, 'and') or 'In ' .. zone_words(value.zones)) .. '.';
     end
     if next(value.group) ~= nil then
         local words = {};

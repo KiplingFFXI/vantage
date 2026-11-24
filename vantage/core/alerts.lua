@@ -1,7 +1,10 @@
 local catalog = require('core.catalog');
+local clear = require('table.clear');
 local alerts = {};
 local methods = {};
 methods.__index = methods;
+-- With nothing up, or nothing queued, view and drain give back this same empty list. Nothing writes into it.
+local NONE = {};
 
 local function selected(list, value)
     if type(list) ~= 'table' then return false; end
@@ -23,20 +26,7 @@ local function fingerprint(value)
     return '{' .. table.concat(parts,';') .. '}';
 end
 
-local function same(a, b)
-    if type(a) ~= type(b) then return false; end
-    if type(a) ~= 'table' then return a == b; end
-    for key, value in pairs(a) do if not same(value, b[key]) then return false; end end
-    for key in pairs(b) do if a[key] == nil then return false; end end
-    return true;
-end
-
-local function copy(value)
-    if type(value) ~= 'table' then return value; end
-    local result = {};
-    for key, item in pairs(value) do result[key] = copy(item); end
-    return result;
-end
+local same, copy = require('core.tables').same, require('core.tables').copy;
 
 local function matches(rule, row, view, options)
     local context = view.context or {};
@@ -92,6 +82,22 @@ local function token(row)
     return tostring(row.key) .. ':' .. tostring(row.instance or 1);
 end
 
+-- The rows present on each unit, by its id, which only a missing rule reads. The map and each unit's list are kept on
+-- self and filled again, and a unit with none left goes.
+local function present_by_entity(self, view)
+    local by_entity = self.present;
+    for _, rows in pairs(by_entity) do for index = #rows, 1, -1 do rows[index] = nil; end end
+    for _, row in ipairs(view.rows or NONE) do
+        if (not row.departing or row.recast) and row.present then
+            local rows = by_entity[row.entity_id];
+            if not rows then rows = {}; by_entity[row.entity_id] = rows; end
+            rows[#rows+1] = row;
+        end
+    end
+    for id, rows in pairs(by_entity) do if #rows == 0 then by_entity[id] = nil; end end
+    return by_entity;
+end
+
 local function countdown(rule, row)
     if not row or not row.remaining or row.remaining <= 0 or not (row.status == 'server' or row.status == 'estimated') then return false; end
     if rule.unit == 'percent' then
@@ -118,14 +124,21 @@ local function wording(rule, row, event, threshold)
 end
 
 function alerts.new()
-    return setmetatable({states={},queue={},notices={},current={},ready=false,last_time=nil,last_sound=-math.huge},methods);
+    return setmetatable({states={},queue={},notices={},current={},held={},present={},shown={},passes=0,ready=false,last_time=nil,
+        last_sound=-math.huge},methods);
 end
 
 function methods:reset()
-    self.states,self.queue,self.notices,self.current = {},{},{},{};
+    self.states,self.queue,self.notices,self.current,self.held,self.present = {},{},{},{},{},{};
     self.ready,self.last_time = false,nil;
     self.last_sound = -math.huge;
     self.compiled, self.disabled = nil, nil;
+end
+
+-- Takes down the notices up and queued, as a mute does at once. What each rule has told is kept, so an effect still
+-- missing isn't told again.
+function methods:hush()
+    clear(self.queue); clear(self.notices);
 end
 
 function methods:compile(rules, enrich, context)
@@ -157,6 +170,8 @@ function methods:enqueue(rule,row,event,now,threshold,state,crossed)
         message=wording(rule,row,event,threshold),visual=rule.visual==true,
         chat=rule.chat==true,sound=rule.sound or '',emphasis=rule.emphasis==true,
         volume=rule.volume or -1,flash=rule.flash==true,flash_color=rule.flash_color,
+        -- The color of its notice's text, when the rule has one of its own.
+        color=type(rule.notice_colors)=='table' and rule.notice_colors.text or nil,
         flash_ends=now+(rule.flash_seconds or rule.duration or 4),
         threshold=threshold,estimated=row.status=='estimated' };
     if #self.queue >= 32 then table.remove(self.queue,1); end
@@ -180,13 +195,17 @@ function methods:update(view,events,rules,now,options)
             self.last_sound, self.disabled = last_sound, true;
         end
         self.last_time = now;
-        self.queue, self.notices = {}, {};
+        clear(self.queue); clear(self.notices);
         return;
     end
     self.disabled = false;
     local compiled = self:compile(rules, options.enrich, options.enrich_context);
-    local current, held, by_entity = {}, {}, {};
-    for _, row in ipairs(view.rows or {}) do
+    -- The rows by token, kept on self and filled again at each update. Nothing reads them past it.
+    local current, held, by_entity = self.current, self.held, nil;
+    for key in pairs(current) do current[key] = nil; end
+    for key in pairs(held) do held[key] = nil; end
+    -- With no rules nothing reads them, so they stay empty. Every notice a rule gave then goes, as when its rule is gone.
+    for _, row in ipairs(#compiled.entries > 0 and view.rows or NONE) do
         -- A row whose removal was seen is gone here, even while its icon waits for the status update. One a
         -- recast holds is not: its new copy renews it, so it is held like a split send's.
         if not row.departing or row.recast then
@@ -195,16 +214,11 @@ function methods:update(view,events,rules,now,options)
             -- So do the other copies of its effect: the copy that kept the slot may be the one that left.
             if row.scope == 'self' and (row.present == false or row.unsettled or row.departing) then held[token(row)] = row;
             else current[token(row)] = row; end
-            if row.present then
-                local rows = by_entity[row.entity_id];
-                if not rows then rows = {}; by_entity[row.entity_id] = rows; end
-                rows[#rows+1] = row;
-            end
         end
     end
-    self.current = current;
     local quiet = not view.valid or options.enabled == false or options.muted or options.quiet;
-    if quiet then self.queue,self.notices = {},{}; end
+    if quiet then clear(self.queue); clear(self.notices); end
+    self.passes = self.passes + 1;
     local active_rules = compiled.active;
     for _, entry in ipairs(compiled.entries) do
         local rule, id, stamp = entry.rule, entry.id, entry.stamp;
@@ -214,12 +228,14 @@ function methods:update(view,events,rules,now,options)
             -- last: when each key last notified, for the cooldown. since: when its repeat reminder counts from,
             -- that notice or the last quiet baseline (a reset, a mute, an event). told: when a missing effect was
             -- told in the stretch it has been missing, cleared once it is found.
-            state={stamp=stamp,previous={},fired={},last={},since={},told={},missing={},missing_at={}};
+            state={stamp=stamp,previous={},spare={},fired={},last={},since={},told={},missing={},missing_at={}};
             self.states[id]=state;
             for i=#self.queue,1,-1 do if self.queue[i].rule_id==id then table.remove(self.queue,i); end end
             for i=#self.notices,1,-1 do if self.notices[i].rule_id==id then table.remove(self.notices,i); end end
         end
-        local previous = {};
+        -- previous fills the table the update before last used, as the last update's values are read while it fills.
+        local previous = state.spare;
+        for key in pairs(previous) do previous[key] = nil; end
         if rule.enabled ~= false then
             if rule.event == 'remaining' then
                 for key,row in pairs(current) do
@@ -274,17 +290,27 @@ function methods:update(view,events,rules,now,options)
                 end
             elseif rule.domain~='recast' and rule.event=='missing' and rule.effect and rule.effect~=0
                 and not catalog.get(rule.effect).unnamed then
-                local missing = {};
+                -- missing fills the table the update before last used, as the last one's is read while it fills. Each
+                -- unit's row is kept by its id and filled again, with its key and token made once.
+                local missing, rows, pass = state.missing_spare or {}, state.rows or {}, self.passes;
+                clear(missing);
+                state.rows = rows;
                 local info = catalog.get(rule.effect);
-                for _, subject in ipairs(view.subjects or {}) do
-                    local row={entity_id=subject.id,entity_name=subject.name,scope=subject.scope,effect=rule.effect,
-                        key='missing:'..subject.id..':'..rule.effect,instance=1,name=rule.effect_name or info.name};
+                by_entity = by_entity or present_by_entity(self, view);
+                for _, subject in ipairs(view.subjects or NONE) do
+                    local row = rows[subject.id];
+                    if not row then
+                        row = {entity_id=subject.id,effect=rule.effect,key='missing:'..subject.id..':'..rule.effect,instance=1};
+                        row.token = token(row);
+                        rows[subject.id] = row;
+                    end
+                    row.entity_name, row.scope, row.name, row.pass = subject.name, subject.scope, rule.effect_name or info.name, pass;
                     if subject.known and matches(rule,row,view,options) then
                         local found=false;
-                        for _,held in ipairs(by_entity[subject.id] or {}) do
+                        for _,held in ipairs(by_entity[subject.id] or NONE) do
                             if matches(rule,held,view,options) then found=true; break; end
                         end
-                        local key=token(row);
+                        local key=row.token;
                         if not found then
                             missing[row.key]=true;
                             state.missing_at[row.key]=quiet and now or state.missing_at[row.key] or now;
@@ -306,11 +332,12 @@ function methods:update(view,events,rules,now,options)
                         end
                     end
                 end
-                state.missing=missing;
+                state.missing, state.missing_spare = missing, state.missing;
                 for key in pairs(state.missing_at) do if missing[key]==nil then state.missing_at[key]=nil; end end
+                for id, row in pairs(rows) do if row.pass ~= pass then rows[id] = nil; end end
             end
-        else state.missing, state.missing_at = {}, {}; end
-        state.previous=previous;
+        else clear(state.missing); clear(state.missing_at); end
+        state.previous, state.spare = previous, state.previous;
         for key in pairs(state.fired) do
             if type(state.fired[key])=='table' and not current[key] and not held[key] then
                 state.fired[key], state.last[key], state.since[key] = nil, nil, nil;
@@ -319,7 +346,8 @@ function methods:update(view,events,rules,now,options)
         -- Gain/removal deduplication only needs the recent event window. A key still shown, held or missing keeps
         -- its notice times: they are its cooldown, its missing notice and its repeat reminder.
         if not state.cleanup_at or now-state.cleanup_at>60 then
-            for _, times in ipairs({state.last, state.since, state.told}) do
+            for pass=1,3 do
+                local times = pass==1 and state.last or pass==2 and state.since or state.told;
                 for key,at in pairs(times) do
                     if now-at>300 and not current[key] and not held[key]
                         and not (key:sub(-2)==':1' and state.missing[key:sub(1,-3)]~=nil) then times[key]=nil; end
@@ -330,7 +358,8 @@ function methods:update(view,events,rules,now,options)
         end
     end
     for id in pairs(self.states) do if not active_rules[id] then self.states[id]=nil; end end
-    for _, list in ipairs({self.queue,self.notices}) do
+    for pass=1,2 do
+        local list = pass==1 and self.queue or self.notices;
         for i=#list,1,-1 do
             local notice=list[i];
             local rule=active_rules[notice.rule_id];
@@ -341,10 +370,26 @@ function methods:update(view,events,rules,now,options)
             local held_state=self.states[notice.rule_id];
             local no_longer_missing=notice.event=='missing' and (not held_state or held_state.missing[notice.key]~=true);
             local finished=notice.ends<=now and not (notice.emphasis and notice.flash and (notice.flash_ends or 0)>now);
-            if not notice.test and (not rule or gone or stale_gain or scope_changed or no_longer_missing or finished) then table.remove(list,i); end
+            if not notice.test and not notice.own and (not rule or gone or stale_gain or scope_changed or no_longer_missing or finished) then table.remove(list,i); end
         end
     end
     self.ready = view.valid and not quiet;
+end
+
+-- A notice with no rule behind it, as the pet display's own are (core/pet.lua): it shows where a rule's does, with no
+-- sound and no chat line, and leaves when its time is up. key keeps the same one from repeating within 10 seconds.
+function methods:announce(key,message,now,seconds)
+    self.said=self.said or {};
+    if self.said[key] and now-self.said[key] < 10 then return false; end
+    self.said[key]=now;
+    local notice={ rule_id=key, token=key, key=key, instance=now, entity_id=0, event='own', time=now, scope='pet', name=message,
+        status='server', ends=now+(seconds or 5), message=message, visual=true, chat=false, sound='', emphasis=false, volume=-1,
+        flash=false, own=true };
+    if #self.queue >= 32 then table.remove(self.queue,1); end
+    self.queue[#self.queue+1] = notice;
+    if #self.notices >= 12 then table.remove(self.notices,1); end
+    self.notices[#self.notices+1] = notice;
+    return true;
 end
 
 function methods:test(rule,now)
@@ -356,20 +401,28 @@ function methods:test(rule,now)
     if self.queue[#self.queue] then self.queue[#self.queue].test=true; end
 end
 
+-- The notices up, in one list kept on self and filled again at each call. Its readers read it within the frame.
 function methods:view(now)
-    local result = {};
+    local shown, count = self.shown, 0;
     for _,notice in ipairs(self.notices) do
-        if notice.ends>now or notice.emphasis and notice.flash and (notice.flash_ends or 0)>now then result[#result+1]=notice; end
+        if notice.ends>now or notice.emphasis and notice.flash and (notice.flash_ends or 0)>now then
+            count=count+1;
+            shown[count]=notice;
+        end
     end
-    return result;
+    for index=#shown,count+1,-1 do shown[index]=nil; end
+    if count==0 then return NONE; end
+    return shown;
 end
 
 -- volume is the shared alert volume. A notice plays at its rule's own volume when that is 0 or more, else at the
 -- shared one, as deliver does; at 0 it has no sound, so it doesn't take the one sound a second.
 function methods:drain(now, volume)
+    local queue=self.queue;
+    if #queue==0 then return NONE; end
     local result={};
     local sound_given=false;
-    for _,notice in ipairs(self.queue) do
+    for _,notice in ipairs(queue) do
         if notice.ends>now then
             local value={};
             for key,item in pairs(notice) do value[key]=item; end
@@ -382,7 +435,8 @@ function methods:drain(now, volume)
             result[#result+1]=value;
         end
     end
-    self.queue={};
+    -- The queue is emptied in place. Nothing else holds it.
+    for index=#queue,1,-1 do queue[index]=nil; end
     return result;
 end
 

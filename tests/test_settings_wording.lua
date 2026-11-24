@@ -1,4 +1,4 @@
--- Words on the pages: Hidden everywhere talks about no setting it doesn't have, and each display's show
+-- Words on the pages: the Hide list talks about no setting it doesn't have, and each display's show
 -- conditions read as one line. The edit mode bar's own line is in test_edit_mode.lua.
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 local window, conditions, imgui = require('ui.settings_window'), require('core.conditions'), require('imgui');
@@ -19,12 +19,12 @@ local function has(list, text)
     return false;
 end;
 
--- Hidden everywhere: no sentence about a setting that isn't there.
+-- The Hide list: no sentence about a setting that isn't there.
 require('ui.panel_frame').open('hidden', 'show');
 draw('Display');
 local index = require('ui.search_index').controls;
 local words = table.concat(lines('TextWrapped'), ' ');
-assert(words:find('Effects on this list are hidden on the timer panels, party list buffs, overhead icons and Pet.', 1, true), 'The page says what the list does: ' .. words);
+assert(words:find('Effects on this list are hidden on the timer panels, Party list, overhead icons and Pet.', 1, true), 'The page says what the list does: ' .. words);
 assert(not words:find('party/alliance frames', 1, true) and not words:find('native buff strips', 1, true), 'Not frames and native strips.');
 
 -- When to show: one format, whatever the display, with or without conditions.

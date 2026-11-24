@@ -62,7 +62,7 @@ assert(seen['##frame_Most per member'].low == 0 and seen['##frame_Most per membe
 frame('Display', nil, 'frame_Most per member', 7);
 assert(not effects.fit_all and effects.max == 7, 'A number ends All that fit.');
 
--- More look has the common size control; Status timers and Recasts don't draw it.
+-- The main page has the common size control. Status timers and Recasts don't draw it.
 frame('Home', nil, 'main_icon_size', 12);
 assert(settings.style.icon_size == 12, 'The common size control changes status and recast icons');
 assert(seen['##main_icon_size'].low == 12 and seen['##main_icon_size'].high == 64);
@@ -75,7 +75,7 @@ for _, page in ipairs({ 'Panels', 'Recasts' }) do
     assert(not seen['##main_icon_size'], 'Icon size is not on ' .. page);
 end;
 
--- Party list buff icons don't use Icon size, and its help says so.
+-- Party list's icons don't use Icon size, and its help says so.
 local function helps(page, words)
     for _, result in ipairs(window.search(words)) do
         if result.tab == page and result.label == 'Icon size' then return true; end;
@@ -84,8 +84,8 @@ local function helps(page, words)
 end;
 settings.window.tab = 'Home';
 window.draw(settings, hud.sample(100), callbacks);
-assert(helps('Home', "party list buff icons don't use it fill the step between its rows panel of its own"),
-    'Icon size says party list buff icons don\'t use it.');
+assert(helps('Home', "Party list's icons size themselves fill its rows panel of its own sets its own"),
+    'Icon size says Party list\'s icons size themselves.');
 assert(#MOCK.commands == 0, 'Display customization never issues gameplay commands');
 imgui.SliderFloat = original_slider;
 return 'Reachable effect sizing and automatic-fitting controls preserve manual choices';

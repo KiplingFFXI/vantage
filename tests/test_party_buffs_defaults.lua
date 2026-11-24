@@ -1,5 +1,5 @@
--- Party list buff countdowns start off, and the strips start 26 px from the game's party list. After that the player's
--- own choices stay: through every tidy, Countdowns on Party list buffs as one Undo step, a save and a reload, /vg set
+-- Party list countdowns start off, and the strips start 26 px from the game's party list. After that the player's
+-- own choices stay: through every tidy, Countdowns on Party list as one Undo step, a save and a reload, /vg set
 -- and Apply setup. Profiles, shared layouts of the whole look and exports carry their countdowns and gap as they
 -- are, and reading one writes nothing.
 local defaults, store, share = require('ui.defaults'), require('core.store'), require('core.share');
@@ -23,7 +23,7 @@ for round = 1, 2 do
         'Countdowns on and 6 px stay, tidy ' .. round .. '.');
 end;
 
--- Through the app: a save with the party list buffs on loads with the countdowns off, 26 px from the game's list.
+-- Through the app: a save with Party list on loads with the countdowns off, 26 px from the game's list.
 local root = require('core.identity').root():gsub('[/' .. string.char(92) .. ']+$', '') .. '/';
 local path = root .. 'Tester_1001/settings.json';
 local saved = defaults.make();
@@ -45,7 +45,7 @@ assert(app.state.path:gsub(string.char(92), '/') == path:gsub(string.char(92), '
 assert(s.party_ui.effects.timers == false and s.party_ui.native.gap == 26,
     'The save loads with countdowns off, 26 px from the game\'s list.');
 
--- The Countdowns switch on Party list buffs turns them on as one Undo step; Undo and Redo work as for any switch, and
+-- The Countdowns switch on Party list turns them on as one Undo step; Undo and Redo work as for any switch, and
 -- the save holds the choice.
 local window = require('ui.settings_window');
 local function countdowns()
@@ -120,7 +120,7 @@ for _, kind in ipairs({ 'element', 'profile' }) do
         assert(line:match('^[%a &]+: %d+ settings? change%.$') or line:match('^[%a &]+: %d+ rules? now, %d+ after%.$')
             or line:match('^Shared hide rules: turned o[nf]f?%.$'), kind .. ': a plain line: ' .. line);
     end;
-    assert(table.concat(lines, ' '):find('Party list buffs: ', 1, true), kind .. ': the list says the party list buffs change.');
+    assert(table.concat(lines, ' '):find('Party list: ', 1, true), kind .. ': the list says Party list changes.');
     one_step(kind .. ' string', 'Replace with an export', function() return app.callbacks.share_import(payload, 'replace'); end);
 end;
 assert(require('core.profiles').new(root):save_new('Plain', defaults.make()), 'Fixture: a profile with countdowns off at 26 px.');

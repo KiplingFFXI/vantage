@@ -163,6 +163,66 @@ MOCK.mouse_x, MOCK.mouse_y = 410, 260;
 frame(view, panel_settings, 21.5, { shift = true, changed = callbacks.changed, save = callbacks.save });
 assert(panel_settings.ready_pulse.x == 400 and panel_settings.ready_pulse.y == 250 and changes == 1,
     'The drag moves the spot: ' .. panel_settings.ready_pulse.x .. ', ' .. panel_settings.ready_pulse.y);
+-- Across at Centered stays Centered on a drag straight down, and a drag across and back to where it started puts it
+-- back. An Across typed past the screen's edge, kept for a bigger screen, stays on a drag straight up.
+local elements = require('ui.elements');
+local moves = { shift = true, changed = callbacks.changed, save = callbacks.save };
+local function drag_spot(steps)
+    MOCK.mouse_down = false;
+    frame(view, panel_settings, 21.5, moves);
+    local spot = elements.drawn('pulse');
+    -- From a whole pixel, as a mouse gives.
+    local from_x, from_y = math.floor(spot.x) + 10, math.floor(spot.y) + 10;
+    clicked, MOCK.mouse_down, MOCK.mouse_x, MOCK.mouse_y = false, true, from_x, from_y;
+    frame(view, panel_settings, 21.5, moves);
+    clicked = true;
+    for _, step in ipairs(steps) do
+        MOCK.mouse_x, MOCK.mouse_y = from_x + step[1], from_y + step[2];
+        frame(view, panel_settings, 21.5, moves);
+        if step.across then
+            assert(panel_settings.ready_pulse.x == step.across, 'Fixture: the drag moves the spot across: ' .. panel_settings.ready_pulse.x);
+        end;
+    end;
+end;
+local middle = math.floor((1600 - size) / 2);
+panel_settings.ready_pulse.x = -1;
+drag_spot({ { 0, 40 } });
+assert(panel_settings.ready_pulse.x == -1 and panel_settings.ready_pulse.y == 290 and elements.drawn('pulse').x == middle,
+    'A drag straight down moves the spot down and Across stays Centered: ' .. panel_settings.ready_pulse.x .. ', ' .. panel_settings.ready_pulse.y);
+drag_spot({ { 30, 0, across = middle + 30 }, { 0, 0 } });
+assert(panel_settings.ready_pulse.x == -1 and elements.drawn('pulse').x == middle,
+    'A drag across and back to where it started puts Centered back: ' .. panel_settings.ready_pulse.x);
+panel_settings.ready_pulse.x = 5000;
+drag_spot({ { 0, -40 } });
+assert(panel_settings.ready_pulse.x == 5000 and panel_settings.ready_pulse.y == 250 and elements.drawn('pulse').x == 1600 - size,
+    'A drag straight up keeps an Across typed past the screen\'s edge: ' .. panel_settings.ready_pulse.x .. ', ' .. panel_settings.ready_pulse.y);
+-- At Size 0.85, as a save writes it and a load reads it back, the spot at an Across typed past the screen's edge is
+-- drawn at a fraction of a pixel. A drag straight down keeps that Across, also with the pulse ticked to snap,
+-- sitting on the screen's edge it snaps to. A drag right and down pushes into the edge it sits on, so it goes across
+-- and Across becomes where the spot is drawn.
+local scale = panel_settings.style.scale;
+panel_settings.style.scale = tonumber(string.format('%.14g', 0.85000002384185791015625));
+local fraction = 1600 - panel_settings.ready_pulse.size * panel_settings.style.scale;
+assert(fraction ~= math.floor(fraction), 'Fixture: at Size 0.85 the spot is drawn at a fraction of a pixel: ' .. fraction);
+panel_settings.ready_pulse.x, panel_settings.ready_pulse.y = 5000, 250;
+drag_spot({ { 0, 40 } });
+assert(panel_settings.ready_pulse.x == 5000 and panel_settings.ready_pulse.y == 290 and elements.drawn('pulse').x == fraction,
+    'At Size 0.85 a drag straight down keeps an Across typed past the screen\'s edge: ' .. panel_settings.ready_pulse.x);
+local e = panel_settings.edit_mode;
+e.grid_mode, e.snap_grid, e.snap_screen, e.snap_elements, e.snap_party, e.snap_chat = true, false, true, false, false, false;
+require('ui.snap').tick(panel_settings, 'pulse', true);
+assert(require('ui.snap').on(panel_settings, 'pulse'), 'Fixture: Snap while moving is on and the pulse is ticked for it.');
+panel_settings.ready_pulse.x, panel_settings.ready_pulse.y = 5000, 250;
+drag_spot({ { 0, 40 } });
+e.grid_mode = false;
+assert(panel_settings.ready_pulse.x == 5000 and panel_settings.ready_pulse.y == 290,
+    'Ticked to snap, on the screen\'s edge it snaps to, a drag straight down at Size 0.85 keeps that Across: ' .. panel_settings.ready_pulse.x);
+panel_settings.style.scale = scale;
+panel_settings.ready_pulse.x, panel_settings.ready_pulse.y = 5000, 250;
+drag_spot({ { 20, 40 } });
+assert(panel_settings.ready_pulse.x == 1600 - size and panel_settings.ready_pulse.y == 290 and elements.drawn('pulse').x == 1600 - size,
+    'A drag right and down that pushes into the edge sets Across to where the spot is drawn: ' .. panel_settings.ready_pulse.x);
+panel_settings.ready_pulse.x, panel_settings.ready_pulse.y = 400, 250;
 -- Without Shift it takes no clicks, unlocked or not.
 MOCK.key_shift, MOCK.mouse_down = false, false;
 frame(view, panel_settings, 21.6, {});
@@ -189,14 +249,16 @@ panel_settings.enabled = false;
 frame(view, panel_settings, 41.1, {});
 flags, images, rings = pulse_window();
 assert(rings[1], 'The screen spot pulses while the timer panels are paused.');
-panel_settings.enabled, view.context.hidden = true, true;
+-- The event, map and hidden interface rules hide every display, pulses too, so the app doesn't draw then
+-- (vantage.lua hidden_by_rules). Hide while typing is the panels' own.
+panel_settings.enabled, panel_settings.visibility.hide_typing, view.context.chat_open = true, true, true;
 frame(view, panel_settings, 41.2, {});
 flags, images, rings = pulse_window();
-assert(rings[1], 'and while their rule for the game\'s interface hides them.');
+assert(rings[1], 'and while their rule for typing hides them.');
 view.pulses[1].spot = 'row';
 frame(view, panel_settings, 41.3, {});
 assert(pulse_window() == nil, 'A pulse on its row doesn\'t play where the hidden panels drew it.');
-view.context.hidden = nil;
+panel_settings.visibility.hide_typing, view.context.chat_open = false, nil;
 -- Locked, with nothing playing, holding Shift outlines the spot and shows its lock note over it, and it still takes
 -- no clicks.
 view.pulses = {};

@@ -23,9 +23,9 @@ local function draw(click)
 end;
 draw(); draw();
 assert(summary_calls == 2 and fresh_names == 0 and fresh_status == 0, 'Profile display uses one combined summary per draw.');
-draw('Support'); draw('Overwrite##profile_overwrite');
+draw('Support##profile_pick'); draw('Overwrite##profile_overwrite_Support');
 assert(fresh_status == 1 and requested == 'Support', 'Overwrite confirmation obtains a fresh token for the selected saved file.');
-draw('Cancel profile change'); draw('Delete##profile_delete');
+draw('Cancel profile change'); draw('Delete##profile_delete_Support');
 assert(fresh_status == 2 and requested == 'Support', 'Delete confirmation also bypasses the display cache.');
 settings.window.open = false; draw();
 assert(summary_calls == 6, 'Closing settings stops profile summary polling.');

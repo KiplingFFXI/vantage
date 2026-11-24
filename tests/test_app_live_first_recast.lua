@@ -3,7 +3,7 @@
 -- (0x028) says it started: it knows its full length, and an alert on recasts starting says so. Provoke finishes as
 -- category 6 and Jump as category 3, and the use can come before the list or just after it. A zone's list that comes
 -- after the first read starts nothing. A use paralysis stops still starts its cooldown, and your request for it (0x01A)
--- says which ability it was.
+-- says which ability it was. A Double-Up comes named for the roll it doubles and still starts Double-Up's own.
 local L = require('live_fixture');
 -- The client's ability recasts by slot: a timer id and when it ends, read in 1/60 s.
 local slots = {};
@@ -16,9 +16,12 @@ local recast = {
     end,
 };
 AshitaCore:GetMemoryManager().GetRecast = function() return recast; end;
--- Provoke is ability 35 on timer 5 and Jump 66 on timer 158. An ability's resource id is its own plus 512.
+-- Provoke is ability 35 on timer 5, Jump 66 on timer 158, Fighter's Roll 98 on timer 193 and Double-Up 123 on timer 194.
+-- An ability's resource id is its own plus 512.
 local abilities = { [547] = { Name = { [1] = 'Provoke' }, RecastTimerId = 5, Id = 547, Type = 1 },
-    [578] = { Name = { [1] = 'Jump' }, RecastTimerId = 158, Id = 578, Type = 1 } };
+    [578] = { Name = { [1] = 'Jump' }, RecastTimerId = 158, Id = 578, Type = 1 },
+    [610] = { Name = { [1] = 'Fighter\'s Roll' }, RecastTimerId = 193, Id = 610, Type = 1 },
+    [635] = { Name = { [1] = 'Double-Up' }, RecastTimerId = 194, Id = 635, Type = 1 } };
 local resources = {
     GetAbilityById = function(_, id) return abilities[id]; end,
     GetAbilityByTimerId = function() return nil; end,
@@ -137,5 +140,26 @@ slots[1] = { id = 5, ends = MOCK.now + 20 };
 L.action(4, 0, 1001, { { id = 1001, rows = { { message = 84 } } } });
 for _ = 1, 25 do L.frame(); end
 assert(row(5) and row(5).total == nil and said(before, 'is on cooldown.') == 0, 'A paralyzed ranged attack starts no cooldown.');
+
+-- A Double-Up comes with the id of the roll it doubles (Phoenix modules/era/lua/globals/job_utils/corsair.lua :349), and
+-- your own row says Double-Up, 424. Its cooldown goes on Double-Up's own timer, 194, 7 seconds in era
+-- (modules/era/sql/abyssea/job_adjustments.sql :160-162). The first one since the zone brings that timer into a slot
+-- that read nothing before, and it starts with its full length all the same.
+L.frame(31);
+L.frame();
+before = #MOCK.printed;
+slots = { [2] = slots[2] };
+L.frame();
+slots[6] = { id = 193, ends = MOCK.now + 60 };
+L.action(6, 98, 1001, { { id = 1001, rows = { { message = 420, param = 4 } } } });
+L.frame();
+assert(row(193) and row(193).total and math.abs(row(193).total - 60) < 0.5, 'Fixture: Fighter\'s Roll starts with its full length.');
+slots[7] = { id = 194, ends = MOCK.now + 7 };
+L.action(6, 98, 1001, { { id = 1001, rows = { { message = 424, param = 9 } } } });
+L.frame();
+local double_up = row(194);
+assert(double_up and double_up.total and math.abs(double_up.total - 7) < 0.5 and double_up.start,
+    'The first Double-Up since the zone knows its full length: ' .. tostring(double_up and double_up.total));
+assert(said(before, 'Double-Up is on cooldown.') == 1, 'Its start is said.');
 assert(app.state.problem == nil, 'Nothing went wrong: ' .. tostring(app.state.problem));
 return true;

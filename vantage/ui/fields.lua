@@ -4,17 +4,26 @@ local order = { 'name', 'target', 'source', 'elapsed', 'total', 'time' }
 local priorities = { name = 90, target = 60, source = 40, elapsed = 30, total = 30, time = 100 }
 local labels = { source = 'by', elapsed = 'Elapsed', total = 'Total' }
 fields.labels = labels
+fields.priorities = priorities
+-- A panel fitted to its widest row gives that row its own width back as room only up to float error (ui/hud.lua
+-- effective_panel and panel_rect), so a row counts as fitting when it is over by no more than this many pixels.
+local SLACK = 1e-6
+fields.slack = SLACK
+
+-- Each part's value and whether it is known, refilled whole by each call to fields.build and read only inside it.
+local values, known = {}, {}
 
 -- soon: the countdown takes time_color whatever else colors it.
 function fields.build(row, panel, style, now, time, clock, name, time_color, soon)
     if panel.show_text == false then return {} end
     local ranged = row.duration_min and row.total and row.duration_min < row.total
-    local values = { name = name, target = row.entity_name, source = row.source_name,
-        elapsed = time(row.start and now - row.start or nil), total = ranged and time(row.duration_min) .. ' - ' .. time(row.total) or time(row.total),
-        time = clock }
-    local known = { name = true, target = row.entity_name ~= nil, source = row.source_name ~= nil, elapsed = row.start ~= nil,
-        total = row.total ~= nil,
-        time = row.status ~= 'unknown' and row.deadline ~= nil or row.count_up == true and row.start ~= nil }
+    values.name, values.target, values.source = name, row.entity_name, row.source_name
+    values.elapsed = time(row.start and now - row.start or nil)
+    values.total = ranged and time(row.duration_min) .. ' - ' .. time(row.total) or time(row.total)
+    values.time = clock
+    known.name, known.target, known.source, known.elapsed = true, row.entity_name ~= nil, row.source_name ~= nil, row.start ~= nil
+    known.total = row.total ~= nil
+    known.time = row.status ~= 'unknown' and row.deadline ~= nil or row.count_up == true and row.start ~= nil
     local colors = panel.colors or {}
     local entries = {}
     -- A field with no value is left out like a missing countdown: a target or caster with no name, and a start or full
@@ -76,7 +85,7 @@ function fields.fit(entries, available, separator, measure, priority)
     local result = {}
     for _, entry in ipairs(entries) do result[#result + 1] = entry end
     if priority then
-        while #result > 1 and width(result, separator, measure) > available do
+        while #result > 1 and width(result, separator, measure) > available + SLACK do
             local remove = 1
             for i = 2, #result do if result[i].priority <= result[remove].priority then remove = i end end
             table.remove(result, remove)
@@ -88,6 +97,7 @@ end
 -- Field breaks stay explicit. Wrapping creates additional lines without changing saved order.
 function fields.lines(entries, available, panel, measure)
     local lines, current, used = {}, {}, 0
+    local room = available + SLACK
     local function finish()
         if #current > 0 then lines[#lines + 1], current, used = current, {}, 0 end
     end
@@ -95,8 +105,8 @@ function fields.lines(entries, available, panel, measure)
         if entry.newline then finish() end
         local gap = #current > 0 and measure(entry.divider or panel.separator or '  ', entry.size) or 0
         local length = fields.width(entry, measure)
-        if panel.wrap and #current > 0 and used + gap + length > available then finish(); gap = 0 end
-        if panel.wrap and length > available then
+        if panel.wrap and #current > 0 and used + gap + length > room then finish(); gap = 0 end
+        if panel.wrap and length > room then
             local runs, text, length = {}, {}, 0
             local function part()
                 local copy = {}; for key, value in pairs(entry) do copy[key] = value end
@@ -109,12 +119,12 @@ function fields.lines(entries, available, panel, measure)
                 for token in run.text:gmatch('%s*%S+%s*') do tokens[#tokens + 1] = token end
                 if #tokens == 0 and run.text ~= '' then tokens[1] = run.text end
                 for _, token in ipairs(tokens) do
-                    if length > 0 and length + measure(token, run.size, run) > available then
+                    if length > 0 and length + measure(token, run.size, run) > room then
                         current[#current + 1] = part(); finish(); runs, text, length = {}, {}, 0
                     end
                     if length == 0 then token = token:gsub('^%s+', '') end
                     local pieces = { token }
-                    if measure(token, run.size, run) > available then
+                    if measure(token, run.size, run) > room then
                         pieces = text_wrap.lines(token, available, function(value) return measure(value, run.size, run) end)
                         pieces[#pieces] = pieces[#pieces] .. (token:match('%s+$') or '')
                     end
@@ -140,13 +150,17 @@ function fields.lines(entries, available, panel, measure)
     return lines
 end
 
+-- The parts of a line by where they go, emptied at the start of each call to fields.positions and read only inside it.
+local clear = require('table.clear')
+local LANES, lanes = { 'left', 'center', 'right' }, { left = {}, center = {}, right = {} }
+
 function fields.positions(line, available, separator, measure)
-    local lanes = { left = {}, center = {}, right = {} }
+    clear(lanes.left); clear(lanes.center); clear(lanes.right)
     for _, entry in ipairs(line) do local lane = lanes[entry.alignment] or lanes.left; lane[#lane + 1] = entry end
     local result, left_end = {}, 0
     local right_width = width(lanes.right, separator, measure)
     local right_start = math.max(0, available - right_width)
-    for _, alignment in ipairs({ 'left', 'center', 'right' }) do
+    for _, alignment in ipairs(LANES) do
         local entries = lanes[alignment]
         local total = width(entries, separator, measure)
         local at = alignment == 'left' and 0 or alignment == 'right' and right_start or math.max(left_end, (available - total) / 2)

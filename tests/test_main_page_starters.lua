@@ -1,6 +1,6 @@
--- The Starter profile row at the top of What to show on the main page: the list opens on the starter for your job and
+-- The Quick setup for a role row at the top of What to show on the main page: the list opens on the starter for your job and
 -- marks the one in use, a pick holds until the job changes, and Apply asks for samples. Also Watched enemies' Also list
--- enemies I debuff, and the Silence notice finding a rule a starter added.
+-- enemies I debuff, and the Silenced preset finding an alert a starter added.
 local defaults, hud, starters = require('ui.defaults'), require('ui.hud'), require('core.starters');
 local window, imgui = require('ui.settings_window'), require('imgui');
 local s = defaults.tidy(defaults.make());
@@ -108,7 +108,7 @@ local function at(text)
     return first, times;
 end;
 -- The note sits under the row, so nothing above the button moves, and it says where the samples end.
-local SAMPLES = 'Its displays show samples until you press End samples, under Moving.';
+local SAMPLES = 'Its displays show samples until you press End samples, at the top of this page.';
 draw('Home');
 local line, times = at(SAMPLES);
 assert(times == 1 and line > at('Apply##main_starter'), 'Under the button.');
@@ -117,11 +117,11 @@ os.clock = function() return real_clock() + 9; end;
 draw('Home');
 os.clock = real_clock;
 assert(not seen(SAMPLES), 'The note goes after 8 seconds.');
--- While samples show, the button under Moving ends them.
+-- While samples show, End samples at the top of the page ends them.
 s.preview, revision = true, revision + 1;
 draw('Home');
 line, times = at('End samples##main');
-assert(times == 1 and line > at('Unlock all##main'), 'Under Moving.');
+assert(times == 1 and line < at('Unlock all##main'), 'At the top of the page.');
 s.preview, revision = false, revision + 1;
 -- A refused Apply says why.
 cb.starter = function() return false, 'It would not apply.'; end;
@@ -201,10 +201,10 @@ local function finds(query, page, label)
         if result.tab == page and result.label == label then return result; end;
     end;
 end;
-for _, query in ipairs({ 'preset', 'presets', 'Starter profile', 'Starter layouts' }) do
-    assert(finds(query, 'Home', 'Starter profile'), query .. ' finds the row.');
+for _, query in ipairs({ 'preset', 'presets', 'Starter profile', 'Starter layouts', 'quick setup' }) do
+    assert(finds(query, 'Home', 'Quick setup for a role'), query .. ' finds the row.');
 end;
-assert(finds('silenced', 'Display', 'Silence notice'), 'silenced finds the notice.');
+assert(finds('silenced', 'Display', 'Silenced'), 'silenced finds the preset.');
 local topic = 'Watched enemies: list the ones you debuff';
 assert(finds('debuff enemies', 'Display', topic) and finds('crowd control', 'Display', topic), 'It finds the topic.');
 panels.open('spell_recasts', 'filters');
@@ -227,20 +227,20 @@ assert(s.window.tab == 'Display', 'It opens the panels.');
 draw('Display');
 assert(shown('Checkbox', 'Also list enemies I debuff'), 'It opens on the tick.');
 
--- The Silence notice finds the rule a starter added instead of adding a second.
+-- The Silenced preset finds the alert a starter added instead of adding a second.
 local silent = starters.apply(s, 'Tank');
 for key, value in pairs(silent) do s[key] = value; end;
 assert(#s.alerts.rules == 1, 'Fixture: Tank adds Silenced.');
 panels.open('notices', 'show');
-draw('Display', { 'Silence notice##frame' });
+draw('Display', { 'Silenced##frame' });
 assert(#s.alerts.rules == 1 and s.alerts.rules[1].name == 'Silenced', 'One rule.');
--- A starter's Sleep ending goes for anything, so the Sleep reminder finds that instead of doubling it.
+-- A starter's Sleep ending goes for anything, so the Sleep ending preset finds that instead of doubling it.
 local slept = starters.apply(s, 'Crowd control');
 for key, value in pairs(slept) do s[key] = value; end;
 assert(#s.alerts.rules == 2 and s.alerts.rules[2].scope == 'all', 'Fixture: Crowd control adds Sleep ending.');
-draw('Display', { 'Sleep reminder##frame' });
+draw('Display', { 'Sleep ending##frame' });
 assert(#s.alerts.rules == 2, 'No second Sleep ending.');
 s.alerts.rules[2].scope = 'party';
-draw('Display', { 'Sleep reminder##frame' });
+draw('Display', { 'Sleep ending##frame' });
 assert(#s.alerts.rules == 3 and s.alerts.rules[3].scope == 'target', 'One for another scope is still the player\'s own.');
 return true;

@@ -5,12 +5,7 @@ local tracker = {};
 local methods = {};
 methods.__index = methods;
 
-local function copy(value)
-    if type(value) ~= 'table' then return value; end
-    local result = {};
-    for k, v in pairs(value) do result[k] = type(v) == 'table' and copy(v) or v; end
-    return result;
-end
+local copy = require('core.tables').copy;
 
 local function finite(value)
     return type(value) == 'number' and value == value and value > -math.huge and value < math.huge;
@@ -50,7 +45,7 @@ tracker.WEAR_OFF = 'Observed wearoff';
 
 function tracker.new()
     return setmetatable({ entities = {}, pending = {}, events = {}, held_samples = {}, sequence = 0,
-        session = nil, valid = false, version = 0, records = {}, spare_records = {} }, methods);
+        session = nil, valid = false, version = 0, records = {}, spare_records = {}, spare_events = {}, members = {} }, methods);
 end
 
 -- Copy Image (66) shows its shadows as icons 444 (2), 445 (3) and 446 (4 or more) of the same effect. A copy that leaves the
@@ -122,6 +117,19 @@ function methods:erase(entity, index, now, reason, quiet)
     self.version = self.version + 1;
 end
 
+-- Phoenix keeps observation.roll_cap of one Corsair's rolls on a target, with their Bust on themselves taking a place, and
+-- a new roll over that takes off the one that ends first (globals/job_utils/corsair.lua applyCorsairEffect :523-565).
+function methods:cap_rolls(entity, observation, now)
+    local count, first = 0, nil;
+    for i, row in ipairs(entity.entries) do
+        if row.source == observation.source and row.action_kind == 'rolls' and not row.departing then
+            count = count + 1;
+            if row.effect ~= 309 and (not first or (row.estimated_until or now) < (entity.entries[first].estimated_until or now)) then first = i; end
+        end
+    end
+    if first and count >= observation.roll_cap then self:erase(entity, first, now, 'A new roll from the same Corsair took its place.'); end
+end
+
 -- Phoenix (status_effect_container.cpp ApplyBardEffect) replaces a song of the same ID and tier in its slot,
 -- whoever sang it. Effects status_effects.yaml marks ignore_duplicate keep every copy. Any other effect has
 -- one copy, and a new one from anyone replaces it.
@@ -171,7 +179,8 @@ function methods:clear(reason, now)
         for _, row in ipairs(own.entries) do
             if single(row.effect) and row.source ~= nil and row.present and not row.departing and not self.pending[key(row.effect)] then
                 labels[row.effect] = { source = row.source, source_name = row.source_name, spell = row.spell, tier = row.tier,
-                    mine = row.mine, by_pet = row.by_pet, action_kind = row.action_kind };
+                    mine = row.mine, by_pet = row.by_pet, action_kind = row.action_kind, start = row.start, total = row.total,
+                    deadline = row.deadline };
             end
         end
         self.carried = { id = self.self_id, labels = labels };
@@ -1251,6 +1260,14 @@ function methods:snapshot(entity, effects, now, timed, revision, complete, timer
             local labels = carried and carried.id == entity.id and carried.labels[status.effect];
             if labels then
                 for _, name in ipairs(LABELS) do if labels[name] ~= nil then row[name] = labels[name]; end end
+                -- Phoenix saves the time left on it as you zone and starts that time again as you land
+                -- (status_effect_container.cpp :1631-1660, :1540-1594), so its deadline moved by however long the
+                -- zone took. Its start moves with it. Without both deadlines the time it has run isn't known.
+                if finite(labels.deadline) and finite(status.deadline) and finite(row.start) then
+                    row.start = row.start + status.deadline - labels.deadline;
+                else
+                    row.start, row.total = nil, nil;
+                end
             end
             -- Raised from a KO, Weakness and Arise's Reraise come with the raise (OnRaise), still listed as KO.
             local raised = entity.raised;
@@ -1461,9 +1478,12 @@ function methods:reconcile(snapshot, now)
     if pet then
         self.pet_id, self.pet_index = pet.id, pet.index;
         if self.entities[pet.id] then self:entity(pet.id, 'pet', pet.name, now); end
+        self:stirred(pet, now);
     end
     follow_restriction(self, snapshot, now);
-    local members = {};
+    -- The members listed now, kept on the tracker and emptied here. Nothing reads it past this call.
+    local members = self.members;
+    clear(members);
     for _, member in ipairs(snapshot.party or {}) do
         if member.id and member.id ~= snapshot.id and member.id > 0 then
             members[member.id] = true;
@@ -1483,6 +1503,12 @@ function methods:reconcile(snapshot, now)
                 self:snapshot(entity, member.effects, now, false, member.revision);
                 if down then entity.known, entity.baseline = false, false; end
             else
+                -- An alliance member has no listing, and a KO past the defeat message's range shows only as HP 0. It
+                -- takes what was on them, as the message does.
+                if member.hpp == 0 and member.zone == snapshot.zone and #entity.entries > 0 then
+                    entity.entries, entity.tombstones = {}, {};
+                    self.version = self.version + 1;
+                end
                 entity.known, entity.baseline = false, false;
                 for _, row in ipairs(entity.entries) do row.present = nil; end
             end
@@ -1585,6 +1611,47 @@ function methods:hurt(entity, now, through, melee, unsoaked, spikes_only)
     end
 end
 
+-- What no unit can act under: Sleep, Sleep II, Lullaby, Petrification, Stun and Terror (Phoenix HasPreventActionEffect,
+-- src/map/status_effect_container.cpp :2176-2186). A mob or a pet seen to finish an action (core/observer.lua acted)
+-- has none of them left, a mob's Nightmare included. Nothing says when the effect ended, so it teaches no time: only
+-- a wear-off does.
+local STOPS = { [2] = true, [19] = true, [193] = true, [7] = true, [10] = true, [28] = true };
+function methods:acted(entity, now)
+    for i = #entity.entries, 1, -1 do
+        local row = entity.entries[i];
+        if STOPS[row.effect] then self:erase(entity, i, now, 'It acted, so the effect was over.'); end
+    end
+end
+
+-- A pet under one of these can't move either. Phoenix holds it still: it follows no one
+-- (src/map/ai/controllers/pet_controller.cpp :65-68, ai/states/inactive_state.cpp :75-78) and chases nothing
+-- (inactive_state.cpp :80-83). So a second after the newest one landed, the pet's place is kept, and a pet then seen
+-- a yalm or more from there is awake, as one seen to act is. That second covers one last step on the server, whose
+-- tick moves the pet before it holds it (ai/ai_container.cpp :507, :561), and a step the client was still drawing. A
+-- pet the game isn't showing has no place, and the kept one waits for it.
+function methods:stirred(pet, now)
+    local entity = pet and self.entities[pet.id];
+    if not entity then return; end
+    local newest;
+    for _, row in ipairs(entity.entries) do
+        local at = STOPS[row.effect] and (row.start or row.first_seen);
+        if at and (not newest or at > newest) then newest = at; end
+    end
+    if not newest then entity.still = nil; return; end
+    if not (finite(pet.x) and finite(pet.y) and finite(pet.z)) then return; end
+    local still = entity.still;
+    if not still or still.since ~= newest then
+        if now - newest >= 1 then entity.still = { x = pet.x, y = pet.y, z = pet.z, since = newest }; end
+        return;
+    end
+    local dx, dy, dz = pet.x - still.x, pet.y - still.y, pet.z - still.z;
+    if dx * dx + dy * dy + dz * dz < 1 then return; end
+    entity.still = nil;
+    for i = #entity.entries, 1, -1 do
+        if STOPS[entity.entries[i].effect] then self:erase(entity, i, now, 'It moved, so the effect was over.'); end
+    end
+end
+
 -- Phoenix sends a caster's wear-off from inside the hit or removal that ended it (RemoveStatusEffect,
 -- status_effect_container.cpp :654-670), before the 0x028 that shows it (attack_state.cpp :92-100, magic_state.cpp
 -- :305-327), and with 32 packets at most in a datagram (map_constants.h :79) that 0x028 can come in the next one. So
@@ -1596,31 +1663,57 @@ local function spoils(sample, observation)
     local kind = observation.kind;
     if kind == 'damage' then return not observation.spikes_only and (WAKES[sample.effect] == true or sample.effect == BIND); end
     if kind == 'remove' or kind == 'removed' then return observation.reason == 'Observed removal'; end
-    if kind ~= 'apply' then return false; end
+    -- A guess is no word of an application: Phoenix puts none over one that is on, so it didn't end the one before.
+    if kind ~= 'apply' or observation.guessed then return false; end
     if effect_id(observation.effect) and key(observation.effect) == key(sample.effect) then return true; end
     for _, dropped in ipairs(observation.drops or EMPTY) do if dropped == sample.effect then return true; end end
     return false;
 end
 
--- Whether an entity has an effect that ticks damage, one row aside.
+-- Whether an entity has an effect that ticks damage, one row aside. Nightmare's Bio, tier 11, deals its ticks without
+-- waking anyone (Phoenix scripts/effects/bio.lua :9-27), so it doesn't count.
 local function ticking(entity, except)
     for _, row in ipairs(entity.entries) do
-        if row ~= except and DOTS[row.effect] and not row.departing then return true; end
+        if row ~= except and DOTS[row.effect] and not row.departing and not (finite(row.tier) and row.tier >= 11) then return true; end
     end
     return false;
 end
 
+-- What keeps an effect off: its negative, which a new one has to be as strong as (status_effect_container.cpp
+-- CanGainStatusEffect :374-396), and the one that blocks it (:367-372). Sleep's are Sleep II and Lullaby, Weight's is
+-- Flee, Slow's is Haste, Bio's is Dia, and Lullaby's are Sleep II and Sleep. Petrification and Stun block each other,
+-- and each elemental damage over time is blocked by the one that takes it off, as Frost blocks Choke
+-- (status_effects.yaml :35, :37, :93, :131, :155, :168, :1235-1290, :1312, :1805, :1807).
+local KEPT_OFF = { [2] = { [19] = true, [193] = true }, [7] = { [10] = true }, [10] = { [7] = true },
+    [12] = { [32] = true }, [13] = { [33] = true }, [128] = { [133] = true }, [129] = { [128] = true },
+    [130] = { [129] = true }, [131] = { [130] = true }, [132] = { [131] = true }, [133] = { [132] = true },
+    [135] = { [134] = true }, [193] = { [2] = true, [19] = true } };
 -- Dia or Bio read from its damage message (observation.inferred). Phoenix adds either only over no Dia or Bio of
 -- its tier or higher (dia.lua, bio.lua; AddStatusEffect refuses Dia over Dia, and Bio over Bio, of the same tier),
 -- so a current copy of a tier as high, or of no known tier, means nothing changed. A copy whose time is up is
 -- gone. The player's own effects are read from their listing.
 local DIA_BIO = { [134] = true, [135] = true };
 local function refused(entity, observation, scope, now)
+    -- A status taken from what an action did, with no word of it from the game (observation.guessed), never renews or
+    -- replaces. Phoenix adds none over one that is on (weaponskills.lua :1111), so while the unit shows the effect, or
+    -- one that keeps it off, nothing changes. One it only takes off goes when it lands. One whose time is up is gone.
+    if observation.guessed then
+        local stops = KEPT_OFF[observation.effect] or EMPTY;
+        for _, row in ipairs(entity.entries) do
+            local same = key(row.effect) == key(observation.effect) or stops[row.effect] == true;
+            if same and not row.departing then
+                local ends = finite(row.estimated_until) and row.estimated_until or row.deadline;
+                if not finite(ends) or ends > now then return true; end
+            end
+        end
+        return false;
+    end
     if not observation.inferred or scope == 'self' or not DIA_BIO[observation.effect] or not finite(observation.tier) then
         return false;
     end
     for _, row in ipairs(entity.entries) do
-        if DIA_BIO[row.effect] and not row.departing then
+        -- A guessed Dia or Bio has no tier and keeps no cast one off.
+        if DIA_BIO[row.effect] and not row.departing and not row.guessed then
             local ends = finite(row.estimated_until) and row.estimated_until or row.deadline;
             if (not finite(ends) or ends > now) and (not finite(row.tier) or row.tier >= observation.tier) then return true; end
         end
@@ -1674,9 +1767,12 @@ function methods:observe(observations, now, snapshot)
             if entity and (entity.scope == 'enemy' or entity.scope == 'pet' or entity.scope == 'alliance') then
                 self:hurt(entity, now, observation.through, observation.melee, observation.unsoaked, observation.spikes_only);
             end
+        elseif kind == 'acted' and id then
+            local entity = self.entities[id];
+            if entity and (entity.scope == 'enemy' or entity.scope == 'pet') then self:acted(entity, now); end
         elseif kind == 'shadows' and id then
-            -- Shadows a mob or an alliance member lost come off the count their Utsusemi started, and the icon shows what's
-            -- left.
+            -- Shadows a mob or an alliance member lost come off the count their Utsusemi or Blink started, and Utsusemi's
+            -- icon shows what's left.
             local entity = self.entities[id];
             for i = #(entity and (entity.scope == 'enemy' or entity.scope == 'alliance') and entity.entries or EMPTY), 1, -1 do
                 local row = entity.entries[i];
@@ -1684,7 +1780,7 @@ function methods:observe(observations, now, snapshot)
                     row.shadows = row.shadows - observation.lost;
                     if row.shadows > 0 then
                         row.observed_at = now;
-                        relabel(row, SHADOW_ICONS[math.min(row.shadows, 4)]);
+                        if COPY_IMAGE[row.effect] then relabel(row, SHADOW_ICONS[math.min(row.shadows, 4)]); end
                         self.version = self.version + 1;
                     else
                         self:erase(entity, i, now, 'Its last shadow took a hit.');
@@ -1706,13 +1802,14 @@ function methods:observe(observations, now, snapshot)
         elseif kind == 'pet_gone' then
             self:release_pet(now);
         elseif kind == 'cure' and id then
-            -- What your job ability took off your pet: all of its list, or the first count Vantage holds, in that order.
+            -- What your job ability took off your pet, or a monster's move took off a mob: all of its list, or the first
+            -- count Vantage holds, in that order.
             local entity = self.entities[id];
             local left = observation.count or math.huge;
             for _, effect in ipairs(entity and observation.effects or EMPTY) do
                 for i = #entity.entries, 1, -1 do
                     if left > 0 and entity.entries[i].effect == effect then
-                        self:erase(entity, i, now, 'Your ability took it off.');
+                        self:erase(entity, i, now, observation.reason or 'Your ability took it off.');
                         left = left - 1;
                     end
                 end
@@ -1819,7 +1916,7 @@ function methods:observe(observations, now, snapshot)
                     -- A drop of Copy Image takes it at any icon, the one for a last shadow (66) too. The effect that
                     -- lands keeps its own row, to renew below.
                     for i = #entity.entries, 1, -1 do
-                        for _, dropped in ipairs(observation.drops or {}) do
+                        for _, dropped in ipairs(observation.drops or EMPTY) do
                             if entity.entries[i] and key(entity.entries[i].effect) == key(dropped) and key(dropped) ~= key(observation.effect) then
                                 if scope == 'party' then
                                     local held = entity.entries[i];
@@ -1852,11 +1949,15 @@ function methods:observe(observations, now, snapshot)
                     end
                     -- A job ability is reported to every target even when a stronger copy refuses it, and nothing
                     -- here has a timer to show which: another caster's copy it names becomes nobody's in particular.
+                    -- A guess only gets here over a copy whose time is up (refused), and that one is the guess's own. A
+                    -- copy that is itself a guess is no stronger copy to refuse this one: the result is the first word
+                    -- of the effect, so the row is its caster's now.
                     if not created and not row.departing and observation.action_category == 6 and row.source ~= observation.source
-                        and not observation.exact then
+                        and not observation.exact and not observation.guessed and not row.guessed then
                         row.source, row.source_name, row.spell, row.tier, row.instance_hint, row.mine, row.by_pet = nil, nil, nil, nil, nil, nil, nil;
                         row.learn_key, row.learn_start, row.action_kind = nil, nil, nil;
                     else
+                        if created and observation.roll_cap then self:cap_rolls(entity, observation, now); end
                         row = row or self:create(entity, observation.effect, now);
                         -- A copy whose removal was seen is back.
                         local back = row.departing == true;
@@ -1872,11 +1973,14 @@ function methods:observe(observations, now, snapshot)
                         row.mine, row.by_pet, row.action_kind = observation.source == snapshot.id, observation.by_pet, observation.action_kind;
                         -- A length Vantage knows exactly, the copy of yours it ends with, and the sleep a hit doesn't end.
                         row.exact, row.follow, row.follow_spell, row.deep = observation.exact, observation.follow, observation.follow_spell, observation.deep;
+                        -- One nothing said was put on (core/observer.lua): it leaves when its time is up.
+                        row.guessed = observation.guessed;
                         row.kind = observation.category or row.kind;
                         row.group = observation.group or row.group;
-                        -- A mob's or an alliance member's Utsusemi starts the count of their shadows.
+                        -- A mob's or an alliance member's Utsusemi or Blink starts the count of their shadows. Blink keeps its
+                        -- own icon.
                         row.shadows = observation.shadows;
-                        if row.shadows then relabel(row, SHADOW_ICONS[math.min(row.shadows, 4)]); end
+                        if row.shadows and COPY_IMAGE[row.effect] then relabel(row, SHADOW_ICONS[math.min(row.shadows, 4)]); end
                         row.observed_at = now;
                         row.application_revision = stamp;
                         row.start = now;
@@ -1949,11 +2053,41 @@ local function same_fields(record, held)
     return count == record[FIELDS];
 end
 
+-- Which units the cap lets go of first: one with nothing to show (0), then one with no effect of yours (1), then one
+-- holding an effect of yours or your pet's (2). A unit on the watch list goes last (3).
+local function keep_rank(entity, watched)
+    if watched[entity.id] then return 3; end
+    for index = 1, #entity.entries do
+        local row = entity.entries[index];
+        if row.mine or row.by_pet then return 2; end
+    end
+    return #entity.entries > 0 and 1 or 0;
+end
+
+-- What the cap works with, kept from run to run and emptied each time: the units it may let go of in order, a table
+-- for each of them filled in place, and the watch list by id. They hold only ids and numbers.
+local cap_order, cap_items, cap_watched = {}, {}, {};
+local function cap_first(a, b)
+    if a.rank ~= b.rank then return a.rank < b.rank; end
+    return a.at < b.at;
+end
+
+-- A Soulflayer's Immortal Shield (1965, and 2289 with the same script) puts on a Magic Shield with subType 45
+-- (actions/mobskills/Immortal_shield.lua :15, sql/mob_skills.sql :1996, :2320). Phoenix turns removals away only while a
+-- Magic Shield with subType 0 is on (combat/basic/magic_hit_rate.lua :547-550), so this one blocks nothing, and it comes
+-- off as any Magic Shield can (data/status_effects.yaml :1471-1474).
+local IMMORTAL_SHIELD = { [1965] = true, [2289] = true };
+local function immortal_shield(row)
+    return row.effect == 152 and row.action_kind == 'skills' and IMMORTAL_SHIELD[row.spell] == true;
+end
+
 function methods:view(now, settings, snapshot)
     local config = settings and settings.tracking or {};
     local stale = math.max(10, math.min(3600, tonumber(config.stale_seconds) or 180));
     local max_entities = math.max(8, math.min(256, tonumber(config.max_entities) or 64));
-    local result = {rows={},subjects={},valid=self.valid,self_known=false,context=snapshot or self.context or {},version=self.version};
+    -- Each view has lists of its own, made with room for as many as the last view held, so they don't grow as they fill.
+    local result = {rows=new_table(self.row_hint or 0, 0),subjects=new_table(self.subject_hint or 0, 0),valid=self.valid,
+        self_known=false,context=snapshot or self.context or {}};
     for effect,list in pairs(self.pending) do
         for i=#list,1,-1 do if now-list[i].at>3 then table.remove(list,i); end end
         if #list==0 then self.pending[effect]=nil; end
@@ -1964,8 +2098,11 @@ function methods:view(now, settings, snapshot)
         for i = #entity.entries, 1, -1 do
             local row = entity.entries[i];
             if row.follow and own and finite(row.start) then follow(own, row); end
-            -- A length known exactly leaves at its deadline, with no listing to wait for.
-            local ended = row.exact and row.present == nil and row.deadline and row.deadline <= now;
+            -- A length known exactly leaves at its deadline, with no listing to wait for. So does a guess: no word of it
+            -- was ever seen, so nothing says it is still on once its time is up. A guessed Bind that took a hit has no
+            -- countdown left and goes by the time it had.
+            local over = row.deadline or row.guessed and row.estimated_until;
+            local ended = (row.exact or row.guessed) and row.present == nil and over and over <= now;
             -- A server timer at zero stays until the server clears its slot, also on a row a split holds.
             if not ended and row.deadline and row.deadline <= now and not (row.present ~= nil and row.status == 'server') then
                 row.deadline, row.status = nil, 'unknown';
@@ -1993,13 +2130,22 @@ function methods:view(now, settings, snapshot)
         end
     end
     if count > max_entities then
-        local oldest = {};
+        local oldest, watched = cap_order, cap_watched;
+        clear(oldest); clear(watched);
+        for _, id in ipairs(settings and settings.watch_ids or EMPTY) do watched[id] = true; end
+        -- The unit you have targeted stays, as your pet does. The Target panel and its overhead block read its rows, and
+        -- reconcile would only make it again, empty, on the next refresh.
+        local target = snapshot and snapshot.target and snapshot.target.id;
         for id, entity in pairs(self.entities) do
-            if entity.scope ~= 'self' and entity.scope ~= 'party' and entity.scope~='alliance' and id ~= self.pet_id then
-                oldest[#oldest + 1] = {id=id,at=entity.seen};
+            if entity.scope ~= 'self' and entity.scope ~= 'party' and entity.scope~='alliance' and id ~= self.pet_id and id ~= target then
+                local n = #oldest + 1;
+                local item = cap_items[n];
+                if not item then item = {}; cap_items[n] = item; end
+                item.id, item.at, item.rank = id, entity.seen, keep_rank(entity, watched);
+                oldest[n] = item;
             end
         end
-        table.sort(oldest, function(a,b) return a.at < b.at; end);
+        table.sort(oldest, cap_first);
         for _, item in ipairs(oldest) do
             if count <= max_entities then break; end
             self.entities[item.id], count = nil, count - 1;
@@ -2007,9 +2153,25 @@ function methods:view(now, settings, snapshot)
     end
     local records, kept = self.records, self.spare_records;
     for _, entity in pairs(self.entities) do
-        result.subjects[#result.subjects + 1] = {id=entity.id,name=entity.name,scope=entity.scope,known=entity.known,
-            group=entity.group,slot=entity.slot,zone=entity.zone};
+        -- A unit's subject is handed out again while it reads the same. Its readers only read it.
+        local subject = entity.subject;
+        if not subject or subject.id ~= entity.id or subject.name ~= entity.name or subject.scope ~= entity.scope
+            or subject.known ~= entity.known or subject.group ~= entity.group or subject.slot ~= entity.slot or subject.zone ~= entity.zone then
+            subject = {id=entity.id,name=entity.name,scope=entity.scope,known=entity.known,
+                group=entity.group,slot=entity.slot,zone=entity.zone};
+            entity.subject = subject;
+        end
+        result.subjects[#result.subjects + 1] = subject;
         if entity.scope == 'self' then result.self_known = entity.known; end
+        -- While a Magic Shield is on a mob and its time isn't up, Phoenix turns every removal away, so none of its rows
+        -- light. Immortal Shield's blocks nothing and lights itself.
+        local shielded = nil;
+        for _, held in ipairs(entity.entries) do
+            if held.effect == 152 and not immortal_shield(held) and (held.estimated_until or math.huge) > now then
+                shielded = true;
+                break;
+            end
+        end
         for _, held in ipairs(entity.entries) do
             local record = records[held];
             local row = record and same_fields(record, held) and record[COPIED];
@@ -2035,6 +2197,7 @@ function methods:view(now, settings, snapshot)
             kept[held] = record;
             row.remaining = row.deadline and math.max(0,row.deadline-now) or nil;
             row.elapsed = row.start and math.max(0,now-row.start) or nil;
+            row.shielded, row.immortal = shielded, immortal_shield(held) or nil;
             result.rows[#result.rows + 1] = row;
         end
     end
@@ -2043,6 +2206,7 @@ function methods:view(now, settings, snapshot)
     self.records, self.spare_records = kept, records;
     table.sort(result.rows, by_key);
     table.sort(result.subjects, by_id);
+    self.row_hint, self.subject_hint = #result.rows, #result.subjects;
     return result;
 end
 
@@ -2067,9 +2231,12 @@ function methods:project(view, now, remapped_rows)
     if remapped_rows then project_rows(remapped_rows, now); end
 end
 
+-- The events since the last drain. Two lists take turns: the one handed back now is emptied and filled again from the
+-- next drain on, so its readers read it within this refresh only. vantage.lua adds the recasts' events to it.
 function methods:drain_events()
-    local events = self.events;
-    self.events = {};
+    local events, spare = self.events, self.spare_events;
+    clear(spare);
+    self.events, self.spare_events = spare, events;
     return events;
 end
 

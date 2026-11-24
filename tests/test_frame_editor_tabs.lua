@@ -10,11 +10,11 @@ local function on(tab)
     assert(tables == ended, 'Responsive controls balance their layout state.');
     return h.drawn();
 end;
--- Each row is on one tab. The party list buffs wear the timer panels' look, so Look has their icons and opacity.
+-- Each row is on one tab. Party list wears the timer panels' look, so Look has its icons and opacity.
 local party_routes = {
-    show = { 'Countdowns', 'Your own row', 'Most per member', 'Sort' },
+    show = { 'Countdowns', 'Include me', 'Most per member', 'Sort' },
     look = { 'Party buff icons', 'Opacity', 'Member names' },
-    filters = { 'Edit the list', 'Find an effect', 'Show only' },
+    filters = { 'Edit the list', 'Effect' },
     place = { 'Icon size in a panel of its own', 'Longest row', 'Buff side', "Snap back beside the game's list when released", "Gap from the game's list", 'Icons fill', 'Group to order' },
 };
 do
@@ -42,7 +42,7 @@ end);
 local before = custom.history_value(settings);
 on('filters');
 h.draw('Edit the list##frame');
-assert(h.panels.context() == 'hidden/show' and equal(custom.history_value(h.s), before), 'Edit the list opens Hidden everywhere and changes nothing.');
+assert(h.panels.context() == 'hidden/show' and equal(custom.history_value(h.s), before), 'Edit the list opens the Hide list and changes nothing.');
 
 for _, width in ipairs({ 1100, 180, 820 }) do
     MOCK.content_width = width;
@@ -54,7 +54,7 @@ for _, width in ipairs({ 1100, 180, 820 }) do
         and not on('look')['Member names'], 'Panel-only controls wait for a panel of its own.');
 end;
 local labels = on('look');
-assert(labels['Party buff icons'] and labels['Opacity'] and equal(custom.history_value(h.s), before), 'The party list buffs keep their icon and opacity choices without mutation.');
+assert(labels['Party buff icons'] and labels['Opacity'] and equal(custom.history_value(h.s), before), 'Party list keeps its icon and opacity choices without mutation.');
 MOCK.content_width = nil;
 -- When to show says what still shows each display: edit mode doesn't place overhead icons, and the pulse has no samples.
 do
@@ -62,12 +62,12 @@ do
     imgui.CollapsingHeader = function() return true; end;
     h.fresh();
     h.on('self_buffs', 'when');
-    assert(h.says('Always, unless you choose something here.') and h.says('Samples and edit mode show it anyway.'), 'A panel shows in both.');
+    assert(h.says('Always, unless you choose something here.') and h.says('Samples and Arrange on screen show it anyway.'), 'A panel shows in both.');
     h.on('overhead', 'when');
     assert(h.says('Always, unless you choose something here.') and h.says('Samples show it anyway.') and not h.says('edit mode'), 'Overhead icons have no edit mode.');
     h.s.ready_pulse.enabled = true;
-    h.on('spell_recasts', 'when');
-    assert(h.says('A test pulse and edit mode show it anyway.'), 'The pulse has a test one in place of samples.');
+    h.on('pulse', 'when');
+    assert(h.says('A test pulse and Arrange on screen show it anyway.'), 'The pulse has a test one in place of samples.');
     imgui.CollapsingHeader = header;
 end;
 assert(#MOCK.commands == 0, 'Editing and browsing cannot issue gameplay commands.');

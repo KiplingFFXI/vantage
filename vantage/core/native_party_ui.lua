@@ -92,7 +92,8 @@ local function party_mode(entry, group)
     return true;
 end
 
-local function primitive(slot)
+-- into is the table a read fills, kept from read to read.
+local function primitive(slot, into)
     local container = read('read32', slot);
     if container == 0 then return false; end
     if not address(container) then return nil, { stage = 'container' }; end
@@ -109,7 +110,8 @@ local function primitive(slot)
     if (first ~= 0 and first ~= 1) or (second ~= 0 and second ~= 1) then
         return nil, { stage = 'visibility_flags', first = first, second = second };
     end
-    return { slot = slot, container = container, ptr = ptr, vtable = vtable, first = first, second = second };
+    into.slot, into.container, into.ptr, into.vtable, into.first, into.second = slot, container, ptr, vtable, first, second;
+    return into;
 end
 
 local function same(a, b)
@@ -211,10 +213,14 @@ local function locate()
     return true;
 end
 
--- Read the same numbered menu items the client uses to draw each member.
-local function row_rects(entry)
+-- Read the same numbered menu items the client uses to draw each member. The nodes seen, each group's list of items
+-- by number and the item tables in it are kept and filled again at each read.
+local seen_nodes, numbered, items_kept = {}, { {}, {}, {} }, { {}, {}, {} };
+local function row_rects(entry, group)
     local head = read('read32', entry.ptr + 0x14);
-    local node, seen, rows = head, {}, {};
+    local node, seen, rows, kept = head, seen_nodes, numbered[group], items_kept[group];
+    for key in pairs(seen) do seen[key] = nil; end
+    for index = 1, 6 do rows[index] = nil; end
     for _ = 1, 128 do
         if node == 0 then
             if read('read32', entry.ptr + 0x14) ~= head then return nil, 'The game\'s row list changed.'; end
@@ -236,7 +242,10 @@ local function row_rects(entry)
                     if not x or not y or not w or not h or w <= 0 or h <= 0 or w > 1200 or h > 240 or rows[index] then
                         return nil, 'A member\'s row in the game\'s list is an unexpected size.';
                     end
-                    rows[index] = { x = x, y = y, width = w, height = h };
+                    local rect = kept[index] or {};
+                    kept[index] = rect;
+                    rect.x, rect.y, rect.width, rect.height = x, y, w, h;
+                    rows[index] = rect;
                 end
             end
         end
@@ -288,11 +297,26 @@ local function measure_pitch(frame, group, items, member, dimensions, sy)
     frame.pitch, frame.measured_by = pitch, measured_by;
 end
 
+local function dimension(value)
+    return type(value) == 'number' and value == math.floor(value) and value > 0 and value <= 16384;
+end
+local function readable(entry)
+    return entry and entry.first == 1 and entry.second == 1;
+end;
+
+-- What a read gives is kept and filled again at each read, so a read makes nothing: the result, each group's frame,
+-- the members' rows in it by slot, and the lists a read works with. Only elements.party_list reads a frame past the
+-- next read, and only its place and size.
+local out = { available = false, groups = {}, reason = 'Waiting for the game party windows.' };
+local frames, rows_kept = { { rows = {} }, { rows = {} }, { rows = {} } }, { {}, {}, {} };
+local first_read, second_read, members, issues = {}, {}, {}, {};
+
 -- The game menu's size from the chat log's last read. The host reads the chat log at least once a second, and again
 -- for another screen size, so this reads nothing more of the client. Before its first read it is read here.
 local menu = {};
 local function geometry(roster, width, height, dimensions)
-    local out = { available = false, groups = {}, reason = 'Waiting for the game party windows.' };
+    out.available, out.reason = false, 'Waiting for the game party windows.';
+    out.groups[1], out.groups[2], out.groups[3] = nil, nil, nil;
     if not roster or not roster.valid or roster.hidden or roster.map or roster.in_event then return out; end
     if not locate() then out.reason = reason; return out; end
     if not dimensions then
@@ -300,30 +324,27 @@ local function geometry(roster, width, height, dimensions)
         menu.width, menu.height = chat.menu_size();
         dimensions = menu.width and menu or chat.menu_dimensions();
     end
-    local function dimension(value)
-        return type(value) == 'number' and value == math.floor(value) and value > 0 and value <= 16384;
-    end
     if not dimensions or not dimension(dimensions.width) or not dimension(dimensions.height)
         or not dimension(width) or not dimension(height) then
         out.reason = 'The game menu size is unavailable.'; return out;
     end
     local sx, sy = width / dimensions.width, height / dimensions.height;
-    local function readable(entry)
-        return entry and entry.first == 1 and entry.second == 1;
-    end;
-    local issues = {};
+    for index = #issues, 1, -1 do issues[index] = nil; end
     for group = 1, 3 do
-        local members = {};
-        for _, member in ipairs(roster.members or {}) do if member.group == group then members[#members + 1] = member; end end
-        if #members > 0 then
-            local entry, detail = primitive(slots[group]);
+        local in_group = 0;
+        for _, member in ipairs(roster.members or {}) do if member.group == group then in_group = in_group + 1; members[in_group] = member; end end
+        for index = #members, in_group + 1, -1 do members[index] = nil; end
+        if in_group > 0 then
+            local entry, detail = primitive(slots[group], first_read);
             if readable(entry) then
                 local allowed, issue = party_mode(entry, group);
                 local rows;
-                if allowed then rows, issue = row_rects(entry); end
-                local current = primitive(slots[group]);
+                if allowed then rows, issue = row_rects(entry, group); end
+                local current = primitive(slots[group], second_read);
                 if rows and same(entry, current) and readable(current) and party_mode(current, group) then
-                    local frame = { rows = {}, row_height = 0 };
+                    local frame, kept = frames[group], rows_kept[group];
+                    for slot in pairs(frame.rows) do frame.rows[slot] = nil; end
+                    frame.row_height = 0;
                     local l, t, r, b = dimensions.width, dimensions.height, 0, 0;
                     -- A member whose row isn't in the game's list (yet) gets none here, and the others keep their own
                     -- rows. The game's empty slots are lined up with the first row found to measure the pitch.
@@ -334,8 +355,11 @@ local function geometry(roster, width, height, dimensions)
                             -- These are the final item bounds, after the client's menu scaling.
                             l, t = math.min(l, row.x), math.min(t, row.y);
                             r, b = math.max(r, row.x + row.width), math.max(b, row.y + row.height);
-                            frame.rows[member.slot] = { x = row.x * sx, y = row.y * sy, width = row.width * sx,
-                                height = row.height * sy, slot = member.slot };
+                            local rect = kept[member.slot] or {};
+                            kept[member.slot] = rect;
+                            rect.x, rect.y, rect.width, rect.height, rect.slot = row.x * sx, row.y * sy, row.width * sx,
+                                row.height * sy, member.slot;
+                            frame.rows[member.slot] = rect;
                             frame.row_height = math.max(frame.row_height, row.height * sy);
                             found = found or row;
                         else issue = 'A member\'s row in the game\'s list isn\'t there.'; end

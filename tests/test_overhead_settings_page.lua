@@ -37,10 +37,9 @@ for _,entry in ipairs({{'Crowd control slot','Layout'},{'Distance cap','Farthest
     {'Glow around lit icons','Glow around lit icons'},{'Glow around lit buffs','Glow around lit icons'},
     {'Light up debuffs',KIND},{'cursna',KIND},
     {'Head offsets by name','If icons sit too high or too low'},{'Unit type to edit',KIND},{'Overhead icon size','Icon size'},{'Show overhead icons','Show this display'},
-    {'Include for this type','Find an effect'},{'Overhead icons','Overhead icons','Home'},{'Edit Overhead icons','Edit Overhead icons','Home'}})do
+    {'Include for this type','Choose an effect'},{'Overhead icons','Overhead icons','Home'},{'Edit Overhead icons','Edit Overhead icons','Home'}})do
     assert(found(entry[1],entry[2],entry[3]),'Search finds '..entry[2]..' for '..entry[1]..' before it is drawn.');
 end;
-assert(#window.search('trusts')==0,'Search finds nothing for trusts.');
 -- The effect switches, by label and by what a player would type.
 local LIST={'Corsair rolls','Bard songs','Protect and Shell','Food','Barspells','Stances','Signet and similar'};
 local words={{'rolls','Corsair rolls'},{'cor','Corsair rolls'},{'songs','Bard songs'},{'bard','Bard songs'},{'protect','Protect and Shell'},
@@ -103,7 +102,7 @@ local function pick(label,shown,value) return {{combo='##frame_'..label,click=sh
 local function color(label,value) return {{color={label,value}}};end;
 -- The kind picked first, then the control.
 local function as(kind,shown,steps)
-    local out={{combo='##frame_'..KIND,click=shown..'##'..kind}};
+    local out={{click=shown..'##frame_'..KIND..'_'..kind}};
     for _,step in ipairs(steps)do out[#out+1]=step;end;
     return out;
 end;
@@ -152,7 +151,7 @@ local rows={
     {'Debuffs shown in Split',split,slide('Debuffs shown_split',7),function(o) return o.types.mob.split_debuffs==7;end,'Debuffs shown'},
     {'Swap the sides',split,click('Swap the sides##frame'),function(o) return o.types.mob.swap_sides;end,'Swap the sides'},
     {'Crowd control icon on its own',split,click('Crowd control icon on its own##frame'),function(o) return o.types.mob.cc_slot==false;end,'Crowd control icon on its own'},
-    {'Show countdowns',nil,as('other_pet','Other players\' pets',click('Show countdowns##frame')),function(o) return o.types.other_pet.countdown==false and o.types.mob.countdown;end,'Show countdowns'},
+    {'Countdowns',nil,as('other_pet','Other players\' pets',click('Countdowns##frame')),function(o) return o.types.other_pet.countdown==false and o.types.mob.countdown;end,'Countdowns'},
     {'Icon size for this kind',nil,slide('Icon size for this kind',1.5),function(o) return o.types.mob.size_scale==1.5;end,'Icon size for this kind','place'},
     {'Head height offset',nil,slide('Head height offset',0.75),function(o) return o.types.mob.world_offset==0.75;end,'Head height offset','place'},
     {'Across',nil,as('pet','Your pet',slide('Across',-40)),function(o) return o.types.pet.screen_x==-40;end,'Across','place'},
@@ -180,13 +179,13 @@ local rows={
     {'Signet and similar',nil,as('other','Other players',click('Signet and similar##frame')),function(o) return o.types.other.show_signet and not o.types.party.show_signet;end,'Signet and similar','filters'},
     {'Copy Image',nil,as('party','Party',click('Copy Image##frame')),function(o) return o.types.party.show_copy_image and o.types.mob.show_copy_image;end,'Copy Image','filters'},
     {'Third Eye',nil,click('Third Eye##frame'),function(o) return o.types.mob.show_third_eye==false and o.types.self.show_third_eye;end,'Third Eye','filters'},
-    {'Use the Hidden everywhere list',nil,as('self','You',click('Use the Hidden everywhere list##frame')),function(o) return o.types.self.shared_rules==false;end,'Use the Hidden everywhere list','filters'},
-    {'Show only, kept sorted',function(o) o.types.mob.include={40};end,{{typed={'##frame_Find an effect','Paralysis'}},{click='Show only##frame'}},
+    {'Use the Hide list',nil,as('self','You',click('Use the Hide list##frame')),function(o) return o.types.self.shared_rules==false;end,'Use the Hide list','filters'},
+    {'Show only, kept sorted',function(o) o.types.mob.include={40};end,{{combo='##Effect',click='Paralysis##effect_4'},{click='Show only##frame'}},
         function(o) return same_list(o.types.mob.include,{4,40});end,'Show only','filters'},
-    {'Hide here, kept sorted',function(o) o.types.party.exclude={253};end,as('party','Party',{{typed={'##frame_Find an effect','Haste'}},{click='Hide here##frame'}}),
+    {'Hide here, kept sorted',function(o) o.types.party.exclude={253};end,as('party','Party',{{combo='##Effect',click='Haste##effect_33'},{click='Hide here##frame'}}),
         function(o) return same_list(o.types.party.exclude,{33,253});end,'Hide here','filters'},
-    {'Clear this kind\'s filters',function(o) o.types.mob.include,o.types.mob.exclude={4},{33};end,click('Clear this kind\'s filters##frame'),
-        function(o) local t=o.types.mob;return #t.include==0 and #t.exclude==0 and t.pinned==nil and t.order==nil;end,'Clear this kind\'s filters','filters'},
+    {'Reset this tab',function(o) o.types.mob.include,o.types.mob.exclude,o.types.mob.shared_rules,o.types.party.include={4},{33},false,{5};end,click('Reset this tab##frame'),
+        function(o) local t=o.types.mob;return #t.include==0 and #t.exclude==0 and t.shared_rules and t.pinned==nil and t.order==nil and #o.types.party.include==1;end,'Reset this tab','filters'},
     {'Icon size',nil,slide('Icon size',30),function(o) return o.size.base==30;end,'Icon size','place'},
     {'Smallest raises the largest',nil,slide('Smallest',44),function(o) return o.size.min_px==44 and o.size.max_px==44;end,'Smallest','place'},
     {'Largest lowers the smallest',nil,slide('Largest',12),function(o) return o.size.max_px==12 and o.size.min_px==12;end,'Largest','place'},
@@ -205,8 +204,8 @@ local rows={
     {'Add head offset for the target',nil,{{click='Use my target\'s name##frame'},{click='Add head offset##frame'}},function(o) return o.head.offsets.Crab==0;end,'Add head offset','place'},
     {'Offset in yalms',function(o) o.head.offsets={Fafnir=0};end,slide('Offset in yalms',1.25),function(o) return o.head.offsets.Fafnir==1.25;end,'Offset in yalms','place'},
     {'Remove head offset',function(o) o.head.offsets={Fafnir=0.5};end,click('Remove head offset##frame'),function(o) return o.head.offsets.Fafnir==nil;end,'Remove head offset','place'},
-    {'Reset this display',function(o) o.max_units,o.types.mob.layout,o.head.offsets=3,'split',{Fafnir=1};end,
-        {{click='Reset this display##frame'},{click='Reset##look_frame_reset_overhead'}},
+    {'Reset all of this display',function(o) o.max_units,o.types.mob.layout,o.head.offsets=3,'split',{Fafnir=1};end,
+        {{click='Reset all of this display##frame'},{click='Reset##look_frame_reset_overhead'}},
         function(o) return custom.equal(o,defaults.make().overhead);end,'Reset Overhead icons'},
     -- The main page.
     {'Main page: Overhead icons',nil,click('Overhead icons##main_overhead'),function(o) return o.enabled and not o.preview;end,'Overhead icons','Home'},
@@ -237,7 +236,7 @@ end;
 
 -- Each switch of who gets a block.
 for _,entry in ipairs({{'Your target','target'},{'Your subtarget','subtarget'},{'Mobs your party claimed','claimed'},{'Watched mobs','watched'},
-    {'Mobs your party debuffed','debuffed'},{'Party members','party'},{'Alliance members','alliance'},{'Other players','other'},
+    {'Mobs your party debuffed','debuffed'},{'Your party','party'},{'Your alliance','alliance'},{'Other players','other'},
     {'Your pet','pet'},{'Other players\' pets','other_pet'},{'You','self'}})do
     local before=begin('show');
     frame({click=entry[1]..'##frame'});
@@ -250,12 +249,18 @@ end;
 -- No time format to pick, on any tab.
 local begun={};
 imgui.BeginCombo=function(label) begun[label]=true;return label==combo;end;
-for _,tab in ipairs(panels.tabs)do begin(tab.key);end;
-assert(begun['##frame_'..KIND] and not begun['##frame_Time format'],'The panel offers no time format.');
+for _,tab in ipairs(panels.tabs)do
+    MOCK.imgui_calls={};
+    begin(tab.key);
+    local kinds=0;
+    for _,call in ipairs(MOCK.imgui_calls)do if call[1]=='Button' and tostring(call[2]):find('##frame_'..KIND..'_',1,true) then kinds=kinds+1;end;end;
+    assert(kinds==7,'The kinds are buttons over every tab: '..tab.key..' '..kinds);
+end;
+assert(not begun['##frame_Time format'],'The panel offers no time format.');
 imgui.BeginCombo=function(label) return label==combo;end;
 -- The picker writes nothing; the crowd control icon is for mobs in Split only.
 begin('show',function(o) o.types.party.layout='split';end);
-frame({combo='##frame_'..KIND,click='Party##party'});
+frame({click='Party##frame_'..KIND..'_party'});
 assert(page._selection.kind=='party' and #app.state.history==0,'Picking a kind writes nothing.');
 MOCK.imgui_calls={};
 frame();
@@ -337,7 +342,7 @@ end;
 -- The alliance shows debuffs only at first: no list, its keys keep their values, and the search leads to the Show choice
 -- on this panel and nowhere else, so no result opens onto a list that isn't there.
 begin('filters');
-frame({combo='##frame_'..KIND,click='Alliance##alliance'});
+frame({click='Alliance##frame_'..KIND..'_alliance'});
 MOCK.imgui_calls={};
 frame();
 local names,lead=switch_list();

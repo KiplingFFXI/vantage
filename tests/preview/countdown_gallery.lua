@@ -26,7 +26,7 @@ return function()
             local label = ('Bold %s   Shadow %s   Outline %s'):format(options.countdown_bold and 'on' or 'off',
                 options.countdown_shadow and 'on' or 'off', options.countdown_outline and 'on' or 'off');
             list:AddText({ x + 10, y + 52 }, 0xffd8d8d8, label);
-            local icon = icons.status(33, face == 'Agave' and 'Client' or face);
+            local icon = icons.status(33, face == 'Agave' and 'Original FFXI' or face);
             if icon then list:AddImage(icon, { x + 10, y + 8 }, { x + 42, y + 40 }); end;
             local width, height = countdown.measure(face, '1:23', 16, options);
             assert(width > 0 and width <= 80 and height > 0 and height <= 24, 'Styled bounds fit their reserved timer slot.');

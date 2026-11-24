@@ -116,10 +116,7 @@ local function same_color(a, b)
     return true
 end
 
-local function numeric(value, low, high, fallback)
-    if type(value) ~= 'number' or value ~= value or math.abs(value) == math.huge then return fallback end
-    return math.max(low, math.min(high, value))
-end
+local numeric = require('ui.numbers').clamp
 
 local original_window = {
     text = 'ffffff', faded_text = 'a8a8b8', headings = 'ffffff', heading_lines = 'a4a4ba', notes = 'eeeeef',
@@ -201,9 +198,10 @@ local function window_look(settings)
     return out
 end
 
--- The settings window's look. Given the settings revision, the look is made again only when that revision, the
--- settings, their style table or the saved text size change, as every settings change counts one; callers of that one
--- only read it.
+-- The settings window's look. Given the look revision, the look is made again only when that revision, the settings,
+-- their style table or the saved text size change. Every settings change counts one in that revision except the ones a
+-- display's drag or arrow press marks as only moving or sizing it, which change no look. Callers only read the look it
+-- keeps.
 local kept_window = {}
 function theme.window(settings, revision)
     if revision == nil then return window_look(settings) end

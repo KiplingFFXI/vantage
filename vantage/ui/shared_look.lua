@@ -1,4 +1,4 @@
--- Countdown text and blink for every display at once, from More look on the main page. Each display keeps its own keys
+-- Countdown text and blink for every display at once, from Text effects and While playing on the main page. Each display keeps its own keys
 -- and its renderer reads them, so a pick writes them all and nothing new is saved: Usual, Every display, None
 -- and Mixed are read back from those keys each time.
 local copy = require('core.store').copy;
@@ -16,7 +16,7 @@ blink_ids[#blink_ids + 1], blink_ids[#blink_ids + 2], blink_ids[#blink_ids + 3] 
 
 look.names = { self_buffs = 'Self buffs', self_debuffs = 'Self debuffs', target = 'Target timers', party = 'Party members\' timers',
     watch = 'Watched enemy timers', spell_recasts = 'Spell recasts', ability_recasts = 'Ability recasts', item_recasts = 'Item recasts',
-    recasts = 'Recasts (one panel)', party_ui = 'Party list buffs', overhead = 'Overhead icons', rolls = 'Phantom Roll', pet = 'Pet' };
+    recasts = 'Recasts (one panel)', party_ui = 'Party list', overhead = 'Overhead icons', rolls = 'Phantom Roll', pet = 'Pet' };
 local recast_ids = { 'spell_recasts', 'ability_recasts', 'item_recasts', 'recasts' };
 
 -- Outlines are on where text sits on busy art: the status timers and the party list.
@@ -31,12 +31,29 @@ local function holder(settings, id)
     return settings.panels[id];
 end;
 
--- Puts every display's countdown text and blink back as fresh has them.
+-- What lights its icons, with their glow and color: the timer panels that can, Overhead icons and Party list. Into out,
+-- when given, as the main page reads it each frame and a frame makes no table. It always holds as many.
+local function lit(settings, out)
+    out = out or {};
+    local count = 0;
+    for _, id in ipairs(defaults.panel_order) do
+        if defaults.lit_panels[id] then count = count + 1; out[count] = settings.panels[id]; end;
+    end;
+    out[count + 1], out[count + 2] = settings.overhead, settings.party_ui.effects;
+    return out;
+end;
+local lit_list = {};
+
+-- Puts every display's countdown text, blink and lit icons back as fresh has them.
 function look.restore(settings, fresh)
     for _, id in ipairs(ids) do defaults.copy_countdown(holder(fresh, id), holder(settings, id)); end;
     for _, id in ipairs(blink_ids) do
         local from, into = holder(fresh, id), holder(settings, id);
         into.blink_icons, into.blink_seconds = from.blink_icons, from.blink_seconds;
+    end;
+    local from, into = lit(fresh), lit(settings);
+    for index, holder_of in ipairs(into) do
+        holder_of.dispel_glow, holder_of.dispel_color = from[index].dispel_glow, copy(from[index].dispel_color);
     end;
 end;
 
@@ -48,6 +65,19 @@ end;
 local function same_value(a, b)
     if type(a) == 'table' and type(b) == 'table' then return same_color(a, b); end;
     return a == b;
+end;
+
+-- The lit icons' glow or color: the one every display has, or nil while they differ, and the first, to show then.
+function look.light(settings, key)
+    local list = lit(settings, lit_list);
+    local first = list[1][key];
+    for index = 2, #list do
+        if not same_value(list[index][key], first) then return nil, first; end;
+    end;
+    return first, first;
+end;
+function look.set_light(settings, key, value)
+    for _, holder_of in ipairs(lit(settings)) do holder_of[key] = type(value) == 'table' and copy(value) or value; end;
 end;
 
 -- The one value a key has on every display, or nil while they differ.

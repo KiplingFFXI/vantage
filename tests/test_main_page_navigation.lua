@@ -17,7 +17,7 @@ imgui.BeginCombo = function(label, ...)
     return label == opened_combo;
 end;
 local app = dofile(ADDON_DIR .. '/vantage.lua');
-for _, query in ipairs({ { 'Skin', 'Skin' }, { 'Party list buffs', 'Party list buffs' } }) do
+for _, query in ipairs({ { 'Skin', 'Skin' }, { 'Party list', 'Party list' } }) do
     local found = false;
     for _, result in ipairs(require('ui.settings_window').search(query[1])) do
         found = found or result.tab == 'Home' and result.label == query[2];
@@ -43,8 +43,13 @@ local function called(kind, label)
 end;
 local BACK = '< Back##frame';
 local function settings() return app.state.settings; end;
--- To the main page from wherever a step left the window.
-local function home() frame(settings().window.tab ~= 'Home' and BACK or nil); end;
+-- To the main page from wherever a step left the window, by Back as many times as it takes.
+local function home()
+    for _ = 1, 25 do
+        if settings().window.tab == 'Home' then return; end;
+        frame(BACK);
+    end;
+end;
 local function clear_history() app.state.history, app.state.redo, app.state.transaction = {}, {}, nil; end;
 local function history() return custom.history_value(settings()); end;
 local function undo_redo(before, after, label)
@@ -70,8 +75,8 @@ assert(not called('Selectable', 'Main page##nav_Home') and not called('Button', 
     'The main page has no sidebar entry, and no Home button in the header.');
 assert(not called('Checkbox', 'Show timers and recasts') and not called('Checkbox', 'Sample displays'), 'The main page avoids ambiguous global toolbar switches.');
 assert(not called('Button', 'Filters'), 'The toolbar has no Filters.');
--- Profiles, Timer durations and Help sit beside Find a setting, and a narrow window gives them a line of their own. The X and
--- Esc close the window, so it has no Close button.
+-- The Hide list, Timer durations, Profiles, Help and Mute alerts sit beside Find a setting, and a narrow window gives them
+-- a line of their own. The X and Esc close the window, so it has no Close button.
 local function box_width()
     local width;
     for _, call in ipairs(MOCK.imgui_calls) do
@@ -79,19 +84,24 @@ local function box_width()
         if call[1] == 'InputTextWithHint' and call[2] == '##find_settings' then return width; end;
     end;
 end;
-assert(called('Button', 'Profiles') and called('Button', 'Timer durations') and called('Button', 'Help') and not called('Button', 'Close'), 'The top bar has the tool pages and no Close.');
-assert(box_width() == -312, 'With room the search leaves them theirs: ' .. tostring(box_width()));
+assert(called('Button', 'Hide list') and called('Button', 'Profiles') and called('Button', 'Timer durations') and called('Button', 'Help')
+    and called('Button', 'Mute alerts##settings_mute') and not called('Button', 'Close'), 'The top bar has the tool pages, Mute alerts and no Close.');
+assert(box_width() == -536, 'With room the search leaves them theirs: ' .. tostring(box_width()));
 MOCK.content_width = 400;
 frame();
 assert(box_width() == -1 and called('Button', 'Profiles'), 'Narrow, the search takes the line and they go under it.');
 MOCK.content_width = nil;
 -- The top bar is the way to the tool pages. Each has a panel's top line, and Back comes home.
-for _, page in ipairs({ { 'Durations', 'Timer durations', 'Timer durations' }, { 'Profiles', 'Profiles and sharing', 'Profiles' }, { 'Help', 'Help', 'Help' } }) do
+for _, page in ipairs({ { 'Display', 'Hide list', 'Hide list' }, { 'Durations', 'Timer durations', 'Timer durations' }, { 'Profiles', 'Profiles and sharing', 'Profiles' },
+    { 'Help', 'Help', 'Help' } }) do
     frame(page[3]);
     assert(settings().window.tab == page[1], 'The main page opens ' .. page[1]);
     frame();
     local named = false;
-    for _, call in ipairs(MOCK.imgui_calls) do named = named or call[1] == 'TextColored' and call[3] == page[2]; end;
+    -- A display page names itself in the list of displays.
+    for _, call in ipairs(MOCK.imgui_calls) do
+        named = named or call[1] == 'TextColored' and call[3] == page[2] or call[1] == 'BeginCombo' and call[2] == '##frame_switch' and call[3] == page[2];
+    end;
     assert(called('Button', BACK) and named, page[1] .. ' has Back and its name on its top line.');
     frame(BACK);
     assert(settings().window.tab == 'Home', 'Back goes to the main page from ' .. page[1]);
@@ -108,9 +118,9 @@ end;
 panels.open('self_buffs', 'filters');
 settings().window.tab = 'Display';
 frame(); frame();
-assert(settings().window.tab == 'Display' and called('InputText', '##frame_Find an effect'), 'The timer editor exposes effect controls directly.');
+assert(settings().window.tab == 'Display' and called('BeginCombo', '##Effect'), 'The timer editor exposes effect controls directly.');
 local effects_found = false;
-for _, result in ipairs(require('ui.settings_window').search('Find an effect')) do
+for _, result in ipairs(require('ui.settings_window').search('Choose an effect')) do
     effects_found = effects_found or result.tab == 'Display';
 end;
 assert(effects_found, 'Search retains effect customization after removing the duplicate sidebar entry.');
@@ -118,15 +128,17 @@ panels.open('recasts', 'show');
 settings().window.tab = 'Display';
 local rule_count = #settings().alerts.rules;
 frame(); frame('Make an alert for a recast##frame'); frame();
-assert(panels.context() == 'notices/show' and called('InputText', '##frame_Rule name') and #settings().alerts.rules == rule_count + 1
+assert(panels.context() == 'notices/show' and called('InputText', '##frame_Alert name') and #settings().alerts.rules == rule_count + 1
     and settings().alerts.rules[#settings().alerts.rules].domain == 'recast', 'The alert shortcut opens its selected rule.');
+frame(BACK); frame();
+assert(settings().window.tab == 'Display' and panels.context() == 'recasts/show', 'Back from the alert goes to Recasts, where the link was.');
 home();
 frame(); assert(settings().window.tab == 'Home', 'Back from a display opens the main page.');
 frame('Edit##main_pet');
 assert(panels.context() == 'pet/show', 'Edit opens the detailed page.');
 local indexed_home = false;
 for _, result in ipairs(require('ui.settings_window').search('Grid mode')) do
-    if result.label == 'Grid mode' then
+    if result.label == 'Snap while moving' then
         assert(result.tab == 'Home', 'Edit cannot index the remaining main page controls under the destination page.');
         indexed_home = true;
     end;
@@ -171,9 +183,9 @@ command('/vg undo'); command('/vg redo'); home();
 
 -- The links only route; skin and size picks are covered by test_main_page.lua.
 home(); clear_history(); before = history();
-frame('Edit##main_hidden');
+frame('Hide list');
 assert(panels.context() == 'hidden/show' and custom.equal(history(), before) and #app.state.history == 0,
-    'The link to the Hidden everywhere list only navigates.');
+    'The link to the Hide list only navigates.');
 assert(#MOCK.commands == 0, 'The main page never sends a gameplay command.');
 home();
 for _, action in ipairs({ { 'Unlock all', false }, { 'Lock all', true } }) do
@@ -181,7 +193,7 @@ for _, action in ipairs({ { 'Unlock all', false }, { 'Lock all', true } }) do
     frame(action[1] .. '##main');
     for _, id in ipairs(defaults.panel_order) do assert(settings().panels[id].locked == action[2]); end;
     assert(settings().party_ui.locked == action[2] and settings().alerts.notice_locked == action[2],
-        'It includes the panels, the party list buffs and notices.');
+        'It includes the panels, Party list and notices.');
     undo_redo(before, history(), action[1]);
 end;
 -- Nothing to show samples on, so Show samples leaves no Undo step.

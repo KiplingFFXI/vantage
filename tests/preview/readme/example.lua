@@ -1,5 +1,5 @@
 -- The main README picture: a level 75 Red Mage's own buffs and debuffs as icons, the crab it fights in Target
--- timers, its spell and ability recasts, the party's long cooldowns, and the party list buffs beside a copy of
+-- timers, its spell and ability recasts, the party's long cooldowns, and Party list beside a copy of
 -- the game's party list.
 local C = require('preview.readme.common');
 local overlay = require('ui.native_party_hud');
@@ -61,7 +61,7 @@ end;
 view.cooldowns = { use(5, 'Warcry', 32, 1, 74, 300), use(2, 'Sentinel', 48, 7, 166, 300), use(3, 'Divine Seal', 74, 3, 352, 600),
     use(2, 'Invincible', 22, 7, 4290, 7200), use(3, 'Benediction', 18, 3, 6060, 7200) };
 
--- The party list buffs beside the copy of the game's party list.
+-- Party list beside the copy of the game's party list.
 s.party_ui.enabled = true;
 local roster, geometry, party_list = C.party_list({
     { name = 'Aster', job = 5, hp = 1016, max_hp = 1104, mp = 734, max_mp = 1146, tp = 0, leader = true },

@@ -6,7 +6,6 @@ s.enabled,s.preview=false,true;
 s.party_ui.enabled,s.party_ui.preview=false,true;
 s.party_ui.strips.party,s.party_ui.strips.alliance1=false,true;
 s.party_ui.locked=false;
-s.party_ui.style.icon_art='Client';
 s.panels.self_buffs.enabled,s.panels.self_debuffs.enabled=false,false;
 s.panels.self_buffs.locked,s.panels.self_debuffs.locked=true,false;
 s.panels.self_buffs.x,s.panels.self_buffs.y=145,267;
@@ -25,7 +24,7 @@ assert(page.apply(s,selection),'The setup applies.');
 assert(custom.equal(value(),custom.history_value(expected)),'Apply gives the candidate.');
 assert(s.style.scale==1.5 and not s.party_ui.enabled and s.party_ui.preview
     and not s.party_ui.strips.party and s.party_ui.strips.alliance1,
-    'It keeps the party list buffs switches and sample as they are.');
+    'It keeps Party list switches and sample as they are.');
 assert(not s.enabled and s.preview
     and not s.panels.self_buffs.enabled and not s.panels.self_debuffs.enabled,'It keeps the switches as they are.');
 assert(s.party_ui.locked==original.party_ui.locked and s.panels.self_buffs.locked==original.panels.self_buffs.locked

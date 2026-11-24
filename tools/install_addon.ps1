@@ -3,13 +3,16 @@
 Installs the Vantage addon archive into a game folder, keeping a backup of the addon it replaces.
 
 .DESCRIPTION
-It can run while the game is open, with Vantage loaded or not. A running Vantage keeps its old code until you run
-/addon reload vantage in game. It checks the archive against the SHA-256 you pass, notes the hash of every file
+It can run while the game is open, with Vantage loaded or not. If Vantage is loaded, run /addon reload vantage in
+game right after it, before you open /vg. Until then Vantage can load some of the new files, such as the settings
+window's pages, into its old code. It checks the archive against the SHA-256 you pass, notes the hash of every file
 under config\addons\vantage (settings, profiles, shared layout and the rest), moves
-the current addons\vantage (if there is one) to a dated backup folder outside the game folder, copies the new addon
+the current addons\vantage (if there is one) to a dated vantage-addon-backup-<UTC time> folder in Documents or in
+the folder -BackupParent names, outside the game folder on the same drive, or outside its addons and settings
+folders when the game is at a drive root, copies the new addon
 in, checks the hash of every copied file and checks that no settings file changed. Each folder moves whole or not
 at all, so a file another program holds open never leaves an addon split in two. If anything fails after the
-backup move, the backup is put back and the partial copy is moved beside it; if the old addon can't be moved, it
+backup move, the backup is put back and the partial copy is moved beside it. If the old addon can't be moved, it
 stays where it is. A settings file Vantage saves while this runs counts as a change, so change nothing in game
 until it is done. A JSON receipt of what it did goes beside the backup. The archive is unpacked beside the backup
 first, and that staging copy is removed at the end.
@@ -21,13 +24,14 @@ or never moved), 3 failed and the old addon could not be put back, or with no ol
 be moved out (the receipt says where they are).
 
 .EXAMPLE
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.3.0-addon.zip -Sha256 <hash> -Game C:\Games\PhoenixXI
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install_addon.ps1 -Zip dist\vantage-1.4.0-addon.zip -Sha256 <hash> -Game C:\Games\PhoenixXI
 #>
 param(
     [Parameter(Mandatory = $true)] [string] $Zip,
     [Parameter(Mandatory = $true)] [string] $Sha256,
     [Parameter(Mandatory = $true)] [string] $Game,
-    # Where the backup folder and the receipt go. It must be outside the game folder, on the same drive.
+    # Where the backup folder and the receipt go. It must be outside the game folder, on the same drive. With the game
+    # at a drive root, it only has to be outside the addons folder and config\addons\vantage.
     [string] $BackupParent = [Environment]::GetFolderPath('MyDocuments'),
     # For the install test only: fail after the copy, to check that the backup is put back. after_copy_held also
     # holds a copied file open, so the partial copy can't be moved out.
@@ -102,17 +106,27 @@ function Stop-Refused([string] $Reason) {
     exit 1
 }
 
-# Paths and the places this may write.
+# Paths and the places this may write. A folder keeps the trailing backslash Resolve-Path gives it. Trimmed, a drive
+# root such as D:\ would be D:, and [IO.Path]::Combine('D:', name) gives D:name, a path in D:'s current folder.
 try {
-    $Game = (Resolve-Path -LiteralPath $Game).ProviderPath.TrimEnd('\')
+    $Game = (Resolve-Path -LiteralPath $Game).ProviderPath
     $Zip = (Resolve-Path -LiteralPath $Zip).ProviderPath
-    $BackupParent = (Resolve-Path -LiteralPath $BackupParent).ProviderPath.TrimEnd('\')
+    $BackupParent = (Resolve-Path -LiteralPath $BackupParent).ProviderPath
 } catch {
     Write-Output ('Not installed: ' + $_.Exception.Message)
     exit 1
 }
 $receipt.game, $receipt.zip = $Game, $Zip
-if (Test-Inside $BackupParent $Game) {
+# A game folder at a drive root is the whole drive, and an old addon's backup must be on that drive. So there the
+# backup only has to stay out of the addons folder, which the install writes, and the settings folder, which must not
+# change.
+if ([IO.Path]::GetPathRoot($Game).TrimEnd('\') -ieq $Game.TrimEnd('\')) {
+    if ((Test-Inside $BackupParent ([IO.Path]::Combine($Game, 'addons'))) -or
+        (Test-Inside $BackupParent ([IO.Path]::Combine($Game, 'config\addons\vantage')))) {
+        Write-Output 'Not installed: the backup folder must be outside the addons folder and the config\addons\vantage folder. Pass -BackupParent.'
+        exit 1
+    }
+} elseif (Test-Inside $BackupParent $Game) {
     Write-Output 'Not installed: the backup folder must be outside the game folder. Pass -BackupParent.'
     exit 1
 }
@@ -237,7 +251,7 @@ if ($receipt.result -eq 'installed') {
     Write-Output ('Installed ' + $expected.Count + ' files in ' + $addon + '. Every file matches the archive and no settings file changed.')
     if ($receipt.backup) { Write-Output ('The old addon is in ' + $backup + '.') }
     Write-Output ('Receipt: ' + $receiptPath)
-    Write-Output 'Next: if the game is running, type /addon reload vantage in game (/addon load vantage if Vantage is not loaded).'
+    Write-Output 'Next: if the game is running, type /addon reload vantage in game right away, before you open /vg (/addon load vantage if Vantage is not loaded).'
     exit 0
 }
 Write-Output ('Not installed: ' + $receipt.reason)

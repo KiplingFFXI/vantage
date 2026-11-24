@@ -93,7 +93,7 @@ for _, word in ipairs({ 'room', 'gap', 'next row', 'icon room', 'Touching the ne
     for _, result in ipairs(window.search(word)) do
         lands = lands or result.panel == 'party_ui' and result.place == 'place' and result.label == 'Longest row';
     end;
-    assert(lands, word .. ' leads to Longest row on Party list buffs\' Size and place tab.');
+    assert(lands, word .. ' leads to Longest row on Party list\'s Size and place tab.');
 end;
 -- A row's other names go before words only its help holds, and after what is called what was typed.
 for _, word in ipairs({ 'room', 'next row', 'icon room' }) do assert(window.search(word)[1].label == 'Longest row', word .. ' leads there first.'); end;
@@ -103,11 +103,12 @@ assert(border.tab == 'Home' and border.label == 'Border', 'A control\'s more wor
 local font = window.search('font')[1];
 assert(font.tab == 'Home' and font.label == 'Font', 'font leads to Font on the main page first: ' .. tostring(font.label));
 local edit = false;
-for _, result in ipairs(window.search('Start edit mode')) do edit = edit or result.tab == 'Home' and result.label == 'Edit mode'; end;
-assert(edit, 'Edit mode finds the main page\'s button.');
--- What finds a control went in on its own page, none on another.
+for _, result in ipairs(window.search('Start edit mode')) do edit = edit or result.tab == 'Home' and result.label == 'Arrange on screen'; end;
+assert(edit, 'Start edit mode finds the main page\'s Arrange on screen.');
+-- What finds a control went in on its own page, none on another. With no profile saved, Rename profile finds Save as new,
+-- which makes one.
 for _, entry in ipairs({ { 'Recast tracking coverage', 'Help', 'What can be tracked' }, { 'Export diagnostic report', 'Help', 'Export report' },
-    { 'Rename profile', 'Profiles', 'Rename profile' }, { 'Frameless timer panels', 'Home', 'No boxes or headings' } }) do
+    { 'Rename profile', 'Profiles', 'Save as new' }, { 'Frameless timer panels', 'Home', 'No boxes or headings' } }) do
     local lands, elsewhere = false, false;
     for _, result in ipairs(window.search(entry[1])) do
         if result.label == entry[3] then
@@ -128,8 +129,8 @@ local function click(text, row)
     draw(); draw();
     assert(said('matching controls on this page'), row .. ' lights the control.');
 end;
-click('room', 'Longest row  /  Party list buffs, Size and place');
-assert(s.window.tab == 'Display' and frame.context() == 'party_ui/place', 'room opens Party list buffs\' Size and place tab.');
+click('room', 'Longest row  /  Party list, Size and place');
+assert(s.window.tab == 'Display' and frame.context() == 'party_ui/place', 'room opens Party list\'s Size and place tab.');
 -- And a closed fold opens, and stays open.
 s.window.sections['Overhead/Head offsets by name'] = nil;
 click('Head height offset', 'Head height offset  /  Overhead icons, Size and place');

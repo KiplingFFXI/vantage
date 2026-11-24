@@ -57,7 +57,9 @@ local function holds(value, fields) conditions.read(snap(fields)); return condit
 assert(holds({}) and holds({ main_jobs = { 3 } }) and not holds({ main_jobs = { 4 } }), 'Main job.');
 assert(holds({ main_jobs = { 4, 3 } }), 'Any of the picked jobs.');
 assert(holds({ sub_jobs = { 13 } }) and not holds({ sub_jobs = { 5 } }), 'Sub job, from the client.');
-assert(holds({ level_min = 70, level_max = 75 }) and not holds({ level_min = 76 }) and not holds({ level_max = 60 }), 'Level range.');
+assert(holds({ level_min = 70, level_max = 75 }) and not holds({ level_min = 70 }, { level = 69 }) and not holds({ level_max = 60 }), 'Level range.');
+assert(conditions.tidy({ level_min = 80 }).level_min == 75 and holds({ level_min = 80 }),
+    'A lowest level above the cap, as 1.3.0 let you pick, is 75, as its box reads.');
 assert(holds({ level_min = 30, level_max = 40 }, { level = 35 }), 'The level the game shows, lowered under Level Sync.');
 assert(holds({ level_sync = 'yes' }, { self_effects = { { effect = 269 } } }) and not holds({ level_sync = 'yes' }), 'Level Sync on.');
 assert(holds({ level_sync = 'no' }) and not holds({ level_sync = 'no' }, { self_effects = { { effect = 269 } } }), 'Level Sync off.');
@@ -166,6 +168,14 @@ rawset(imgui, 'GetBackgroundDrawList', function() return imgui.GetWindowDrawList
 rawset(imgui, 'GetForegroundDrawList', function() return imgui.GetWindowDrawList(); end);
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 MOCK.fire('load'); app.refresh(1);
+-- Whether each refresh holds the alerts back.
+local quiet;
+local update = app.alerts.update;
+app.alerts.update = function(self, ...)
+    local options = select(5, ...);
+    quiet = options.quiet;
+    return update(self, ...);
+end;
 local s = app.state.settings;
 s.rolls.enabled, s.party_ui.enabled = true, true;
 s.panels.self_buffs.empty, s.panels.self_debuffs.empty = 'show', 'show';
@@ -178,6 +188,7 @@ s.panels.self_buffs.conditions = conditions.tidy({ zones = { 'town' } });
 s.alerts.notice_conditions = conditions.tidy({ pet = 'yes' });
 app.refresh(2);
 for _, id in ipairs({ 'rolls', 'party_ui', 'overhead', 'self_buffs', 'notices' }) do assert(not conditions.shown(id), id .. ' is hidden here.'); end;
+assert(quiet == true, 'While its conditions hide Alerts, every alert is held back, its chat line and sound too.');
 assert(conditions.shown('self_debuffs') and conditions.shown('pet'), 'Displays with no conditions show.');
 local function windows()
     MOCK.imgui_calls = {};
@@ -207,6 +218,7 @@ snapshot.job, snapshot.party, snapshot.combat, snapshot.zone = 17, { { id = 1002
 snapshot.pet = { index = 0x700 };
 app.refresh(3);
 for _, id in ipairs({ 'rolls', 'party_ui', 'overhead', 'self_buffs', 'notices' }) do assert(conditions.shown(id), id .. ' shows there.'); end;
+assert(not quiet, 'Shown again, the alerts play.');
 -- The zone change ended the roll; a new one in the new zone.
 app.rolls:observe({ kind = 'roll', entity_id = 1001, ability = 105, total = 4, targets = { 1001 }, results = { 'got' } }, MOCK.now);
 app.refresh(4);

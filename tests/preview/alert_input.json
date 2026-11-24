@@ -1,5 +1,5 @@
 [
-  {"frame": 2, "target": "Haste reminder###Haste reminder##frame", "down": true},
+  {"frame": 2, "target": "Haste ending###Haste ending##frame", "down": true},
   {"frame": 3, "down": false},
   {"frame": 4, "lua": "assert(#settings.alerts.rules==1,'Reminder was not created'); assert(settings.alerts.rules[1].effect==33,'Reminder effect changed'); assert(settings.alerts.rules[1].sound=='','Reminder enabled a sound'); assert(settings.alerts.rules[1].thresholds[1]==30,'Reminder threshold changed'); assert(PREVIEW.changes>=2,'Creation did not finish its edit'); assert(PREVIEW.saves>=1,'Creation was not saved')"},
   {"frame": 5, "target": "##find_settings", "down": true},

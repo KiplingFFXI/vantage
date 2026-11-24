@@ -33,7 +33,7 @@ for _, name in ipairs({'Checkbox','SliderFloat','InputText','BeginCombo'}) do
     end;
 end;
 local labels = {
-    show='frame_Your own row', place='frame_Longest row', look='frame_Opacity', filters='frame_Find an effect', when='frame_From_min',
+    show='frame_Include me', place='frame_Longest row', look='frame_Opacity', filters='Effect', when='frame_From_min',
 };
 local before;
 function PREVIEW.verify_editor(key)

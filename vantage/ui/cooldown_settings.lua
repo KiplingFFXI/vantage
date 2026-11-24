@@ -7,7 +7,7 @@ local party_defaults = require('ui.party_defaults');
 local rows = require('ui.panel_rows');
 local page = {};
 local ctx = frame.ctx;
-local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local jobs = require('data.shared_ids').jobs;
 local sort_labels = { remaining = 'Ready soonest', name = 'Member name' };
 
 local function watch(c) return c.s.party_cooldowns; end;
@@ -30,7 +30,7 @@ local function heads_unset(c) return wanted(c, 'overhead') and c.s.overhead.enab
 
 local header = {
     frame.line(nil, nil, {
-        frame.tick('On', 'enabled', 'Counts the abilities ticked on Show when a member uses them, and shows them where Show them says. Off, nothing is kept.', {
+        frame.tick('On', 'enabled', 'Counts the abilities and spells ticked on Filters when a member uses them, and shows them where Show them says. Off, nothing is kept.', {
             tag = '_display', find = 'Show this display', alias = 'Watch party cooldowns Show this panel display', of = watch,
             write = function(c, on) cooldowns.switch(c.s, on); end }),
         rows.samples('Sample estimates in the list, to arrange it with nothing happening.', list_on, {
@@ -42,20 +42,35 @@ local header = {
 
 -- Show.
 
--- A job's name on the left of its ticks, which start in one column down the fold.
+-- A job's name on the left of its ticks, which start in one column down the fold. A tick with no room left on its line
+-- starts the next one in that column.
 local function job_line(name, entries)
-    local ticks = {};
+    local ticks, each = {}, {};
     for index, info in ipairs(entries) do
-        ticks[index] = frame.tick(info.name, nil, (info.special and 'Two-hour. ' or '') .. 'Recast ' .. require('ui.countdown_text').time(info.recast) .. '.', {
-            tag = '_watch_' .. info.id, beside = index > 1,
+        local recast = require('ui.countdown_text').time(info.recast);
+        local help = info.spell and 'Spell. Base recast ' .. recast .. '. The game sends the real one with each cast.'
+            or (info.special and 'Two-hour. ' or '') .. 'Recast ' .. recast .. '.';
+        ticks[index] = frame.tick(info.name, nil, help, {
+            tag = '_watch_' .. info.id, of = function(c) return c.s.party_cooldowns; end, resets = { 'ignore' },
             read = function(c) return not c.s.party_cooldowns.ignore[info.id]; end,
             write = function(c, on) c.s.party_cooldowns.ignore[info.id] = not on or nil; end });
+        each[index] = { ticks[index] };
     end;
     return { kind = 'custom', rows = ticks, draw = function(imgui, c)
         if imgui.AlignTextToFramePadding then imgui.AlignTextToFramePadding(); end;
         imgui.TextUnformatted(name);
         imgui.SameLine(0, 3 * imgui.GetFontSize() - imgui.CalcTextSize(name));
-        frame.draw_rows(imgui, c, ticks);
+        local column = imgui.GetCursorPosX();
+        for index = 1, #ticks do
+            if index > 1 then
+                imgui.SameLine();
+                if imgui.CalcTextSize(ticks[index].text) + imgui.GetFrameHeight() + 20 > imgui.GetContentRegionAvail() then
+                    imgui.NewLine();
+                    imgui.SetCursorPosX(column);
+                end;
+            end;
+            frame.draw_rows(imgui, c, each[index]);
+        end;
     end };
 end;
 
@@ -65,84 +80,78 @@ for job, name in ipairs(jobs) do
     for _, info in ipairs(cooldowns.list) do if info.job == job then entries[#entries + 1] = info; end; end;
     if #entries > 0 then ability_rows[#ability_rows + 1] = job_line(name, entries); end;
 end;
-ability_rows[#ability_rows + 1] = frame.button('Watch every ability', 'Ticks every ability above again.', function(c)
+ability_rows[#ability_rows + 1] = frame.button('Watch every ability and spell', 'Ticks every one above again.', function(c)
     local config = ctx.s.party_cooldowns;
-    c.changed(function() config.ignore = {}; end, true, 'Watch every ability');
+    c.changed(function() config.ignore = {}; end, true, 'Watch every ability and spell');
 end);
+-- The fold starts closed, so its title says how many are ticked. One title for each count, made once.
+local watch_titles = {};
+local watch_fold = frame.fold('Abilities and spells to watch', 'Untick one to stop counting it everywhere.', ability_rows, {
+    title = function(c)
+        local ignored, count = c.s.party_cooldowns.ignore, 0;
+        for _, info in ipairs(cooldowns.list) do if not ignored[info.id] then count = count + 1; end; end;
+        watch_titles[count] = watch_titles[count] or ('Abilities and spells to watch: %d of %d'):format(count, #cooldowns.list);
+        return watch_titles[count];
+    end });
 
 -- Beside the party list and Over heads read as In a list does: off with the watch, and ticking one turns the watch on.
+-- Beside the party list turns Party list on too, as the main page's tick does (ui/party_defaults.lua show_beside), and
+-- Over heads shows your party on Overhead icons (core/party_cooldowns.lua place). Reset this tab puts the place back and
+-- leaves the watch on or off, as On is above the tabs.
 local function place_tick(text, key, help, alias)
-    return frame.tick(text, key, help .. ' Turning it on turns this display on too.', { alias = alias,
+    return frame.tick(text, key, help .. ' Turning it on turns this display on too.', { alias = alias, of = watch, resets = { key },
         read = function(c) return wanted(c, key); end,
         write = function(c, on)
-            local value = c.s.party_cooldowns;
-            value[key] = on;
-            if on then value.enabled = true; end;
+            if key == 'strips' then party_defaults.show_beside(c.s, 'cooldowns', on); else cooldowns.place(c.s, key, on); end;
         end });
 end;
 
 local show_rows = {
-    frame.line('Show them', 'Where the estimates show. The times are estimates.', {
-        frame.tick('In a list', 'enabled', 'The list display: one row for each estimate, with its member, ability and time left. Turning it on turns this display on too.', {
+    frame.line('Show them', 'Where the times show. An ability\'s is an estimate, and a spell\'s is the one the game sent.', {
+        frame.tick('In a list', 'enabled', 'The list display: one row for each, with its member, ability or spell and time left. Turning it on turns this display on too.', {
             tag = '_list', alias = 'Show party cooldown list Cooldown list', read = list_on,
-            write = function(c, on)
-                c.p.enabled = on;
-                if on then c.s.party_cooldowns.enabled = true; else c.s.party_cooldowns.preview = false; end;
-            end }),
-        place_tick('Beside the party list', 'strips', 'Each member\'s estimates go first on their row beside the game\'s party list, nearest the game\'s window.', 'Show on party list strips'),
-        place_tick('Over heads', 'overhead', 'Each member\'s estimates go in a line on their overhead block.', 'Show over heads'),
+            write = function(c, on) cooldowns.place(c.s, 'list', on); end }),
+        place_tick('Beside the party list', 'strips', 'Each member\'s times go first on their row beside the game\'s party list, nearest the game\'s window, after the distance while that\'s on.', 'Show on party list strips'),
+        place_tick('Over heads', 'overhead', 'Each member\'s times go in a line on their overhead block.', 'Show over heads'),
     }),
-    frame.problem(strip_off, 'Party list buffs is off, so nothing shows beside the party list.', 'Turn on Party list buffs',
-        'To show only the cooldowns beside the party list, pick None on the Show tab of Party list buffs.', 'Beside the party list',
+    frame.problem(strip_off, 'Party list is off, so nothing shows beside the party list.', 'Turn on Party list',
+        'To show only the cooldowns beside the party list, pick None on the Show tab of Party list.', 'Beside the party list',
         function(s) party_defaults.switch(s.party_ui, true); end),
-    frame.problem(strip_unset, 'Party list buffs has no group ticked, so nothing shows beside the party list.', 'Show beside your party\'s window',
-        'Ticks Your party on the Show tab of Party list buffs.', 'Beside the party list', function(s) s.party_ui.strips.party = true; end),
+    frame.problem(strip_unset, 'Party list has no group ticked, so nothing shows beside the party list.', 'Show beside your party\'s window',
+        'Ticks Your party on the Show tab of Party list.', 'Beside the party list', function(s) s.party_ui.strips.party = true; end),
     frame.problem(heads_off, 'Overhead icons is off, so nothing shows over heads.', 'Turn on Overhead icons',
         'Buffs and debuffs show above heads too, as set on Overhead icons.', 'Over heads', function(s) s.overhead.enabled = true; end),
-    frame.problem(heads_unset, 'Overhead icons isn\'t set to show party or alliance members.', 'Show party members over heads',
-        'Ticks Party members on the Show tab of Overhead icons.', 'Over heads', function(s) s.overhead.units.party = true; end),
-    frame.fold('Abilities to watch', 'Untick an ability to stop counting it everywhere.', ability_rows, { opened = true }),
+    frame.problem(heads_unset, 'Overhead icons isn\'t set to show your party or alliance.', 'Show your party over heads',
+        'Ticks Your party on the Show tab of Overhead icons.', 'Over heads', function(s) s.overhead.units.party = true; end),
     rows.heading('Show the list\'s title.', list_on, 'In a list'),
     frame.pick('Sort', 'sort', cooldowns.sorts, sort_labels, 'Ready soonest puts the shortest time left first.', { only = list_on, shown_by = 'In a list', alias = 'Sort cooldowns' }),
     frame.number('Most shown', 'max_rows', 1, 64, 'Rows past this limit, or past the list\'s height, are not shown.', { only = list_on, shown_by = 'In a list', alias = 'Maximum visible cooldowns' }),
 };
 
--- Filters.
+-- Filters. The watch list shows with the list off too, as it is what every place counts.
 
 local job_ticks = {};
 for job, name in ipairs(jobs) do
-    job_ticks[job] = frame.tick(name, nil, 'Show abilities of this job.', { tag = '_list_job',
-        read = function(c) return c.p.jobs[job] == true or c.p.jobs[tostring(job)] == true; end,
-        write = function(c, on)
-            local kept = c.p.jobs;
-            kept[job], kept[tostring(job)] = on or nil, nil;
-        end });
+    job_ticks[job] = frame.tick(name, nil, 'Show abilities and spells of this job.', { tag = '_list_job', resets = { 'jobs' },
+        read = function(c) return c.p.jobs[job] == true; end,
+        write = function(c, on) c.p.jobs[job] = on or nil; end });
 end;
 
 local filter_rows = {
-    frame.note('Leave every box unticked to show every job. Beside the party list and over heads show every watched ability.'),
+    frame.note('Leave every box unticked to show every job. Beside the party list and over heads show every watched ability and spell.'),
     frame.line(nil, nil, job_ticks, { every = 6 }),
-    frame.button('Clear list filters', 'Show every job and ability in the list again.', function(c)
-        local list = ctx.p;
-        c.changed(function() list.jobs, list.abilities = {}, {}; end, true, 'Clear list filters');
-    end, { alias = 'List filters' }),
 };
 
 -- Size and place.
 
-local place_rows = {
-    frame.locked_line,
-    frame.number('Width', 'width', 160, 1400, 'The list\'s width.', { locks = true, alias = 'List width' }),
-    frame.number('Tallest', 'height', 0, 16000, 'Fit follows its rows. A fixed height is at least 60 pixels.', { locks = true, edge = 'y', special = { [0] = 'Fit' }, alias = 'Maximum list height Automatic',
-        write = function(c, value) c.p.height = value == 0 and 0 or math.max(60, value); end }),
-};
-for _, item in ipairs(frame.place_rows()) do place_rows[#place_rows + 1] = item; end;
-place_rows[#place_rows + 1] = frame.put_back;
+local place_rows = rows.box_place(cooldowns.MIN_WIDTH, 'list', 'its rows');
 
 frame.register({
     id = 'cooldown_list', name = 'Party cooldowns', fold_page = 'Cooldowns', reset_scope = 'party_cooldowns',
-    tabs = { show = show_rows, filters = { list_only(filter_rows) }, place = { list_only(place_rows) }, when = { list_only(conditions_ui.rows) } },
-    tab_on = { filters = list_on, place = list_on, when = list_on }, lock_on = list_on,
+    tabs = { show = show_rows, filters = { list_only(filter_rows), watch_fold }, place = { list_only(place_rows) }, when = { list_only(conditions_ui.rows) } },
+    tab_on = { place = list_on, when = list_on }, lock_on = list_on,
+    -- Reset this tab on Show puts In a list back off, and the list's samples end with it, as they do when it is unticked.
+    tab_reset = { show = function(c) if not list_on(c) then c.s.party_cooldowns.preview = false; end; end },
     header = header,
 });
 

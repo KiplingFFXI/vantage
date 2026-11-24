@@ -66,4 +66,19 @@ sound.close();
 assert(#MOCK.mci == 8, 'Close closes all 8 aliases.');
 for _, command in ipairs(MOCK.mci) do assert(command:match('^close vantage_alert%d$')); end
 assert(not sound.is_open('Warning.wav') and not sound.is_open('extra7.wav') and not sound.play(70));
+
+-- A tidy of the settings, as at a reload, Undo or an import, cuts a rule's sound to 160 characters and takes out any ##
+-- (ui/defaults.lua). So the list offers only names a tidy keeps: one of 161 characters or more, or one with ##, isn't
+-- listed, and every name that is comes back from a tidy as it was picked.
+local defaults = require('ui.defaults');
+local longest, too_long = string.rep('a', 156) .. '.wav', string.rep('a', 157) .. '.wav';
+MOCK.dirs = { [sound.FOLDER] = { longest, too_long, string.rep('b', 196) .. '.mp3', 'my##alarm.wav', '##.wav', 'one#mark.wav' } };
+files = sound.refresh();
+for _, name in ipairs(files) do
+    local s = defaults.make();
+    s.alerts.rules = { defaults.rule('rule_1') };
+    s.alerts.rules[1].sound = name;
+    assert(defaults.tidy(s).alerts.rules[1].sound == name, 'A listed sound is kept by a tidy: ' .. name);
+end
+assert(#files == 2 and files[1] == longest and files[2] == 'one#mark.wav', 'Only names a tidy keeps are listed: ' .. #files);
 return true;

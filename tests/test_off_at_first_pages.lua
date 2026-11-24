@@ -37,14 +37,14 @@ local function frame(step)
     MOCK.clicks = {};
 end;
 local panels = require('ui.panel_frame');
-local on_frame = { Cooldowns = 'cooldown_list', Recasts = 'recasts' };
+local on_frame = { Cooldowns = 'cooldown_list', Recasts = 'recasts', Pulse = 'pulse' };
 local function begin(tab, setup)
     local s = defaults.tidy(defaults.make());
-    -- The recast marks show with a panel of their kind on.
+    -- The recast tints show with a panel of their kind on.
     if tab == 'Recasts' then s.panels.spell_recasts.enabled, s.panels.ability_recasts.enabled = true, true; end;
     if on_frame[tab] then panels.open(on_frame[tab], 'show'); tab = 'Display'; end
     s.window.open, s.window.tab = true, tab;
-    for _, name in ipairs({ 'Recasts/Recast tints', 'Recasts/Ready pulse' }) do
+    for _, name in ipairs({ 'Recasts/Recast tints' }) do
         s.window.sections[name] = true;
     end
     app.state.settings = s;
@@ -64,7 +64,7 @@ end;
 
 -- The main page, Recasts and Party cooldowns show each one off, and Beside the party list too while the watch is off.
 begin('Home');
-for _, label in ipairs({ 'Ready pulse##main_pulse', 'Party cooldowns##main_party_cooldowns' }) do
+for _, label in ipairs({ 'Ready pulse##main_pulse', 'In a list##main_cooldowns_list', 'Beside the party list##main_cooldowns_strips', 'Over heads##main_cooldowns_heads' }) do
     assert(shown(label) == false, 'The main page shows ' .. label .. ' off: ' .. tostring(shown(label)));
 end;
 begin('Recasts');
@@ -115,12 +115,12 @@ local rows = {
     { 'Recasts', 'Spells while my MP is too low', click('Spells while my MP is too low##frame'), function(s) return s.recast_tints.mp == true; end, 'Spells while my MP is too low', 'recast_tints' },
     { 'Recasts', 'Spells while Silenced or Muted', click('Spells while Silenced or Muted##frame'), function(s) return s.recast_tints.spell_lock == true; end, 'Spells while Silenced or Muted', 'recast_tints' },
     { 'Recasts', 'Abilities under Amnesia', click('Abilities under Amnesia##frame'), function(s) return s.recast_tints.ability_lock == true; end, 'Abilities under Amnesia', 'recast_tints' },
-    { 'Cooldowns', 'Show', click('On##frame_display'), function(s) return s.party_cooldowns.enabled == true and s.party_cooldowns.strips == true; end, 'Show this display', 'party_cooldowns' },
+    { 'Cooldowns', 'Show', click('On##frame_display'), function(s) return s.party_cooldowns.enabled == true and require('core.party_cooldowns').shown(s); end, 'Show this display', 'party_cooldowns' },
     { 'Cooldowns', 'In a list', click('In a list##frame_list'),
         function(s) return s.party_cooldowns.enabled == true and s.party_cooldowns.list.enabled == true; end, 'In a list', 'party_cooldowns' },
     { 'Home', 'Ready pulse', click('Ready pulse##main_pulse'), function(s) return s.ready_pulse.enabled == true; end, 'Ready pulse', 'ready_pulse' },
-    { 'Home', 'Party cooldowns', click('Party cooldowns##main_party_cooldowns'),
-        function(s) return s.party_cooldowns.enabled == true and s.party_cooldowns.list.enabled == true; end, 'Party cooldowns', 'party_cooldowns' },
+    { 'Home', 'Party cooldowns in a list', click('In a list##main_cooldowns_list'),
+        function(s) return s.party_cooldowns.enabled == true and s.party_cooldowns.list.enabled == true; end, 'Party cooldowns in a list', 'party_cooldowns' },
 };
 local function outside(s, key)
     local value = copy(s);
@@ -167,11 +167,11 @@ for _, entry in ipairs({ { 'Target', 'target', 'Light up buffs you can remove' }
     assert(app.callbacks.undo() and app.state.settings.panels[entry[2]].dispel_light == false, entry[1] .. ': Undo turns it off.');
 end;
 
--- Off, the Ready pulse fold has its tick and no test. On, a test pulse plays and is no Undo step.
-begin('Recasts');
-assert(shown('Pulse when a long recast is ready##frame') == false, 'The fold has the tick, off.');
+-- Off, the Ready pulse has its switch and no test. On, a test pulse plays and is no Undo step.
+begin('Pulse');
+assert(shown('On##frame_display') == false, 'Its switch is there, off.');
 for _, call in ipairs(MOCK.imgui_calls) do assert(call[2] ~= 'Show a test pulse##frame', 'No test while the pulse is off.'); end;
-begin('Recasts', function(s) s.ready_pulse.enabled = true; end);
+begin('Pulse', function(s) s.ready_pulse.enabled = true; end);
 frame({ click = 'Show a test pulse##frame' });
 assert(#app.state.history == 0 and #app.state.view.pulses >= 1, 'With the pulse on, a test pulse is no Undo step.');
 

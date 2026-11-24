@@ -15,8 +15,10 @@ local DOUBLE_UP_CHANCE, BUST, SNAKE_EYE, COR = 308, 309, 357, 17;
 -- A bust lasts 300 s less 10 s for each Bust Duration rank (corsair.lua :498-513), so a bust Vantage can't time
 -- leaves after that.
 local BUST_TIME = 300;
-local JOBS = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local JOBS = require('data.shared_ids').jobs;
 local MAX_ROLLS = 8;
+-- The display's least width, for its tidy, its Width row and its drag.
+rolls.MIN_WIDTH = 200;
 
 function rolls.make()
     return { enabled = false, preview = false, x = 1300, y = 300, width = 320, height = 0, locked = true, show_heading = true,
@@ -26,17 +28,7 @@ function rolls.make()
         missed_color = { 0.6, 0.6, 0.6, 1 } };
 end
 
-local function table_of(value) return type(value) == 'table' and value or {}; end
-
-local function number(value, low, high, fallback)
-    return numbers.clamp_round(value, low, high, fallback);
-end
-
-local function rgba(value, fallback)
-    local color, saved = {}, table_of(value);
-    for i = 1, 4 do color[i] = numbers.clamp(saved[i] or saved[tostring(i)], 0, 1, fallback[i]); end
-    return color;
-end
+local table_of, number, rgba = numbers.table_of, numbers.clamp_round, numbers.rgba;
 
 -- Keys this doesn't know are kept, as the rest of the settings keep them.
 function rolls.tidy(value)
@@ -48,12 +40,12 @@ function rolls.tidy(value)
     end
     value.x = number(value.x, 0, 16000, fresh.x);
     value.y = number(value.y, 0, 16000, fresh.y);
-    value.width = number(value.width, 200, 1400, fresh.width);
+    value.width = number(value.width, rolls.MIN_WIDTH, 1400, fresh.width);
     value.height = number(value.height, 0, 16000, 0);
     if value.height > 0 then value.height = math.max(60, value.height); end
     value.max_rolls = number(value.max_rolls, 1, MAX_ROLLS, fresh.max_rolls);
     for _, key in ipairs({ 'countdown_outline_color', 'lucky_color', 'unlucky_color', 'missed_color' }) do
-        value[key] = rgba(value[key], fresh[key]);
+        value[key] = rgba(value[key], fresh[key], nil, true);
     end
     -- The samples show in the display, so they are kept only while it is on.
     value.preview = value.preview == true and value.enabled;
@@ -85,16 +77,15 @@ end
 local methods = {};
 methods.__index = methods;
 
--- rollers: by id, each roller's rolls by ability, as last seen. shown: the entries the display draws, newest first,
--- refilled. Each entry keeps its member list and refills it.
+-- rollers: by id, each roller's rolls by ability, as last seen, and their busts, each under a key of its own. shown:
+-- the entries the display draws, newest first, refilled. Each entry keeps its member list and refills it.
 function rolls.new()
-    return setmetatable({ rollers = {}, shown = {}, version = 0 }, methods);
+    return setmetatable({ rollers = {}, shown = {}, busts = 0 }, methods);
 end
 
 function methods:clear()
     self.rollers = {};
     for index = #self.shown, 1, -1 do self.shown[index] = nil; end
-    self.version = self.version + 1;
 end
 
 -- One 'roll' observation from core/observer.lua: a Phantom Roll, a Double-Up or a bust.
@@ -126,9 +117,12 @@ function methods:observe(observation, now)
         entry.busted_at = now;
         if entry.window_end and entry.window_end > now then entry.window_end = now; end
         entry.keep_until = nil;
+        -- The bust outlasts the roll's recast, so the roll can be rolled again while it lasts. It moves to a key of
+        -- its own, and the roll's place is free for the next one.
+        self.busts = self.busts + 1;
+        roller.rolls[ability], roller.rolls['bust' .. self.busts] = nil, entry;
     end
     entry.targets, entry.results = observation.targets or {}, observation.results or {};
-    self.version = self.version + 1;
 end
 
 -- A unit's row of one effect in the view: its Double-Up Chance, Bust or Snake Eye.
@@ -138,25 +132,80 @@ local function row_of(rows, id, effect)
     end
 end
 
--- A Corsair main can hold two busts; the newest is the one that ends last.
-local function newest_bust(rows, id)
-    local found;
+-- A Corsair main can hold two busts. A unit's Bust rows in the view go into out, the one that ends last first, and
+-- that is the newest bust's.
+local function last_first(a, b) return (a.deadline or math.huge) > (b.deadline or math.huge); end
+local function bust_rows(rows, id, out)
+    local count = 0;
     for _, row in ipairs(rows) do
-        if row.entity_id == id and row.effect == BUST and row.domain ~= 'recast' and row.present ~= false
-            and (not found or (row.deadline or math.huge) > (found.deadline or math.huge)) then found = row; end
+        if row.entity_id == id and row.effect == BUST and row.domain ~= 'recast' and row.present ~= false then
+            count = count + 1;
+            out[count] = row;
+        end
     end
-    return found;
+    for index = #out, count + 1, -1 do out[index] = nil; end
+    if count > 1 then table.sort(out, last_first); end
+    return out;
 end
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-local function call(object, name, ...)
-    if object == nil then return nil; end
-    local ok, fn = pcall(index_of, object, name);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local done, value = pcall(fn, object, ...);
-    if done then return value; end
+-- Which of a roller's busts an entry is, the newest 1, so each takes its own Bust row.
+local function bust_rank(roller, entry)
+    local rank = 1;
+    for _, other in pairs(roller.rolls) do
+        if other ~= entry and other.bust and other.busted_at > entry.busted_at then rank = rank + 1; end
+    end
+    return rank;
 end
+
+-- Your own Bust rows each have the game's time, so each of your busts keeps the row it first took (entry.claim is its
+-- time) and finds it again by that time. A time worked out again can be a second off (core/client.lua), and two busts
+-- are at least a Double-Up apart, 7 s (modules/era/sql/abyssea/job_adjustments.sql :162), so a row within 2 s is the
+-- bust's. A bust whose row is gone is off you, even with the other bust's row still listed: Fold deletes Bust by its
+-- type, which takes the older one off (modules/era/lua/globals/job_utils/corsair.lua :411,
+-- src/map/status_effect_container.cpp DelStatusEffect :681-693), and Bust Duration merits make a bust wear off before
+-- its five minutes. A row the tracker holds back until its timers come (present false) is still there, and a row with
+-- no time could be either bust's, so neither ends a line. A bust with no row yet takes, newest first, the newest row no
+-- other bust holds. It keeps that row only when the row ends a whole bust after it, 250 to 300 s with up to five ranks
+-- of Bust Duration merits (data/merits.yaml :1266-1269), give or take 3 s, and the tracker first listed the row at or
+-- after the bust. Phoenix sends a bust's action before the status packets that list its Bust
+-- (src/map/ai/states/ability_state.cpp :218, then src/map/ai/ai_container.cpp :564 runs
+-- src/map/entities/char_entity.cpp PostTick :1190-1197), so the bust's own row is never listed before it. A bust from
+-- before the display was on, or before Vantage loaded, can be the only row for a moment. When it came up to 53 s
+-- before the new bust, 10 s less for each Bust Duration rank, its row can end a whole bust after the new one too. It
+-- was listed before the new bust, so the new bust shows it for that moment but never keeps it. Returns the row, and
+-- whether the bust's own row is gone.
+local function holds(entry, row) return entry.claim and row.deadline and math.abs(row.deadline - entry.claim) <= 2; end
+local function own_bust(roller, entry, rows, busts)
+    if entry.claim then
+        local unknown;
+        for _, row in ipairs(rows) do
+            if row.entity_id == roller.id and row.effect == BUST and row.domain ~= 'recast' then
+                if holds(entry, row) then entry.claim = row.deadline; return row; end
+                if not row.deadline then unknown = row; end
+            end
+        end
+        return unknown, unknown == nil;
+    end
+    local rank = 1;
+    for _, other in pairs(roller.rolls) do
+        if other ~= entry and other.bust and not other.claim and other.busted_at > entry.busted_at then rank = rank + 1; end
+    end
+    for _, row in ipairs(busts) do
+        local free = true;
+        for _, other in pairs(roller.rolls) do
+            if other ~= entry and holds(other, row) then free = false; end
+        end
+        if free and rank == 1 then
+            local length = row.deadline and row.deadline - entry.busted_at;
+            if length and length >= BUST_TIME - 53 and length <= BUST_TIME + 3
+                and (row.first_seen or entry.busted_at) >= entry.busted_at then entry.claim = row.deadline; end
+            return row;
+        end
+        if free then rank = rank - 1; end
+    end
+end
+
+local call = require('core.guard').call;
 local function small(value) return finite(value) and value >= 1 and value <= 99 and math.floor(value) == value and value or nil; end
 
 -- Your party's jobs and levels from the client's party list, by id, into jobs (refilled), and the main jobs in it into
@@ -206,7 +255,7 @@ local function newest(a, b)
 end
 local function by_slot(a, b) return (a.slot or 0) < (b.slot or 0); end
 
-local jobs, present, order, results = {}, {}, {}, {};
+local jobs, present, order, results, listed_busts = {}, {}, {}, {}, {};
 -- At each refresh: drops what ended, and the rolls of anyone who left the party, then works out what each roll shows.
 -- rows are the view's rows. Nobody is dropped while the snapshot can't be read (zoning).
 function methods:refresh(now, settings, snapshot, rows)
@@ -214,7 +263,7 @@ function methods:refresh(now, settings, snapshot, rows)
     local shown = self.shown;
     for index = #shown, 1, -1 do shown[index] = nil; end
     if type(config) ~= 'table' or not config.enabled then
-        if next(self.rollers) then self.rollers = {}; self.version = self.version + 1; end
+        if next(self.rollers) then self.rollers = {}; end
         return shown;
     end
     local valid = snapshot and snapshot.valid and finite(snapshot.id);
@@ -229,23 +278,38 @@ function methods:refresh(now, settings, snapshot, rows)
     for id, roller in pairs(self.rollers) do
         local here = not valid or present[id] ~= nil;
         local own = valid and id == snapshot.id;
+        -- A Double-Up needs Double-Up Chance (scripts/globals/job_utils/corsair.lua checkDoubleUp :863-869), which goes
+        -- at a KO and on zoning (data/status_effects.yaml :2833-2841). So once the party list shows another Corsair
+        -- KO'd or in another zone, their window is over. A party row with no HP or zone read says neither.
+        local member = valid and not own and present[id];
+        local away = member and (member.zone ~= nil and member.zone ~= snapshot.zone or member.hpp == 0);
+        local busts;
         for ability, entry in pairs(roller.rolls) do
             entry.own = own;
             -- Your own Double-Up Chance and Bust are on your buff list with the game's time. A Double-Up Chance is this
             -- roll's when it ends 45 s from it; one from the roll before can still be listed for a moment.
-            local chance = own and not entry.bust and row_of(rows, id, DOUBLE_UP_CHANCE);
-            if chance and chance.deadline and entry.started and math.abs(chance.deadline - entry.started - rolls.WINDOW) <= 3 then
+            -- A party member's comes with no time, so theirs counts once it is listed, and their window ends when it
+            -- goes, as Fold takes it off (modules/era/lua/globals/job_utils/corsair.lua :411-412).
+            local chance = (own or member) and not entry.bust and row_of(rows, id, DOUBLE_UP_CHANCE);
+            if own and chance and chance.deadline and entry.started and math.abs(chance.deadline - entry.started - rolls.WINDOW) <= 3 then
                 entry.chance_seen = true;
                 if entry.window_end then entry.window_end = math.min(entry.window_end, chance.deadline); end
-            elseif not chance and own and entry.chance_seen and entry.window_end and entry.window_end > now then entry.window_end = now; end
+            elseif member and chance then entry.chance_seen = true;
+            elseif not chance and (own or member) and entry.chance_seen and entry.window_end and entry.window_end > now then entry.window_end = now; end
             local ends;
             if entry.bust then
                 -- Shown while the bust lasts: while its row is there, or for a whole bust when Vantage never saw one.
-                local bust = newest_bust(rows, id);
+                -- A party member's two Busts can come through as one row, so with fewer of their Bust rows listed than
+                -- busts held, the rows are the newest busts' and an older bust keeps its line for its own five minutes,
+                -- with no time to show. With no Bust listed at all, one that had a row has worn off.
+                busts = busts or bust_rows(rows, id, listed_busts);
+                local bust, gone;
+                if own then bust, gone = own_bust(roller, entry, rows, busts); else bust = busts[bust_rank(roller, entry)]; end
                 entry.bust_deadline = bust and bust.deadline or nil;
                 if bust then entry.bust_seen = true; end
-                ends = bust and entry.busted_at + BUST_TIME + 60 or entry.bust_seen and now or entry.busted_at + BUST_TIME;
-            else ends = entry.window_end or entry.keep_until or now; end
+                ends = bust and entry.busted_at + BUST_TIME + 60 or (gone or entry.bust_seen and not busts[1]) and now
+                    or entry.busted_at + BUST_TIME;
+            else ends = not away and (entry.window_end or entry.keep_until) or now; end
             if not here or ends <= now then
                 roller.rolls[ability] = nil;
             elseif #shown < 64 then

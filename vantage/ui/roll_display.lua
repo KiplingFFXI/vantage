@@ -1,7 +1,7 @@
 -- The Phantom Roll display (settings.rolls): for each roll core/rolls.lua shows, the roll's icon, name and total, the
 -- time left to Double-Up or on a bust, then what it gives, its lucky and unlucky numbers with the chance that one more
 -- Double-Up busts, and the party members, those who didn't get it dimmed. It uses the timer panels' look, and its
--- countdown text follows More look on the main page. Rolls past the limit or the room are left out with nothing in their place.
+-- countdown text follows Text effects on the main page. Rolls past the limit or the room are left out with nothing in their place.
 -- It moves and resizes like the party cooldown list (ui/element_box.lua) and takes no clicks otherwise.
 local display = {};
 local theme = require('ui.theme');
@@ -74,7 +74,7 @@ function display.draw(view, settings, now, callbacks, moving)
     local wanted = heading + 4 * scale;
     for index = 1, count do wanted = wanted + first + extra_lines(entries[index], config) * line + 6 * scale; end
     if count == 0 then wanted = wanted + first; end
-    local rect, movable = frame:place(config, settings, callbacks, moving, wanted, count > 0, 200);
+    local rect, movable = frame:place(config, settings, callbacks, moving, wanted, count > 0, rolls.MIN_WIDTH);
     if not rect then return nil; end
     look.font = s.font;
     fonts.push(look.font, font_size);

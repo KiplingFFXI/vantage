@@ -13,7 +13,7 @@ assets._set_platform_for_tests({
     read=function() reads=reads+1 end,
     upload=function() error('Settings must not upload artwork.') end,
 });
--- The looks Vantage draws: the timer panels', the menus' and the party list buffs' own.
+-- The looks Vantage draws: the timer panels', the menus' and Party list's own.
 local function styles(settings)
     return {settings.style,settings.window_style,settings.party_ui.style};
 end;

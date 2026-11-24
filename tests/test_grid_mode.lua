@@ -1,4 +1,4 @@
--- Grid mode (settings.edit_mode.grid_mode and grid_displays, the displays ticked for it) through vantage.lua. Fresh
+-- Snap while moving (settings.edit_mode.grid_mode and grid_displays, the displays ticked for it) through vantage.lua. Fresh
 -- settings have it off with nothing ticked, and so does a save without the keys, which loads without a write; the first
 -- save writes both. Tidying keeps only the ids of the displays a move can tick, each once, in their order. /vg get and
 -- set reach both, and one tick set alone is taken wherever tidying puts it, the reply giving the whole list. Share
@@ -11,7 +11,7 @@ local function ticks(e) return table.concat(e.grid_displays, ' '); end;
 -- Fresh settings, and what tidying keeps.
 local fresh = defaults.make();
 assert(fresh.edit_mode.grid_mode == false and type(fresh.edit_mode.grid_displays) == 'table' and next(fresh.edit_mode.grid_displays) == nil,
-    'Fresh settings have Grid mode off, with no display ticked.');
+    'Fresh settings have Snap while moving off, with no display ticked.');
 local e = anchors.tidy_edit({ grid_mode = true, grid_displays = { 'pet', 'nope', 5, 'self_buffs', 'pet', 'Pet', '' } }, elements.movable);
 assert(e.grid_mode == true and ticks(e) == 'self_buffs pet', 'Tidying keeps each real id once, in the displays\' order: ' .. ticks(e));
 e = anchors.tidy_edit({ grid_mode = 'yes', grid_displays = { pet = true, self_buffs = 1 } }, elements.movable);
@@ -45,7 +45,7 @@ MOCK.fire('load'); app.refresh(0);
 for _ = 1, 10 do MOCK.frame(0.11); end;
 assert(app.state.path == folder .. '/settings.json' and not app.state.unread, 'Fixture: the save without the keys loads.');
 e = app.state.settings.edit_mode;
-assert(e.grid_mode == false and next(e.grid_displays) == nil, 'It loads with Grid mode off and nothing ticked.');
+assert(e.grid_mode == false and next(e.grid_displays) == nil, 'It loads with Snap while moving off and nothing ticked.');
 assert(raw() == text, 'Loading it writes nothing.');
 
 -- /vg get and set.
@@ -56,7 +56,7 @@ local function command(line)
     return MOCK.printed[#MOCK.printed] or '';
 end;
 local said = command('/vg get edit_mode.grid_mode');
-assert(said:find('edit_mode.grid_mode = false', 1, true), '/vg get reads Grid mode: ' .. said);
+assert(said:find('edit_mode.grid_mode = false', 1, true), '/vg get reads Snap while moving: ' .. said);
 local steps = #app.state.history;
 said = command('/vg set edit_mode.grid_mode true');
 assert(app.state.settings.edit_mode.grid_mode == true and said:find('edit_mode.grid_mode is now true.', 1, true)
@@ -99,12 +99,12 @@ assert(next(app.state.settings.edit_mode.grid_displays) == nil and said:find('ed
     'An empty list unticks every display: ' .. said);
 assert(next(assert(store.read(app.state.path)).edit_mode.grid_displays) == nil, 'and saves.');
 
--- Exports. A layout and a profile string carry Grid mode and the ticks.
+-- Exports. A layout and a profile string carry Snap while moving and the ticks.
 local mine = defaults.tidy(defaults.make());
 mine.edit_mode.grid_mode = true;
 snap.tick(mine, 'pet', true); snap.tick(mine, 'rolls', true);
 assert(share.VERSION == 1, 'Exports stay at version 1.');
--- Settings of your own with Grid mode on and Self buffs ticked, and fresh ones.
+-- Settings of your own with Snap while moving on and Self buffs ticked, and fresh ones.
 local function yours(on)
     local value = defaults.tidy(defaults.make());
     if on then value.edit_mode.grid_mode = true; snap.tick(value, 'self_buffs', true); end;
@@ -154,4 +154,4 @@ assert(profiles.apply_layout(other, { scope = 'presentation', presentation = pre
 assert(other.edit_mode.grid == 24 and other.edit_mode.grid_mode == true and ticks(other.edit_mode) == 'rolls pet',
     'A shared presentation brings both, and its grid.');
 MOCK.fire('unload');
-return 'Grid mode starts off, loads off from a save without it, and travels in strings, profiles and shared layouts';
+return 'Snap while moving starts off, loads off from a save without it, and travels in strings, profiles and shared layouts';

@@ -1,5 +1,5 @@
 -- The one finder for the client code Vantage looks for by byte patterns: core/clock.lua, client.lua, chat.lua,
--- native_party_ui.lua and name_anchor.lua each pass their own rule.
+-- native_party_ui.lua, name_anchor.lua, game_buffs.lua and game_pet_bar.lua each pass their own rule.
 -- Each search of the client scans up to its whole 12 MB, so what is found is kept for the life of the game process
 -- in a process environment variable (kernel32, VANTAGE_PATTERNS), which an /addon reload doesn't clear. A kept
 -- address is used again only while it is inside the client module, its pages can be read and the pattern's fixed
@@ -65,7 +65,8 @@ local function current_store()
 end
 
 -- The same store over another variable, for another value kept for the game process: core/warmup.lua keeps a
--- reload's times in one. nil without kernel32, and in the tests.
+-- reload's times in one, ui/fonts.lua the fonts it added to the atlas, and the pet watch in vantage.lua a jug's clock
+-- and a charm's estimate. nil without kernel32, and in the tests.
 function patterns.environment(name)
     if VANTAGE_TEST_MODE then return nil; end
     local ok, made = pcall(function() return environment(require('ffi'), name); end);

@@ -25,12 +25,6 @@ local base = changed_settings();
 local menus = reset('window_style');
 assert(same(menus.window_style, fresh.window_style) and same(menus.style, base.style), 'Settings menus restores only the menus.');
 
-local navigation = reset('navigation');
-assert(navigation.window.peek == true, 'Settings navigation restores peeking.');
-assert(navigation.window.x == 333 and navigation.window.tab == 'Appearance' and navigation.window.sections['Home/Alerts'] == true
-    and same(navigation.style, base.style) and same(navigation.window_style, base.window_style) and same(navigation.visibility, base.visibility),
-    'Settings navigation keeps the window\'s place and open sections and every other setting.');
-
 -- /vg reset appearance still restores the timers and the menus together.
 local appearance = reset('appearance');
 assert(same(appearance.style, fresh.style) and same(appearance.window_style, fresh.window_style), 'The appearance reset is unchanged.');
@@ -60,20 +54,20 @@ s.window.tab = 'Display';
 require('ui.panel_frame').open('notices', 'show');
 s.alerts.rules = { defaults.rule('first'), defaults.rule('second') };
 frame(); frame();
-assert(drawn('Button', 'Reset this display##frame') and not drawn('Button', 'Reset this page') and not drawn('Button', 'Reset alert settings'),
-    'Alerts has one reset, Reset this display.');
-local RESET, CANCEL, DO_IT = 'Reset this display##frame', 'Cancel##look_frame_reset_notices', 'Reset##look_frame_reset_notices';
+assert(drawn('Button', 'Reset all of this display##frame') and not drawn('Button', 'Reset this page') and not drawn('Button', 'Reset alert settings'),
+    'Alerts has one reset, Reset all of this display.');
+local RESET, CANCEL, DO_IT = 'Reset all of this display##frame', 'Cancel##look_frame_reset_notices', 'Reset##look_frame_reset_notices';
 local asked = 'Reset Alerts? It goes back to how it started: locked, in its first spot.';
 local count = #resets;
 frame(RESET); frame();
-assert(#resets == count and drawn('TextWrapped', asked .. ' This deletes all 2 alert rules.'), 'It asks first and resets nothing yet.');
+assert(#resets == count and drawn('TextWrapped', asked .. ' This deletes all 2 alerts.'), 'It asks first and resets nothing yet.');
 frame(CANCEL); frame();
-assert(#resets == count and not drawn('TextWrapped', asked .. ' This deletes all 2 alert rules.'), 'Cancel keeps the rules.');
+assert(#resets == count and not drawn('TextWrapped', asked .. ' This deletes all 2 alerts.'), 'Cancel keeps the alerts.');
 frame(RESET); frame(DO_IT);
 assert(#resets == count + 1 and resets[#resets] == 'alerts', 'Reset in the question resets the page.');
 s.alerts.rules = { s.alerts.rules[1] };
 frame(RESET); frame();
-assert(drawn('TextWrapped', asked .. ' This deletes your alert rule.'), 'One rule is named as one rule.');
+assert(drawn('TextWrapped', asked .. ' This deletes your alert.'), 'One alert is named as one.');
 frame(CANCEL);
 s.alerts.rules = {};
 frame(); frame(RESET); frame();

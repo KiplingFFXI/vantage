@@ -2,6 +2,8 @@ local requests = {};
 package.loaded['ui.icons'] = {
     status = function(id, artwork) requests[#requests + 1] = { id = id, artwork = artwork }; return 901; end,
     reason = function() return nil; end,
+    folder_warning = function() return nil; end,
+    choices = function() return { 'Original FFXI', 'XI View' }, { ['Original FFXI'] = 'Original FFXI', ['XI View'] = 'XI View' }; end,
 };
 -- The strips ask for an icon at the size they draw it; this one has a single size.
 package.loaded['ui.icons'].status_at = function(id, artwork) return package.loaded['ui.icons'].status(id, artwork), { 1, 1 }; end;
@@ -16,13 +18,22 @@ assert(normalized.party_ui.style.icon_art == 'Original FFXI');
 local missing = defaults.copy(settings); missing.style.icon_art, missing.party_ui.style.icon_art = nil, nil;
 missing = defaults.tidy(missing);
 assert(missing.style.icon_art == 'Original FFXI' and missing.party_ui.style.icon_art == 'Original FFXI', 'A save with no artwork choice takes the default.');
-missing.style.icon_art, missing.party_ui.style.icon_art = 'bad', 'bad';
+-- A name no folder can have, or a built-in choice's in other letters, isn't an icon set.
+missing.style.icon_art, missing.party_ui.style.icon_art = 'bad/name', 'client';
 missing = defaults.tidy(missing);
 assert(missing.style.icon_art == 'Original FFXI' and missing.party_ui.style.icon_art == 'Original FFXI');
+missing.style.icon_art, missing.party_ui.style.icon_art = 'bad##name', 7;
+missing = defaults.tidy(missing);
+assert(missing.style.icon_art == 'Original FFXI' and missing.party_ui.style.icon_art == 'Original FFXI');
+-- Any other name is an icon set of your own, kept while its folder is away.
+missing.style.icon_art, missing.party_ui.style.icon_art = 'My icons', 'Other set';
+missing = defaults.tidy(missing);
+assert(missing.style.icon_art == 'My icons' and missing.party_ui.style.icon_art == 'Other set', 'A set\'s name is kept.');
 local custom = require('core.customization');
 assert(custom.set(settings, 'style.icon_art', 'Original FFXI').style.icon_art == 'Original FFXI');
 assert(custom.set(settings, 'party_ui.style.icon_art', 'XI View').party_ui.style.icon_art == 'XI View');
-assert(not custom.set(settings, 'style.icon_art', 'bad'));
+assert(custom.set(settings, 'style.icon_art', 'My icons').style.icon_art == 'My icons');
+assert(not custom.set(settings, 'style.icon_art', 'bad/name'));
 
 local hud, party, native = require('ui.hud'), require('ui.party_hud'), require('ui.native_party_hud');
 local view = hud.sample(100);
@@ -45,7 +56,7 @@ native.draw(roster, subjects, settings.party_ui, 100, { global_style = settings.
 local seen = {};
 for _, request in ipairs(requests) do seen[request.artwork] = true; end
 -- Every group wears the party's icons.
-assert(seen['Original FFXI'] and not seen['XI View'] and not seen.Client, 'The party icon choice reaches every strip.');
+assert(seen['Original FFXI'] and not seen['XI View'], 'The party icon choice reaches every strip.');
 
 local profiles = require('core.profiles');
 local named = profiles.capture(settings);
@@ -57,7 +68,7 @@ assert(presentation.style.icon_art == 'XI View' and presentation.party_ui.style.
 
 local window, imgui = require('ui.settings_window'), require('imgui');
 settings.window.open, settings.window.tab = true, 'Home';
-settings.style.icon_art = 'Client';
+settings.style.icon_art = 'Original FFXI';
 local phases = {};
 local callbacks = { changed = function(phase) phases[#phases + 1] = phase; end, save = function() return true; end };
 imgui.BeginCombo = function(label) return label == '##main_icon_art'; end;

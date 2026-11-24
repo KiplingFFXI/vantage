@@ -1,6 +1,8 @@
 """tools/install_addon.ps1 puts the addon archive in a game folder and keeps the old addon and every settings file safe.
 
 Runs Windows PowerShell 5.1 against a temporary fake game folder and backup folder only, never a real game folder.
+The four drive-root tests map a free drive letter, Z down to G, to a temporary folder with subst while they run. A
+run stopped early, by Ctrl+C or a kill, can leave that letter mapped until you run subst <letter>: /d or sign out.
 """
 import hashlib
 import json
@@ -66,17 +68,26 @@ class InstallAddonTests(unittest.TestCase):
             for name in ('LICENSE', 'README.md', 'docs/GUIDE.md'):
                 archive.writestr(name, b'document\n')
 
-    def install(self, *extra, sha=None, backups=None):
+    def install(self, *extra, sha=None, backups=None, game=None, cwd=None):
         # Windows PowerShell builds its own module path when none is set. One left by PowerShell 7, the shell of
         # GitHub's Windows runner, points it at modules it can't load, and Get-FileHash goes missing.
         environment = {name: value for name, value in os.environ.items() if name.upper() != 'PSMODULEPATH'}
         result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
                                  str(SCRIPT), '-Zip', str(self.zip), '-Sha256', sha or digest(self.zip).upper(),
-                                 '-Game', str(self.game), '-BackupParent', str(backups or self.backups), *extra],
-                                capture_output=True, text=True, timeout=300, env=environment)
-        receipts = sorted(self.backups.glob('vantage-addon-install-*.json'))
+                                 '-Game', str(game or self.game), '-BackupParent', str(backups or self.backups), *extra],
+                                capture_output=True, text=True, timeout=300, env=environment, cwd=cwd)
+        receipts = sorted(Path(backups or self.backups).glob('vantage-addon-install-*.json'))
         receipt = json.loads(receipts[-1].read_text(encoding='utf-8')) if receipts else None
         return result.returncode, result.stdout + result.stderr, receipt
+
+    def drive(self, folder):
+        # A drive whose root is the folder given: subst maps a free letter to it until the test ends.
+        for letter in 'ZYXWVUTSRQPONMLKJIHG':
+            if not os.path.exists(letter + ':\\') and subprocess.run(['subst', letter + ':', str(folder)],
+                                                                     capture_output=True).returncode == 0:
+                self.addCleanup(subprocess.run, ['subst', letter + ':', '/d'], capture_output=True)
+                return Path(letter + ':\\')
+        self.skipTest('no free drive letter for subst')
 
     def test_fresh_install(self):
         code, out, receipt = self.install()
@@ -147,11 +158,16 @@ class InstallAddonTests(unittest.TestCase):
         self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
 
     def test_installs_while_the_game_runs(self):
-        # The game can stay open: the script looks for no game process, and its last lines say to reload the addon in
-        # game, with the launcher line for the next start.
+        # The game can stay open: the script looks for no game process, and its last line says to reload the addon in
+        # game right away, before /vg. A loaded Vantage reads some files only on first use, such as the settings
+        # window's pages, so until the reload it can load new files into its old code. Nothing says the old code
+        # stays whole.
         script = SCRIPT.read_text(encoding='ascii')
         self.assertNotIn('Get-Process', script)
         self.assertNotIn('GameProcess', script)
+        self.assertNotIn('keeps its old code', script)
+        self.assertIn('If Vantage is loaded, run /addon reload vantage in game right after it, before you open /vg.',
+                      ' '.join(script.split('#>')[0].split()))
         self.write(self.game / 'addons/vantage', OLD)
         self.write(self.game, SETTINGS)
         self.kept = {name: data for name, data in tree(self.game).items() if not name.startswith('addons/vantage/')}
@@ -160,8 +176,8 @@ class InstallAddonTests(unittest.TestCase):
         self.assertEqual(receipt['result'], 'installed')
         self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
         self.assertNotIn('Not installed', out)
-        self.assertIn('Next: if the game is running, type /addon reload vantage in game (/addon load vantage if Vantage is '
-                      'not loaded).', out)
+        self.assertIn('Next: if the game is running, type /addon reload vantage in game right away, before you open /vg '
+                      '(/addon load vantage if Vantage is not loaded).', out)
 
     def test_an_old_addon_in_use_stays_whole(self):
         # A file of the old addon held open, as a running game or another program can hold one: the old addon can't
@@ -204,6 +220,75 @@ class InstallAddonTests(unittest.TestCase):
         self.assertIn('the backup folder must be outside the game folder', out)
         self.assertEqual(tree(self.game / 'addons/vantage'), OLD)
         self.assertEqual(list(inside.iterdir()), [])
+
+    def test_a_drive_root_as_the_backup_folder(self):
+        # X:\ is outside a game folder on X:, on the same drive. Trimmed to X:, the backup path was the drive-relative
+        # X:vantage-addon-backup-..., and the same-drive check refused it.
+        root = self.drive(self.work.name)
+        self.write(self.game / 'addons/vantage', OLD)
+        code, out, receipt = self.install(game=root / 'game', backups=root)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
+        backups = list(root.glob('vantage-addon-backup-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(tree(backups[0]), OLD)
+        self.assertEqual(receipt['result'], 'installed')
+        self.assertEqual(receipt['backup'], str(backups[0]))
+        self.assertEqual(list(root.glob('vantage-addon-staging-*')), [])
+
+    def test_a_drive_root_as_the_backup_folder_from_another_folder_on_it(self):
+        # Run from X:\elsewhere, the drive-relative X:vantage-addon-install-... meant a receipt in X:\elsewhere, not
+        # in X:\.
+        root = self.drive(self.work.name)
+        elsewhere = root / 'elsewhere'
+        elsewhere.mkdir()
+        code, out, _ = self.install(game=root / 'game', backups=root, cwd=elsewhere)
+        self.assertEqual(code, 0, out)
+        receipts = list(root.glob('vantage-addon-install-*.json'))
+        self.assertEqual(len(receipts), 1, out)
+        self.assertIn('Receipt: ' + str(receipts[0]), out)
+        self.assertEqual(list(elsewhere.iterdir()), [])
+        self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
+
+    def test_a_game_folder_at_a_drive_root(self):
+        # Trimmed to X:, the game's addons folder was looked for in the folder this runs from.
+        root = self.drive(self.game)
+        code, out, receipt = self.install(game=root, cwd=root / 'scripts')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
+        self.assertEqual(receipt['addon'], str(root / 'addons' / 'vantage'))
+
+    def test_an_update_with_the_game_folder_at_a_drive_root(self):
+        # The backup has to be on the game's drive, and with the game at its root the whole drive is the game folder.
+        # So the backup may go anywhere on it but in the addons folder or the settings folder.
+        root = self.drive(self.game)
+        self.write(self.game / 'addons/vantage', OLD)
+        self.write(self.game, SETTINGS)
+        refused = ('addons/backups', 'config/addons/vantage/backups')
+        for inside in refused:
+            (self.game / inside).mkdir()
+        self.kept = {name: data for name, data in tree(self.game).items() if not name.startswith('addons/vantage/')}
+        for inside in refused:
+            with self.subTest(inside=inside):
+                code, out, _ = self.install(game=root, backups=root / inside)
+                self.assertEqual(code, 1, out)
+                self.assertIn('the backup folder must be outside the addons folder and the config\\addons\\vantage folder', out)
+                self.assertEqual(tree(self.game / 'addons/vantage'), OLD)
+                self.assertEqual(list((self.game / inside).iterdir()), [])
+        backups = self.game / 'backups'
+        backups.mkdir()
+        code, out, receipt = self.install(game=root, backups=root / 'backups')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(tree(self.game / 'addons/vantage'), NEW)
+        moved = list(backups.glob('vantage-addon-backup-*'))
+        self.assertEqual(len(moved), 1)
+        self.assertEqual(tree(moved[0]), OLD)
+        self.assertEqual(receipt['result'], 'installed')
+        self.assertEqual(receipt['backup'], str(root / 'backups' / moved[0].name))
+        self.assertEqual(receipt['settings_after'], {name: hashlib.sha256(data).hexdigest() for name, data in SETTINGS.items()})
+        self.assertEqual(list(backups.glob('vantage-addon-staging-*')), [])
+        # The backup and the receipt are all that is new outside addons/vantage.
+        self.kept.update({name: data for name, data in tree(self.game).items() if name.startswith('backups/')})
 
 
 if __name__ == '__main__':

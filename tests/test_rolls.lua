@@ -11,22 +11,11 @@ local snapshot = { valid = true, id = self_id, zone = 102, name = 'Tester', leve
     party = { { id = ally, name = 'Ally', scope = 'party', zone = 102, slot = 1 }, { id = friend, name = 'Friend', scope = 'alliance', zone = 102, slot = 6 } },
     entities = { [self_id] = { name = 'Tester', kind = 'player' }, [ally] = { name = 'Ally', kind = 'player' },
         [friend] = { name = 'Friend', kind = 'player' }, [stranger] = { name = 'Stranger', kind = 'player' }, [mob] = { name = 'Crab', kind = 'monster' } } };
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One action: its actor, category and id, and each target with its message and param.
 local function action(actor, category, id, targets)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, target[3]); putbits(bytes, at + 44, 10, target[2]); at = at + 87;
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    local rows = {};
+    for i, target in ipairs(targets) do rows[i] = { id = target[1], rows = { { message = target[2], param = target[3] } } }; end
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, rows));
 end
 local function roll_of(events)
     local found;
@@ -204,6 +193,46 @@ roll(self_id, 105, 4, false, false, nil, nil, 703);
 s.rolls.enabled = false;
 assert(#watch:refresh(704, s, snapshot, {}) == 0 and next(watch.rollers) == nil, 'Off, nothing is kept.');
 s.rolls.enabled = true;
+-- Another Corsair KO'd or in another zone has lost their Double-Up Chance, so their window is over and their roll
+-- leaves, as yours does. A Raise doesn't bring it back. A party row with no HP or zone read says neither.
+local function with_ally(zone, hpp)
+    return { valid = true, id = self_id, zone = 102, name = 'Tester', level = 75, job = 17, entities = {},
+        party = { { id = ally, name = 'Ally', scope = 'party', zone = zone, slot = 1, hpp = hpp } } };
+end
+for _, case in ipairs({ { 102, 0, 'KO\'d' }, { 230, 100, 'in another zone' } }) do
+    watch = rolls.new();
+    roll(ally, 105, 4, false, false, { ally, self_id }, { 'got', 'got' }, 1000);
+    assert(watch:refresh(1001, s, with_ally(102, 100), {})[1].window_deadline == 1045, 'Fixture: their window runs 45 s from the roll.');
+    assert(#watch:refresh(1010, s, with_ally(case[1], case[2]), {}) == 0, 'A Corsair ' .. case[3] .. ' can\'t Double-Up, so their roll leaves.');
+    assert(#watch:refresh(1011, s, with_ally(102, 100), {}) == 0, 'It stays gone once they are back.');
+end
+watch = rolls.new();
+roll(ally, 105, 4, false, false, { ally, self_id }, { 'got', 'got' }, 1000);
+for _, case in ipairs({ { 102 }, { nil, 100 }, {} }) do
+    shown = watch:refresh(1010, s, with_ally(case[1], case[2]), {});
+    assert(#shown == 1 and shown[1].window_deadline == 1045, 'With no HP or zone read their window runs on.');
+end
+-- A Double-Up of theirs Vantage didn't see start leaves the same way.
+watch = rolls.new();
+roll(ally, 105, 7, true, false, { ally }, { 'got' }, 1000);
+assert(#watch:refresh(1001, s, with_ally(102, 100), {}) == 1, 'Fixture: their Double-Up shows.');
+assert(#watch:refresh(1010, s, with_ally(102, 0), {}) == 0, 'A KO\'d Corsair\'s Double-Up leaves too.');
+-- Fold takes off their Double-Up Chance (modules/era/lua/globals/job_utils/corsair.lua :411-412), and so does losing
+-- the roll (scripts/globals/job_utils/corsair.lua :601-614). Their Double-Up Chance comes with no time, so once it was
+-- listed for their roll, their window is over when it goes. Before it is listed, or while the snapshot can't be read,
+-- nothing ends.
+watch = rolls.new();
+roll(ally, 105, 4, false, false, { ally, self_id }, { 'got', 'got' }, 1000);
+assert(watch:refresh(1001, s, with_ally(102, 100), {})[1].window_deadline == 1045, 'Before their Double-Up Chance is listed their window runs on.');
+assert(watch:refresh(1002, s, with_ally(102, 100), { { entity_id = ally, effect = 308, present = true } })[1].window_deadline == 1045,
+    'Listed, it runs on.');
+roll(ally, 105, 9, true, false, { ally, self_id }, { 'got', 'got' }, 1005);
+assert(watch:refresh(1006, s, with_ally(102, 100), { { entity_id = ally, effect = 308, present = true } })[1].window_deadline == 1045,
+    'A Double-Up keeps the window.');
+assert(#watch:refresh(1007, s, { valid = false }, {}) == 1, 'While the snapshot can\'t be read it runs on.');
+shown = watch:refresh(1010, s, with_ally(102, 100), {});
+assert(#shown == 0, 'When their Double-Up Chance leaves, their window is over and the roll leaves: '
+    .. tostring(shown[1] and shown[1].window_deadline));
 
 -- The tooltip says what Vantage knows and gives no advice.
 watch = rolls.new();

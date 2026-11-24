@@ -1,4 +1,5 @@
--- Every client pattern owner (core/clock.lua, client.lua, chat.lua, native_party_ui.lua and name_anchor.lua) on the
+-- Each client pattern owner but the buff icons' and pet bar's (core/clock.lua, client.lua, chat.lua, native_party_ui.lua
+-- and name_anchor.lua) on the
 -- decoded 04288488 client: its warmup steps, one search each, find what its one-shot load finds, and an
 -- /addon reload in the same game process searches nothing and gets the same addresses. A changed pattern, or one
 -- whose bytes changed, is searched again alone, and the clock never calls an address that failed its check.

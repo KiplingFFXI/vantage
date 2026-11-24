@@ -1,11 +1,11 @@
--- Countdown text is set once, under More look on the main page, and reaches every display's own keys. A pick leaves the
+-- Countdown text is set once, under Text effects on the main page, and reaches every display's own keys. A pick leaves the
 -- font and the locks alone, and Undo has what was there before.
 local defaults = require('ui.defaults')
 local window, hud = require('ui.settings_window'), require('ui.hud')
 local imgui = require('imgui')
 local s, changes = defaults.make(), {}
 s.window.open, s.window.tab = true, 'Home'
-s.window.sections['Home/More look'] = true
+s.window.sections['Home/Text effects'] = true
 s.style.font = 'XI View'
 local snapshot = require('core.customization').history_value
 local cb = { now = function() return 100 end, save = function() return true end,

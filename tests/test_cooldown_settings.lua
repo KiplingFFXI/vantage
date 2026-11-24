@@ -1,4 +1,4 @@
--- The recast tints and ready pulse controls on the Recasts panel, the Party cooldowns panel, and their main page switches, in the real
+-- The recast tints on the Recasts panel, the ready pulse's own editor, the Party cooldowns panel, and their main page switches, in the real
 -- settings window through vantage.lua. Each control writes its own key as one Undo step named for it; Undo puts it
 -- back and Redo does it again. Search finds them before a page is opened. Profiles and shared presentation carry them
 -- but leave each character its own locks and samples, and a use a member makes reaches the watch, not the tracker.
@@ -29,11 +29,13 @@ end;
 for _, entry in ipairs({ { "Tint spells I can't afford", 'Display', 'Show this display' },
     { 'Lock spells while Silenced or Muted', 'Display', 'Show this display' },
     { 'Ready pulse', 'Display' }, { 'Shortest recast that pulses', 'Display', 'Pulse when a long recast is ready' }, { 'Never pulse for', 'Display', 'Pulse when a long recast is ready' },
-    { 'silenced', 'Display', 'Recast marks and the ready pulse' }, { 'Show party cooldown list', 'Display', 'In a list' },
-    { 'Benediction', 'Display' }, { 'two-hour', 'Display', 'Party cooldowns: two-hours and key abilities' },
-    { 'Turn on Party list buffs', 'Display', 'Beside the party list' }, { 'Show beside your party\'s window', 'Display', 'Beside the party list' },
+    { 'silenced', 'Display', 'Recast tints' }, { 'Show party cooldown list', 'Display', 'In a list' },
+    { 'Benediction', 'Display' }, { 'two-hour', 'Display', 'Party cooldowns: two-hours, key abilities and Utsusemi' },
+    { 'Sneak Attack', 'Display' }, { 'Trick Attack', 'Display' }, { 'Utsusemi: Ni', 'Display' },
+    { 'shadows', 'Display', 'Party cooldowns: two-hours, key abilities and Utsusemi' },
+    { 'Turn on Party list', 'Display', 'Beside the party list' }, { 'Show beside your party\'s window', 'Display', 'Beside the party list' },
     { 'Turn on Overhead icons', 'Display', 'Over heads' },
-    { 'Show party members over heads', 'Display', 'Over heads' },
+    { 'Show your party over heads', 'Display', 'Over heads' },
     { 'Party cooldowns', 'Home' }, { 'Ready pulse', 'Home' }, { 'Lock abilities under Amnesia', 'Display', 'Show this display' } }) do
     assert(found(entry[1], entry[2], entry[3] or entry[1]), 'Search finds ' .. (entry[3] or entry[1]) .. ' on ' .. entry[2] .. ' before it is drawn.');
 end;
@@ -65,6 +67,7 @@ end;
 local function begin(tab, setup)
     local s = defaults.tidy(defaults.make());
     local id, place = 'recasts', tab:match('^Display/(.+)$');
+    if not place then id, place = 'pulse', tab:match('^Pulse/(.+)$'); end
     if not place then id, place = 'cooldown_list', tab:match('^Cooldowns/(.+)$'); end
     if place then tab = 'Display'; require('ui.panel_frame').open(id, place); end
     -- The tints, the pulse and the watch are off at first; they start on here, so each switch below turns one off. The
@@ -73,7 +76,7 @@ local function begin(tab, setup)
     s.panels.spell_recasts.enabled, s.panels.ability_recasts.enabled = true, true;
     s.ready_pulse.enabled, s.party_cooldowns.enabled = true, true;
     s.window.open, s.window.tab = true, tab;
-    for _, name in ipairs({ 'Recasts/Recast tints', 'Recasts/Ready pulse' }) do s.window.sections[name] = true; end
+    for _, name in ipairs({ 'Recasts/Recast tints' }) do s.window.sections[name] = true; end
     app.state.settings = s;
     if setup then setup(s); end
     frame();
@@ -89,23 +92,24 @@ local function unlocked(s) s.party_cooldowns.list.enabled, s.party_cooldowns.lis
 -- { page, name, setup, steps, check(settings), Undo label, key }
 local rows = {
     { 'Display/show', 'Spells while my MP is too low', nil, click('Spells while my MP is too low##frame'), function(s) return s.recast_tints.mp == false; end, 'Spells while my MP is too low', 'recast_tints' },
-    { 'Display/show', 'MP mark color', nil, paint('Color##frame_mp', { 1, 0, 0, 0.5 }), function(s) return s.recast_tints.mp_color[1] == 1 and s.recast_tints.mp_color[2] == 0; end, 'MP mark color', 'recast_tints' },
+    { 'Display/show', 'MP tint color', nil, paint('Color##frame_mp', { 1, 0, 0, 0.5 }), function(s) return s.recast_tints.mp_color[1] == 1 and s.recast_tints.mp_color[2] == 0; end, 'MP tint color', 'recast_tints' },
     { 'Display/show', 'Spells while Silenced or Muted', nil, click('Spells while Silenced or Muted##frame'), function(s) return s.recast_tints.spell_lock == false; end, 'Spells while Silenced or Muted', 'recast_tints' },
     { 'Display/show', 'Spell lock color', nil, paint('Color##frame_spell_lock', { 0, 0, 1, 1 }), function(s) return s.recast_tints.spell_lock_color[3] == 1; end, 'Spell lock color', 'recast_tints' },
     { 'Display/show', 'Abilities under Amnesia', nil, click('Abilities under Amnesia##frame'), function(s) return s.recast_tints.ability_lock == false; end, 'Abilities under Amnesia', 'recast_tints' },
     { 'Display/show', 'Ability lock color', nil, paint('Color##frame_ability_lock', { 0, 1, 0, 1 }), function(s) return s.recast_tints.ability_lock_color[2] == 1; end, 'Ability lock color', 'recast_tints' },
-    { 'Display/show', 'Only recasts of at least', nil, slide('frame_Only recasts of at least', 300), function(s) return s.ready_pulse.min_seconds == 300; end, 'Only recasts of at least', 'ready_pulse' },
-    { 'Display/show', 'Start early', nil, slide('frame_Start early', 5), function(s) return s.ready_pulse.early == 5; end, 'Start early', 'ready_pulse' },
-    { 'Display/show', 'Pulse spot', nil, pick('frame_Pulse spot', 'A spot of its own', 'screen'), function(s) return s.ready_pulse.spot == 'screen'; end, 'Pulse spot', 'ready_pulse' },
-    { 'Display/show', 'Pulse size', nil, slide('frame_Pulse size', 96), function(s) return s.ready_pulse.size == 96; end, 'Pulse size', 'ready_pulse' },
-    { 'Display/show', 'Pulse color', nil, paint('Pulse color##frame', { 0, 1, 1, 1 }), function(s) return s.ready_pulse.color[1] == 0; end, 'Pulse color', 'ready_pulse' },
-    { 'Display/show', 'Pulse for', nil, slide('frame_Pulse for', 2.5), function(s) return s.ready_pulse.length == 2.5; end, 'Pulse for', 'ready_pulse' },
-    { 'Display/place', 'Lock pulse spot', function(s) s.ready_pulse.spot = 'screen'; end, click('Locked##frame_pulse'), function(s) return s.ready_pulse.locked == false; end, 'Lock pulse spot', 'ready_pulse' },
-    { 'Display/place', 'Pulse spot across', function(s) s.ready_pulse.spot = 'screen'; end, slide('frame_Across_pulse', 500), function(s) return s.ready_pulse.x == 500; end, 'Pulse spot across', 'ready_pulse' },
-    { 'Display/place', 'Pulse spot down', function(s) s.ready_pulse.spot = 'screen'; end, slide('frame_Down_pulse', 90), function(s) return s.ready_pulse.y == 90; end, 'Pulse spot down', 'ready_pulse' },
-    { 'Display/show', 'Never pulse for', nil, { { combo = '##Never pulse for', click = 'Cure##effect_10100' } },
+    { 'Pulse/show', 'Only recasts of at least', nil, slide('frame_Only recasts of at least', 300), function(s) return s.ready_pulse.min_seconds == 300; end, 'Only recasts of at least', 'ready_pulse' },
+    { 'Pulse/show', 'Start early', nil, slide('frame_Start early', 5), function(s) return s.ready_pulse.early == 5; end, 'Start early', 'ready_pulse' },
+    { 'Pulse/show', 'Pulse spot', nil, pick('frame_Pulse spot', 'A spot of its own', 'screen'), function(s) return s.ready_pulse.spot == 'screen'; end, 'Pulse spot', 'ready_pulse' },
+    { 'Pulse/show', 'Pulse size', nil, slide('frame_Pulse size', 96), function(s) return s.ready_pulse.size == 96; end, 'Pulse size', 'ready_pulse' },
+    { 'Pulse/show', 'Pulse color', nil, paint('Pulse color##frame', { 0, 1, 1, 1 }), function(s) return s.ready_pulse.color[1] == 0; end, 'Pulse color', 'ready_pulse' },
+    { 'Pulse/show', 'Pulse for', nil, slide('frame_Pulse for', 2.5), function(s) return s.ready_pulse.length == 2.5; end, 'Pulse for', 'ready_pulse' },
+    { 'Pulse/show', 'Pulse when a long recast is ready', nil, click('On##frame_display'), function(s) return s.ready_pulse.enabled == false; end, 'Pulse when a long recast is ready', 'ready_pulse' },
+    { 'Pulse/show', 'Lock pulse spot', function(s) s.ready_pulse.spot = 'screen'; end, click('Locked##frame'), function(s) return s.ready_pulse.locked == false; end, 'Lock pulse spot', 'ready_pulse' },
+    { 'Pulse/place', 'Pulse spot across', function(s) s.ready_pulse.spot, s.ready_pulse.locked = 'screen', false; end, slide('frame_Across_pulse', 500), function(s) return s.ready_pulse.x == 500; end, 'Across', 'ready_pulse' },
+    { 'Pulse/place', 'Pulse spot down', function(s) s.ready_pulse.spot, s.ready_pulse.locked = 'screen', false; end, slide('frame_Down_pulse', 90), function(s) return s.ready_pulse.y == 90; end, 'Down', 'ready_pulse' },
+    { 'Pulse/show', 'Never pulse for', nil, { { combo = '##Never pulse for', click = 'Cure##effect_10100' } },
         function(s) return s.ready_pulse.ignore[10100] == true; end, 'Never pulse for Cure', 'ready_pulse' },
-    { 'Display/show', 'Pulse again', function(s) s.ready_pulse.ignore[10100] = true; end, click('Pulse again'),
+    { 'Pulse/show', 'Pulse again', function(s) s.ready_pulse.ignore[10100] = true; end, click('Pulse again'),
         function(s) return next(s.ready_pulse.ignore) == nil; end, 'Pulse again for Cure', 'ready_pulse' },
     { 'Cooldowns/show', 'In a list', nil, click('In a list##frame_list'), function(s) return s.party_cooldowns.list.enabled; end, 'In a list', 'party_cooldowns' },
     { 'Cooldowns/show', 'Show samples', listed, click('Show samples##frame'),
@@ -113,46 +117,53 @@ local rows = {
     { 'Cooldowns/show', 'Locked', listed, click('Locked##frame'), function(s) return s.party_cooldowns.list.locked == false; end, 'Locked', 'party_cooldowns' },
     { 'Cooldowns/show', 'Show', nil, click('On##frame_display'), function(s) return s.party_cooldowns.enabled == false; end, 'Show this display', 'party_cooldowns' },
     { 'Cooldowns/show', 'Beside the party list', nil, click('Beside the party list##frame'), function(s) return s.party_cooldowns.strips == false; end, 'Beside the party list', 'party_cooldowns' },
-    { 'Cooldowns/show', 'Over heads', nil, click('Over heads##frame'), function(s) return s.party_cooldowns.overhead == true; end, 'Over heads', 'party_cooldowns' },
+    -- With Overhead icons already showing your party, Over heads changes nothing else.
+    { 'Cooldowns/show', 'Over heads', function(s) s.overhead.enabled = true; end, click('Over heads##frame'), function(s) return s.party_cooldowns.overhead == true; end, 'Over heads', 'party_cooldowns' },
     -- Every group off, as it starts when each was unticked: turning them on brings Your party back too.
-    { 'Cooldowns/show', 'Turn on Party list buffs', function(s) s.party_ui.strips.party, s.party_ui.strips.alliance1, s.party_ui.strips.alliance2 = false, false, false; end,
-        click('Turn on Party list buffs##frame'), function(s) return s.party_ui.enabled and s.party_ui.strips.party; end, 'Turn on Party list buffs', 'party_ui' },
+    { 'Cooldowns/show', 'Turn on Party list', function(s) s.party_ui.strips.party, s.party_ui.strips.alliance1, s.party_ui.strips.alliance2 = false, false, false; end,
+        click('Turn on Party list##frame'), function(s) return s.party_ui.enabled and s.party_ui.strips.party; end, 'Turn on Party list', 'party_ui' },
     { 'Cooldowns/show', 'Show beside your party\'s window', function(s)
         s.party_ui.enabled, s.party_ui.strips.party, s.party_ui.strips.alliance1, s.party_ui.strips.alliance2 = true, false, false, false;
     end, click('Show beside your party\'s window##frame'), function(s) return s.party_ui.strips.party; end, 'Show beside your party\'s window', 'party_ui' },
     { 'Cooldowns/show', 'Turn on Overhead icons', function(s) s.party_cooldowns.overhead = true; end, click('Turn on Overhead icons##frame'),
         function(s) return s.overhead.enabled; end, 'Turn on Overhead icons', 'overhead' },
-    { 'Cooldowns/show', 'Show party members over heads', function(s)
+    { 'Cooldowns/show', 'Show your party over heads', function(s)
         s.party_cooldowns.overhead, s.overhead.enabled, s.overhead.units.party, s.overhead.units.alliance = true, true, false, false;
-    end, click('Show party members over heads##frame'), function(s) return s.overhead.units.party; end, 'Show party members over heads', 'overhead' },
-    { 'Cooldowns/show', 'Benediction', nil, click('Benediction##frame_watch_18'), function(s) return s.party_cooldowns.ignore[18] == true; end, 'Benediction', 'party_cooldowns' },
-    { 'Cooldowns/show', 'Watch every ability', function(s) s.party_cooldowns.ignore[18] = true; end, click('Watch every ability##frame'),
-        function(s) return next(s.party_cooldowns.ignore) == nil; end, 'Watch every ability', 'party_cooldowns' },
+    end, click('Show your party over heads##frame'), function(s) return s.overhead.units.party; end, 'Show your party over heads', 'overhead' },
+    { 'Cooldowns/filters', 'Benediction', nil, click('Benediction##frame_watch_18'), function(s) return s.party_cooldowns.ignore[18] == true; end, 'Benediction', 'party_cooldowns' },
+    { 'Cooldowns/filters', 'Utsusemi: Ni', nil, click('Utsusemi: Ni##frame_watch_2387'), function(s) return s.party_cooldowns.ignore[2387] == true; end, 'Utsusemi: Ni', 'party_cooldowns' },
+    { 'Cooldowns/filters', 'Watch every ability and spell', function(s) s.party_cooldowns.ignore[18], s.party_cooldowns.ignore[2387] = true, true; end,
+        click('Watch every ability and spell##frame'), function(s) return next(s.party_cooldowns.ignore) == nil; end, 'Watch every ability and spell', 'party_cooldowns' },
     { 'Cooldowns/show', 'Show its heading', listed, click('Show its heading##frame'), function(s) return s.party_cooldowns.list.show_heading == false; end, 'Show its heading', 'party_cooldowns' },
     { 'Cooldowns/show', 'Sort', listed, pick('frame_Sort', 'Member name', 'name'), function(s) return s.party_cooldowns.list.sort == 'name'; end, 'Sort', 'party_cooldowns' },
     { 'Cooldowns/show', 'Most shown', listed, slide('frame_Most shown', 5), function(s) return s.party_cooldowns.list.max_rows == 5; end, 'Most shown', 'party_cooldowns' },
     { 'Cooldowns/place', 'Width', unlocked, slide('frame_Width', 420), function(s) return s.party_cooldowns.list.width == 420; end, 'Width', 'party_cooldowns' },
-    { 'Cooldowns/place', 'Tallest', unlocked, slide('frame_Tallest', 30), function(s) return s.party_cooldowns.list.height == 60; end, 'Tallest', 'party_cooldowns' },
+    { 'Cooldowns/place', 'Height', unlocked, slide('frame_Height', 30), function(s) return s.party_cooldowns.list.height == 60; end, 'Height', 'party_cooldowns' },
     { 'Cooldowns/place', 'Put it back where it started', function(s) unlocked(s); s.party_cooldowns.list.x = 600; end, click('Put it back where it started##frame'),
         function(s) return s.party_cooldowns.list.x == 40; end, 'Put Party cooldowns list back', 'party_cooldowns' },
     { 'Cooldowns/filters', 'WHM', listed, click('WHM##frame_list_job'), function(s) return s.party_cooldowns.list.jobs[3] == true; end, 'WHM', 'party_cooldowns' },
-    { 'Cooldowns/filters', 'Clear list filters', function(s) listed(s); s.party_cooldowns.list.jobs[3], s.party_cooldowns.list.abilities[18] = true, true; end, click('Clear list filters##frame'),
-        function(s) return next(s.party_cooldowns.list.jobs) == nil and next(s.party_cooldowns.list.abilities) == nil; end, 'Clear list filters', 'party_cooldowns' },
-    { 'Cooldowns/show', 'Reset this display', function(s) s.party_cooldowns.strips, s.party_cooldowns.ignore[18] = false, true; end,
-        { { click = 'Reset this display##frame' }, { click = 'Reset##look_frame_reset_cooldown_list' } },
+    { 'Cooldowns/filters', 'Reset this tab', function(s) listed(s); s.party_cooldowns.list.jobs[3] = true; end, click('Reset this tab##frame'),
+        function(s) return next(s.party_cooldowns.list.jobs) == nil; end, 'Reset this tab', 'party_cooldowns' },
+    { 'Cooldowns/show', 'Reset all of this display', function(s) s.party_cooldowns.strips, s.party_cooldowns.ignore[18] = false, true; end,
+        { { click = 'Reset all of this display##frame' }, { click = 'Reset##look_frame_reset_cooldown_list' } },
         function(s) return s.party_cooldowns.strips and next(s.party_cooldowns.ignore) == nil; end, 'Reset Party cooldowns', 'party_cooldowns' },
-    { 'Home', 'Party cooldowns', nil, click('Party cooldowns##main_party_cooldowns'), function(s) return s.party_cooldowns.enabled == false; end, 'Party cooldowns', 'party_cooldowns' },
+    -- The main page's In a list, ticked while the watch is off, shows the estimates there alone.
+    { 'Home', 'Party cooldowns in a list', function(s) s.party_cooldowns.enabled = false; end, click('In a list##main_cooldowns_list'),
+        function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled and not s.party_cooldowns.strips; end, 'Party cooldowns in a list', 'party_cooldowns' },
+    -- Unticked with no other place left, the watch goes off.
+    { 'Home', 'Party cooldowns in a list off', function(s) s.party_cooldowns.enabled, s.party_cooldowns.strips, s.party_cooldowns.list.enabled = true, false, true; end,
+        click('In a list##main_cooldowns_list'), function(s) return not s.party_cooldowns.enabled and not s.party_cooldowns.list.enabled; end, 'Party cooldowns in a list', 'party_cooldowns' },
     -- With nowhere to show them, turning them on shows the list.
-    { 'Home', 'Party cooldowns on', function(s) s.party_cooldowns.enabled, s.party_cooldowns.strips = false, false; end, click('Party cooldowns##main_party_cooldowns'),
-        function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Party cooldowns', 'party_cooldowns' },
+    { 'Cooldowns/show', 'Show, nowhere to show them', function(s) s.party_cooldowns.enabled, s.party_cooldowns.strips = false, false; end, click('On##frame_display'),
+        function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Show this display', 'party_cooldowns' },
     -- Beside the party list with no group ticked is nowhere too, and so is over heads with nobody to show them on.
-    { 'Home', 'Party cooldowns on, no group ticked', function(s)
+    { 'Cooldowns/show', 'Show, no group ticked', function(s)
         s.party_cooldowns.enabled, s.party_ui.enabled, s.party_ui.strips.party, s.party_ui.strips.alliance1, s.party_ui.strips.alliance2 = false, true, false, false, false;
-    end, click('Party cooldowns##main_party_cooldowns'), function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Party cooldowns', 'party_cooldowns' },
-    { 'Home', 'Party cooldowns on, over heads for nobody', function(s)
+    end, click('On##frame_display'), function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Show this display', 'party_cooldowns' },
+    { 'Cooldowns/show', 'Show, over heads for nobody', function(s)
         s.party_cooldowns.enabled, s.party_cooldowns.strips, s.party_cooldowns.overhead = false, false, true;
         s.overhead.enabled, s.overhead.units.party, s.overhead.units.alliance = true, false, false;
-    end, click('Party cooldowns##main_party_cooldowns'), function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Party cooldowns', 'party_cooldowns' },
+    end, click('On##frame_display'), function(s) return s.party_cooldowns.enabled and s.party_cooldowns.list.enabled; end, 'Show this display', 'party_cooldowns' },
     { 'Home', 'Ready pulse', nil, click('Ready pulse##main_pulse'), function(s) return s.ready_pulse.enabled == false; end, 'Ready pulse', 'ready_pulse' },
     { 'Home', 'End samples', function(s) s.party_cooldowns.list.enabled, s.party_cooldowns.preview = true, true; end, click('End samples##main'),
         function(s) return not s.party_cooldowns.preview and s.party_cooldowns.list.enabled; end, 'End samples', 'party_cooldowns' },
@@ -181,10 +192,10 @@ end;
 -- A place ticked with nothing to draw on says so on the Show tab, in the problem color, with the button that puts it
 -- right. Anything else needs no warning.
 do
-    local strip = { 'Party list buffs is off, so nothing shows beside the party list.', 'Turn on Party list buffs##frame' };
-    local strip_unset = { 'Party list buffs has no group ticked, so nothing shows beside the party list.', 'Show beside your party\'s window##frame' };
+    local strip = { 'Party list is off, so nothing shows beside the party list.', 'Turn on Party list##frame' };
+    local strip_unset = { 'Party list has no group ticked, so nothing shows beside the party list.', 'Show beside your party\'s window##frame' };
     local heads_off = { 'Overhead icons is off, so nothing shows over heads.', 'Turn on Overhead icons##frame' };
-    local heads_unset = { 'Overhead icons isn\'t set to show party or alliance members.', 'Show party members over heads##frame' };
+    local heads_unset = { 'Overhead icons isn\'t set to show your party or alliance.', 'Show your party over heads##frame' };
     -- The warnings the page shows, each with the call before its line.
     local function warned(setup)
         begin('Cooldowns/show', setup);
@@ -239,8 +250,9 @@ do
     shows(function(s) heads(false, true, true)(s); s.party_cooldowns.strips = true; end, strip, heads_off);
 end;
 
--- Filters has the 18 job ticks and no ability ticks, and a saved ability filter stays in force with no tick for it.
-begin('Cooldowns/filters', function(s) listed(s); s.party_cooldowns.list.abilities[18] = true; end);
+-- Filters has the 18 job ticks and no ability filter, and an ability filter an older save kept hides nothing. The watch
+-- list is there too, closed at first with how many it watches in its title, and it shows with the list off.
+begin('Cooldowns/filters', function(s) listed(s); s.party_cooldowns.list.abilities = { [18] = true }; end);
 MOCK.imgui_calls = {};
 frame();
 do
@@ -254,14 +266,28 @@ do
     assert(job_ticks == 18 and ability_ticks == 0, 'Filters has one tick for each job and none for an ability: ' .. job_ticks .. ' ' .. ability_ticks);
     assert(not lines.Jobs and not lines.Abilities, 'With one kind of tick the tab needs no line naming it.');
     local watch, list = require('core.party_cooldowns'), app.state.settings.party_cooldowns.list;
-    assert(watch.listed(list, { job = 3, ability = 18 }) and not watch.listed(list, { job = 3, ability = 74 }), 'A saved ability filter keeps working.');
+    assert(watch.listed(list, { job = 3, ability = 18 }) and watch.listed(list, { job = 3, ability = 74 }), 'An old ability filter hides nothing.');
     begin('Cooldowns/show');
     MOCK.imgui_calls = {};
     frame();
     for _, call in ipairs(MOCK.imgui_calls) do
-        if call[1] == 'Checkbox' and tostring(call[2]):find('_watch_', 1, true) then watch_ticks = watch_ticks + 1; end
+        assert(not (call[1] == 'Checkbox' and tostring(call[2]):find('_watch_', 1, true)), 'Show has no watch ticks.');
     end
-    assert(watch_ticks == #watch.list, 'Abilities to watch keeps a tick for each ability.');
+    -- The first draw, before the mock's open fold is saved as open.
+    MOCK.imgui_calls = {};
+    begin('Cooldowns/filters', function(s) s.party_cooldowns.ignore[18] = true; end);
+    local title = 'Abilities and spells to watch: ' .. (#watch.list - 1) .. ' of ' .. #watch.list .. '##Abilities and spells to watch';
+    for index, call in ipairs(MOCK.imgui_calls) do
+        if call[1] == 'Checkbox' and tostring(call[2]):find('_watch_', 1, true) then watch_ticks = watch_ticks + 1; end
+        if call[1] == 'CollapsingHeader' and call[2] == title then
+            assert(MOCK.imgui_calls[index - 1][1] == 'SetNextItemOpen' and MOCK.imgui_calls[index - 1][2] == false, 'The watch list starts closed.');
+            title = nil;
+        end
+    end
+    assert(watch_ticks == #watch.list, 'Abilities and spells to watch keeps a tick for each one.');
+    assert(title == nil, 'Its title says how many it watches.');
+    assert(not app.state.settings.party_cooldowns.list.enabled and require('ui.panel_frame').context() == 'cooldown_list/filters',
+        'Filters shows with the list off.');
     -- Each job name is on the left of its first tick, with the first ticks in one column.
     local names, column = {}, nil;
     for index, call in ipairs(MOCK.imgui_calls) do
@@ -280,11 +306,48 @@ do
         end
     end
     assert(#names == 18, 'All 18 job names sit beside their ticks: ' .. #names);
+    -- A tick with no room left on its line starts the next one, in the ticks' column, not past the window's edge.
+    local function wraps()
+        local count, column = 0, true;
+        for index, call in ipairs(MOCK.imgui_calls) do
+            if call[1] == 'NewLine' and MOCK.imgui_calls[index + 1] and MOCK.imgui_calls[index + 1][1] == 'SetCursorPosX' then
+                local at = index + 2;
+                while MOCK.imgui_calls[at] and MOCK.imgui_calls[at][1] ~= 'Checkbox' do at = at + 1; end
+                if MOCK.imgui_calls[at] and tostring(MOCK.imgui_calls[at][2]):find('_watch_', 1, true) then
+                    count, column = count + 1, column and MOCK.imgui_calls[index + 1][2] == 300;
+                end
+            end
+        end
+        return count, column;
+    end
+    MOCK.imgui_calls = {};
+    frame();
+    assert(wraps() == 0, 'With room, each job\'s ticks stay on one line.');
+    -- The cursor as ImGui keeps it: past the last item after SameLine, at the line's start after NewLine. The column is
+    -- where the first tick went, after the job's name.
+    local same_line, new_line, set_x, get_x = imgui.SameLine, imgui.NewLine, imgui.SetCursorPosX, imgui.GetCursorPosX;
+    local x = 14;
+    imgui.SameLine = function(...) x = 300; return same_line(...); end;
+    imgui.NewLine = function(...) x = 14; return new_line(...); end;
+    imgui.SetCursorPosX = function(value, ...) x = value; return set_x(value, ...); end;
+    imgui.GetCursorPosX = function(...) get_x(...); return x; end;
+    MOCK.content_width = 100;
+    MOCK.imgui_calls = {};
+    frame();
+    local count, column = wraps();
+    MOCK.content_width = nil;
+    imgui.SameLine, imgui.NewLine, imgui.SetCursorPosX, imgui.GetCursorPosX = nil, nil, nil, nil;
+    assert(count > 0 and column, 'In a narrow window the ticks go on under the first, in its column: ' .. count);
 end
 -- The test pulse plays one pulse and changes no setting.
-begin('Display/show');
+begin('Pulse/show');
 frame({ click = 'Show a test pulse##frame' });
 assert(tested == 1 and #app.state.view.pulses == 1 and #app.state.history == 0, 'Show a test pulse plays one and is no Undo step.');
+-- Recasts links to the pulse's own editor.
+begin('Display/show');
+frame({ click = 'Edit the ready pulse##frame' });
+frame();
+assert(require('ui.panel_frame').context() == 'pulse/show' and #app.state.history == 0, 'Edit the ready pulse opens its editor and changes nothing.');
 
 -- /vg set and /vg get reach the new settings; the samples turn the list on.
 local function command(text) local event = { command = text }; MOCK.fire('command', event); return event; end;

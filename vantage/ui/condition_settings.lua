@@ -1,5 +1,5 @@
 -- When to show: when a display shows (core/conditions.lua), by jobs, level, Level Sync, zones, party, engaged and pet. These
--- are the rows of every display's When to show tab.
+-- are the rows of every display's When to show tab. The jobs and the zones each fold to a line that says what they pick.
 local conditions = require('core.conditions');
 local elements = require('ui.elements');
 local frame = require('ui.panel_frame');
@@ -8,6 +8,7 @@ local ctx = frame.ctx;
 local sync_names = { any = 'Either', yes = 'Only while synced', no = 'Only while not synced' };
 local fight_names = { any = 'Either', yes = 'Only while engaged', no = 'Only while not engaged' };
 local pet_names = { any = 'Either', yes = 'Only with a pet out', no = 'Only with no pet out' };
+local list_names = { only = 'Only these', except = 'All but these' };
 local zone_help = {
     town = 'Towns, from the Phoenix zone data.', field = 'Fields, including the airships and the pirate ferries.',
     dungeon = 'Dungeons, from the Phoenix zone data.',
@@ -18,23 +19,34 @@ local zone_help = {
     other = 'Zones with no kind of their own, such as the ferries to Selbina and Mhaura and the battlefield arenas.',
 };
 
--- What still shows a display its conditions hide: edit mode doesn't place overhead icons, and the pulse has no samples.
-local anyway = { overhead = 'Samples show it anyway.', pulse = 'A test pulse and edit mode show it anyway.' };
+-- Phoenix's level cap. Levels go up to it, and it stands for no top, kept as the 99 a fresh condition has.
+local TOP = 75;
 
--- The rows for one display's conditions. fixed is its id, if it isn't the display the rows are drawn for, and tag tells
--- its rows from those of the display beside it.
-local function build(fixed, tag)
-    local function id_of() return fixed or ctx.id; end;
+-- What still shows a display its conditions hide: edit mode doesn't place overhead icons, and the pulse has no samples.
+local anyway = { overhead = 'Samples show it anyway.', pulse = 'A test pulse and Arrange on screen show it anyway.' };
+
+-- The rows of the display the frame has open.
+local function build()
+    local function id_of() return ctx.id; end;
     local function value() return elements.conditions(ctx.s, id_of()); end;
-    local suffix = tag or '';
-    local function jobs(text, key, side, help)
+    local suffix = '';
+    -- A fold of ticks, titled with what they pick, with Only these or All but these over them.
+    local function listed(text, key, except, side, ticks, every, help)
+        local mode = frame.radio(side == 'where' and 'Show it in' or 'Show it for', nil, { 'only', 'except' }, list_names, 'Only these shows it for what is ticked. All but these shows it for everything else.', {
+            tag = '_' .. side .. '_list' .. suffix, find = text .. ': only these or all but these', alias = 'except exclude every all but not',
+            read = function() return value()[except] and 'except' or 'only'; end,
+            write = function(_, chosen) value()[except] = chosen == 'except'; end });
+        return frame.fold(text, help, { mode, frame.line(nil, nil, ticks, { every = every }) }, {
+            key = text, tag = '_' .. side .. '_fold' .. suffix, title = function() return text .. ': ' .. conditions.picks(value(), key); end });
+    end;
+    local function jobs(text, key, except, side, help)
         local rows = {};
         for job, name in ipairs(conditions.jobs) do
             rows[job] = frame.tick(name, nil, help, { tag = '_' .. side .. suffix,
                 read = function() return value()[key][job] == true; end,
                 write = function(_, on) value()[key][job] = on or nil; end });
         end;
-        return frame.line(text, 'Leave every job unticked for any job.', rows, { below = true, every = 6, tag = '_' .. side .. '_line' .. suffix });
+        return listed(text, key, except, side, rows, 6, 'Leave every job unticked for any job.');
     end;
     local zones = {};
     for index, kind in ipairs(conditions.zone_kinds) do
@@ -50,46 +62,44 @@ local function build(fixed, tag)
     end;
     return {
         frame.note(function()
-            return 'Always, unless you choose something here. Every condition you set must hold; one with several picks holds for any of them. They hide only the display: tracking and alerts go on. '
-                .. (anyway[id_of()] or 'Samples and edit mode show it anyway.');
+            local id = id_of();
+            return 'Always, unless you choose something here. Every condition you set must hold; one with several picks holds for any of them. '
+                .. (id == 'notices' and 'While they hide Alerts, no alert plays, in chat or as a sound. Tracking goes on. '
+                    or 'They hide only the display: tracking and alerts go on. ')
+                .. (anyway[id] or 'Samples and Arrange on screen show it anyway.');
         end),
         frame.note(function() return elements.label(id_of()) .. ': ' .. table.concat(conditions.describe(value()), ' '); end),
-        jobs('Main job', 'main_jobs', 'main', 'Show it while this is your main job.'),
-        jobs('Support job', 'sub_jobs', 'sub', 'Show it while this is your support job.'),
+        jobs('Main job', 'main_jobs', 'main_except', 'main', 'Show it while this is your main job.'),
+        jobs('Support job', 'sub_jobs', 'sub_except', 'sub', 'Show it while this is your support job.'),
         frame.line('Level', 'Your main job\'s level as the game shows it, lowered under Level Sync or a level cap.', {
-            frame.number('From', 'level_min', 1, 99, 'It shows from this level.', { tag = '_min' .. suffix, find = 'Lowest level', width = 110, of = value,
-                format = 'From %.0f', write = function(_, chosen)
+            frame.number('From', 'level_min', 1, TOP, 'It shows from this level.', { tag = '_min' .. suffix, find = 'Lowest level', width = 110, of = value,
+                format = 'From %.0f', read = function() return math.min(value().level_min, TOP); end, write = function(_, chosen)
                     local kept = value();
                     kept.level_min = chosen;
-                    if kept.level_max < chosen then kept.level_max = chosen; end;
+                    if kept.level_max < chosen then kept.level_max = chosen >= TOP and 99 or chosen; end;
                 end }),
-            frame.number('To', 'level_max', 1, 99, 'It shows up to this level.', { tag = '_max' .. suffix, find = 'Highest level', width = 110, of = value,
-                format = 'To %.0f', write = function(_, chosen)
+            frame.number('To', 'level_max', 1, TOP, 'It shows up to this level. ' .. TOP .. ' leaves no top.', { tag = '_max' .. suffix, find = 'Highest level', width = 110, of = value,
+                format = 'To %.0f', read = function() return math.min(value().level_max, TOP); end, write = function(_, chosen)
                     local kept = value();
-                    kept.level_max = chosen;
+                    kept.level_max = chosen >= TOP and 99 or chosen;
                     if kept.level_min > chosen then kept.level_min = chosen; end;
                 end }),
         }, { tag = '_level' .. suffix }),
         frame.radio('Level Sync', 'level_sync', conditions.states, sync_names, 'Whether you are Level Synced.', { tag = '_sync' .. suffix, of = value }),
-        frame.line('Where', 'Leave every kind unticked for any zone.', zones, { tag = '_where' .. suffix, alias = 'Zones zone kinds', below = true, every = 4 }),
+        listed('Where', 'zones', 'zones_except', 'where', zones, 4, 'Leave every kind unticked for any zone.'),
         frame.line('Party', 'Solo, party or alliance as the game\'s party list shows it. Leave them unticked for any.', groups, { tag = '_party' .. suffix, alias = 'Party and fight' }),
         frame.radio('Fighting', 'engaged', conditions.states, fight_names, 'Whether you are engaged.', { tag = '_fight' .. suffix, alias = 'Engaged combat', of = value }),
-        frame.radio('Pet', 'pet', conditions.states, pet_names, 'Whether you have a pet out.', { tag = '_pet' .. suffix, of = value }),
+        -- The Pet display shows only with a pet out, so it has the row only to take off a pick saved before.
+        frame.radio('Pet', 'pet', conditions.states, pet_names, 'Whether you have a pet out.', { tag = '_pet' .. suffix, of = value,
+            only = function() return id_of() ~= 'pet' or value().pet ~= 'any'; end }),
         frame.note(function()
             local id = id_of();
             if not conditions.any(value()) then return conditions.where(); end;
             return (conditions.shown(id) and 'Right now it shows. ' or 'Right now its conditions hide it. ') .. conditions.where();
         end, { live = true }),
-        frame.button('Clear these conditions', 'It always shows again.', function(c)
-            local id = id_of();
-            c.changed(function() elements.config(ctx.s, id)[elements.by_id[id].conditions] = conditions.make(); end, true,
-                'Clear the When to show choices of ' .. elements.label(id));
-        end, { tag = '_when' .. suffix, alias = 'Reset conditions when to show always' }),
     };
 end;
 
 page.rows = build();
--- The ready pulse has conditions of its own, in a fold of the Recasts panel's When to show.
-page.pulse_rows = build('pulse', '_pulse');
 
 return page;

@@ -1,5 +1,5 @@
 -- The hide rule scopes enemy, other and pet: they are kept by tidy and match only their own units, in the panels as
--- on overhead icons, and the other scopes match theirs. A rule with a trust scope drops.
+-- on overhead icons, and the other scopes match theirs.
 package.loaded['ui.icons'] = { status = function(id) return 5000 + id; end };
 local filters = require('core.effect_filters');
 local defaults, hud = require('ui.defaults'), require('ui.hud');
@@ -9,13 +9,13 @@ local function rule(effect, scope)
     result.effect, result.scope = effect, scope;
     return result;
 end
--- tidy keeps each of these scopes, and drops a scope it doesn't know. Trust is one: the rule goes, so it can't
--- widen into a rule for everyone.
-local kept = filters.tidy({ rules = { rule(4, 'enemy'), rule(4, 'other'), rule(4, 'pet'), rule(4, 'trust'), rule(4, 'mobs') } });
+-- tidy keeps each of these scopes, and drops a scope it doesn't know: the rule goes, so it can't widen into a rule
+-- for everyone.
+local kept = filters.tidy({ rules = { rule(4, 'enemy'), rule(4, 'other'), rule(4, 'pet'), rule(4, 'mobs') } });
 assert(#kept.rules == 3 and kept.rules[1].scope == 'enemy' and kept.rules[2].scope == 'other' and kept.rules[3].scope == 'pet',
-    'The three scopes are kept, and a trust rule or an unknown one is not.');
-kept = filters.tidy({ enabled = true, rules = { rule(4, 'trust') } });
-assert(#kept.rules == 0 and not filters.compile(kept).active, 'A save with only a trust rule hides nothing.');
+    'The three scopes are kept, and an unknown one is not.');
+kept = filters.tidy({ enabled = true, rules = { rule(4, 'mobs') } });
+assert(#kept.rules == 0 and not filters.compile(kept).active, 'A save with only an unknown scope hides nothing.');
 
 -- You, a party member, an alliance member, another player, a pet and a mob, as the tracker scopes them.
 local snapshot = { valid = true, id = 1001, zone = 102, name = 'Tester', job = 1, party = {
@@ -32,7 +32,6 @@ for id, scope in pairs(units) do
         entity_id = id, entity_name = names[id], scope = scope };
 end
 local recipients = filters.recipients(snapshot);
-assert(recipients[1002].trust == nil and recipients[1001].trust == nil, 'A unit carries no trust field.');
 assert(recipients[1004].scope == 'other', 'Another player the client sees is one of the others: ' .. tostring(recipients[1004].scope));
 
 -- Who a rule with each scope hides Paralysis on.
@@ -73,4 +72,3 @@ local page = io.open(ADDON_DIR .. '/ui/filter_settings.lua'):read('*a');
 for _, scope in ipairs({ 'enemy', 'other', 'pet' }) do
     assert(page:find("'" .. scope .. "'", 1, true), 'The page lists ' .. scope);
 end
-assert(not page:lower():find('trust', 1, true), 'The page has no trust scope and no word of one.');

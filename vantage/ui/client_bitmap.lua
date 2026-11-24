@@ -1,16 +1,17 @@
 -- Textures made from the pictures the client keeps in its resources (item and status icons). Each user makes its
 -- own loader, so its caches, device and retry stay its own; limit is the most bytes that resource's bitmap owns.
 local bitmap = {};
+local steady = require('core.steady');
 
 function bitmap.loader(limit)
     local loader = {};
     local library, device, retry_at;
 
     function loader.prepare()
-        if library == nil or library == false and os.clock() >= (retry_at or 0) then
+        if library == nil or library == false and steady() >= (retry_at or 0) then
             local ok, value = pcall(require, 'd3d8');
             library = ok and value or false;
-            retry_at = not library and os.clock() + 30 or nil;
+            retry_at = not library and steady() + 30 or nil;
         end
         return library and true or false;
     end

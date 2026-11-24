@@ -2,8 +2,8 @@ local store = require('core.store');
 local profiles = {};
 local excluded = { window = true, job_profiles = true, shared_layout = true, shared_scope = true,
     active_profile = true, profile_job = true, preview = true, watch_ids = true,
-    -- It changes how the game draws on this computer, so it stays with the character who ticked it.
-    replace_game_buffs = true };
+    -- Each changes how the game draws on this computer, so it stays with the character who ticked it.
+    replace_game_buffs = true, replace_game_pet_bar = true };
 local positions = { x = true, y = true, width = true, height_limit = true, auto_width = true, auto_height = true,
     stack_direction = true, growth = true, item_width = true,
     min_width = true, max_width = true, dock_match_width = true,
@@ -14,8 +14,8 @@ local presentation = { style = true, window_style = true, panels = true, recast_
     edit_mode = true };
 -- The alert notices' place, size, anchor and When to show.
 local notice_fields = { notice_x = true, notice_y = true, notice_width = true, notice_height = true, max_notices = true,
-    notice_anchor = true, notice_conditions = true };
--- Each character's own party list buff switches and lock.
+    notice_anchor = true, notice_conditions = true, notice_text_size = true, notice_colors = true };
+-- Each character's own Party list switches and lock.
 local party_local = { enabled = true, strips = true, preview = true, locked = true };
 -- And its own overhead icons switch and samples, as the main page has them.
 local overhead_local = { enabled = true, preview = true };
@@ -150,7 +150,7 @@ function profiles.capture(settings)
         if (not excluded[key]) then result[key] = store.copy(value); end
     end
     for _, panel in pairs(result.panels or {}) do
-        if (type(panel) == 'table') then panel.members = nil; end
+        if (type(panel) == 'table') then panel.members, panel.preview = nil, nil; end
     end
     if (type(result.party_ui) == 'table') then
         result.party_ui = require('ui.party_defaults').tidy(result.party_ui);
@@ -169,7 +169,7 @@ function profiles.capture_layout(settings, scope)
         local content = {};
         for key in pairs(presentation) do content[key] = store.copy(settings[key]); end
         for _, panel in pairs(content.panels or {}) do
-            if (type(panel) == 'table') then panel.members, panel.locked = nil, nil; end
+            if (type(panel) == 'table') then panel.members, panel.locked, panel.preview = nil, nil, nil; end
         end
         if (type(content.party_ui) == 'table') then
             for field in pairs(party_local) do content.party_ui[field] = nil; end
@@ -241,7 +241,7 @@ function profiles.apply_layout(settings, layout, scope)
     for key, panel in pairs(candidate.panels or {}) do
         if (type(panel) == 'table' and type(source) == 'table' and type(source[key]) == 'table') then
             for field, value in pairs(source[key]) do
-                if ((full and field ~= 'members' and field ~= 'locked' or positions[field]) and type(value) == type(panel[field])) then
+                if ((full and field ~= 'members' and field ~= 'locked' and field ~= 'preview' or positions[field]) and type(value) == type(panel[field])) then
                     panel[field] = store.copy(value);
                 end
             end
@@ -337,13 +337,21 @@ local function same(a, b)
 end
 -- Exports (core/share.lua) compare a value read back the same way.
 profiles.same = same;
--- Three ways: what this character changed since base wins, else what the other one did. A list is one value.
-local function merge(own, base, theirs)
-    if (type(own) == 'table' and type(base) == 'table' and type(theirs) == 'table' and #own == 0 and #theirs == 0) then
+-- A list is one value in the merge, since taking an item out of it moves the ones after it. The party list's three
+-- groups, Your party, Alliance 1 and Alliance 2, are always there in that order, so each group, and each field of one,
+-- merges on its own, as a panel does. name is a table's key in a layout and parent is its parent's key.
+local function by_group(parent, name) return parent == 'party_ui' and name == 'groups'; end
+-- vantage.lua moves the Undo steps group by group the same way.
+profiles.by_group = by_group;
+-- Three ways: what this character changed since base wins, else what the other one did. A list is one value, except
+-- the party groups (by_group). name and parent say where own is in the layout.
+local function merge(own, base, theirs, name, parent)
+    if (type(own) == 'table' and type(base) == 'table' and type(theirs) == 'table'
+        and (by_group(parent, name) or #own == 0 and #theirs == 0)) then
         local result = {};
-        for key, value in pairs(own) do result[key] = merge(value, base[key], theirs[key]); end
+        for key, value in pairs(own) do result[key] = merge(value, base[key], theirs[key], key, name); end
         for key, value in pairs(theirs) do
-            if (own[key] == nil) then result[key] = merge(nil, base[key], value); end
+            if (own[key] == nil) then result[key] = merge(nil, base[key], value, key, name); end
         end
         return result;
     end
@@ -361,6 +369,10 @@ function profiles.new(folder)
     -- The shared layout file's text and value as last read, so a poll of an unchanged file doesn't decode it again.
     -- The value is shared, with layout_seen too, and nothing changes it: apply_layout copies what it takes.
     local layout_file = {};
+    -- The profiles file's text and value as last read, the same way, for every read of it here, so a read decodes it
+    -- again only when its text changed. Nothing changes the value: a change to the file is made on a copy, and the
+    -- value read goes to store.write as what the file held.
+    local summary_file = {};
     function self:set_owner(identity) owner = type(identity) == 'string' and identity ~= '' and identity or nil; end
 
     local function record(kind, name, to_name, changes, settings)
@@ -388,20 +400,20 @@ function profiles.new(folder)
 
     -- Writes the profiles file, and says when it is full.
     local function write(data, original)
-        local ok, why, code = store.write(self.path, data, original);
+        local ok, why, code = store.write(self.path, data, original, summary_file);
         if (code == 'full') then why = FULL; end
         return ok, why;
     end
 
     function self:list()
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return {}, err; end
         return profile_names(data);
     end
     self.names = self.list;
 
     function self:source(name, settings)
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return { name = name or '', exists = false, modified = false }, err; end
         return profile_source(data, name, settings);
     end
@@ -409,7 +421,7 @@ function profiles.new(folder)
 
     -- The summary only reads the file, so it decodes it again only when the text changed. Given a count of the
     -- settings' changes, it keeps the Modified check until the file text, the active profile or the settings change.
-    local summary_file, summary_kept = {}, {};
+    local summary_kept = {};
     function self:summary(settings, revision)
         local data, err = store.read(self.path, summary_file);
         local name = settings and settings.active_profile or '';
@@ -431,7 +443,7 @@ function profiles.new(folder)
     local function save_profile(name, settings, mode, expected)
         local valid, problem = clean_name(name);
         if (not valid) then return false, problem; end
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return false, err; end
         local found, why = find_name(data, valid);
         if (why) then return false, why; end
@@ -442,7 +454,8 @@ function profiles.new(folder)
             return false, 'That profile changed or was removed. Review it again before overwriting.';
         end
         valid = found or valid;
-        local original = store.copy(data);
+        local original = data;
+        data = store.copy(original);
         local before = data[valid];
         data[valid] = profiles.capture(settings);
         local ok, message = write(data, original);
@@ -456,7 +469,7 @@ function profiles.new(folder)
 
     -- The settings that loading the profile called name would give, leaving settings as they are, and the name as saved.
     function self:settings_of(name, settings)
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return nil, err; end
         local key, problem = find_name(data, name);
         if (problem) then return nil, problem; end
@@ -467,7 +480,7 @@ function profiles.new(folder)
     end
 
     function self:load(name, settings)
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return false, err; end
         local key, problem = find_name(data, name);
         if (problem) then return false, problem; end
@@ -481,16 +494,17 @@ function profiles.new(folder)
     end
 
     function self:delete(name, expected, settings)
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return false, err; end
         local key, problem = find_name(data, name);
         if (problem) then return false, problem; end
         if (not key or type(data[key]) ~= 'table') then return false, 'That profile was not found.'; end
         if (expected ~= nil and not guarded(data[key], expected)) then return false, 'That profile changed. Review it again before deleting.'; end
-        local original = store.copy(data);
+        local original = data;
+        data = store.copy(original);
         local before = data[key];
         data[key] = nil;
-        local ok, why = store.write(self.path, data, original);
+        local ok, why = store.write(self.path, data, original, summary_file);
         if (ok) then record('delete', key, nil, { [key] = { before = before, after = false } }, settings); end
         return ok, why;
     end
@@ -498,7 +512,7 @@ function profiles.new(folder)
     function self:rename(name, new_name, settings, expected)
         local valid, problem = clean_name(new_name);
         if (not valid) then return false, problem; end
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return false, err; end
         local old, why = find_name(data, name);
         if (why) then return false, why; end
@@ -508,7 +522,8 @@ function profiles.new(folder)
         if (conflict) then return false, conflict; end
         if (collision and collision ~= old) then return false, 'That name is already used by another profile.'; end
         if (old == valid) then return true; end
-        local original = store.copy(data);
+        local original = data;
+        data = store.copy(original);
         local saved = data[old];
         data[old], data[valid] = nil, saved;
         local ok, message = write(data, original);
@@ -526,7 +541,7 @@ function profiles.new(folder)
     function self:recover(settings)
         local entry = history[#history];
         if (not entry) then return false, 'There is no profile change to recover in this session.'; end
-        local data, err = store.read(self.path);
+        local data, err = store.read(self.path, summary_file);
         if (data == nil) then return false, err; end
         local folded, expected = {}, {};
         for name, change in pairs(entry.changes) do
@@ -538,7 +553,8 @@ function profiles.new(folder)
             if (type(name) == 'string' and folded[name:lower()]) then actual[name] = value; end
         end
         if (token(actual) ~= token(expected)) then return false, 'Those profiles changed outside this action. Recovery kept the current files unchanged.'; end
-        local original = store.copy(data);
+        local original = data;
+        data = store.copy(original);
         for name, change in pairs(entry.changes) do data[name] = change.before ~= false and store.copy(change.before) or nil; end
         local ok, why = write(data, original);
         if (not ok) then return false, why; end
@@ -569,7 +585,7 @@ function profiles.new(folder)
         if (not job or job ~= math.floor(job) or job < 1 or job > 18) then return false, 'Choose a valid job.'; end
         if (type(name) ~= 'string') then return false, 'Choose a profile from the list.'; end
         if (name ~= '') then
-            local data, err = store.read(self.path);
+            local data, err = store.read(self.path, summary_file);
             if (data == nil) then return false, err; end
             local key, problem = find_name(data, name);
             if (problem) then return false, problem; end
@@ -594,23 +610,34 @@ function profiles.new(folder)
     -- changes since then go into settings first, under this one's own, so publishing a move here doesn't put
     -- back a panel moved there. Returns the layout written and whether settings took changes from the file.
     -- When another character's write lands between this read and write, it reads, merges and writes once more.
+    -- When it fails after settings took changes, they keep them and the file they came from counts as seen. It then
+    -- returns false, why, nil, true and the base with those changes in it, so only this character's own change is
+    -- still to be sent.
     function self:publish_layout(settings, base)
         local scope = settings.shared_scope or 'placement';
         local own = profiles.capture_layout(settings, scope);
-        local merged = false;
+        local merged, taken = false, nil;
+        local function failed(why)
+            if (not merged) then return false, why; end
+            self.layout_seen = taken;
+            -- A field this character changed keeps the base it had, so the change is still owed. Every other field
+            -- takes its value in settings now, which came from the file.
+            return false, why, nil, true, merge(base, own, profiles.capture_layout(settings, scope));
+        end
         for attempt = 1, 2 do
             local file, err = store.read(self.layout_path);
-            if (file == nil) then return false, err; end
+            if (file == nil) then return failed(err); end
             if (base ~= nil and next(file) ~= nil and not same(file, self.layout_seen)) then
                 local theirs = store.copy(settings);
                 local ok, why = profiles.apply_layout(theirs, file, scope);
-                if (not ok) then return false, why; end
+                if (not ok) then return failed(why); end
                 local layout = merge(own, base, profiles.capture_layout(theirs, scope));
                 if (not same(layout, profiles.capture_layout(settings, scope))) then
                     ok, why = profiles.apply_layout(settings, layout, scope);
-                    if (not ok) then return false, why; end
+                    if (not ok) then return failed(why); end
                     merged = true;
                 end
+                taken = file;
             end
             local layout, problem = profiles.capture_layout(settings, scope);
             if (not layout) then return false, problem; end
@@ -624,9 +651,9 @@ function profiles.new(folder)
                 self.layout_seen = layout;
                 return true, nil, layout, merged;
             end
-            if (code ~= 'changed') then return false, why; end
+            if (code ~= 'changed') then return failed(why); end
         end
-        return false, 'Another character saved it at the same moment, twice.';
+        return failed('Another character saved it at the same moment, twice.');
     end
     -- The shared layout file, and whether it is the one last read or written here. When it is, the value read counts as
     -- the one seen from then on, so the next poll of the unchanged file knows it without a walk.

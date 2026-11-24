@@ -1,5 +1,5 @@
--- The party list buffs: Your party, Alliance 1 and Alliance 2 each have their own tick, and Show sets each as one Undo
--- step. Party list buffs says once and plainly where alliance effects come from, and offers only what the
+-- Party list: Your party, Alliance 1 and Alliance 2 each have their own tick, and Show sets each as one Undo
+-- step. Party list says once and plainly where alliance effects come from, and offers only what the
 -- strips use.
 local defaults, party = require('ui.defaults'), require('ui.party_defaults');
 local equal = require('core.customization').equal;
@@ -17,7 +17,7 @@ local settings = h.fresh(function(s) s.party_ui.enabled = true; end);
 local before = custom.history_value(settings);
 local labels = h.every_tab('party_ui');
 assert(equal(custom.history_value(h.s), before) and #h.app.state.history == 0, 'Opening every tab changes nothing.');
-for _, label in ipairs({ 'Buff side', 'Longest row', 'Countdowns', 'Party buff icons', 'Opacity', 'Find an effect' }) do
+for _, label in ipairs({ 'Buff side', 'Longest row', 'Countdowns', 'Party buff icons', 'Opacity', 'Effect' }) do
     assert(labels[label], 'The panel has ' .. label);
 end;
 -- The group ticks, what kind of effects show and the light are on Show.
@@ -29,15 +29,16 @@ assert(h.called('RadioButton', 'Buffs only##frame_Show_kinds_buff'), 'Show has t
 for _, label in ipairs({ 'Show party strip', 'Show alliance strip 1', 'Show alliance strip 2', 'Effect types' }) do
     assert(not labels[label], 'Not a row of its own: ' .. label);
 end;
--- The party list buffs always show every effect, grow with their buffs and keep each row next to the game's row, so the
+-- Party list always show every effect, grow with their buffs and keep each row next to the game's row, so the
 -- panel has no control for any of that.
 for _, label in ipairs({ 'Include effects without known timers', 'Show estimated timers', 'Member effect filters', 'Strip width',
     'Snap effects beside frame' }) do
     assert(not labels[label], 'Not on the panel: ' .. label);
 end;
 -- What only a panel of its own uses shows while a shown group is in one, and every name for it is "panel of its own".
--- Panels of their own, the switch that makes one, always shows.
-local panel_only = { "Snap back beside the game's list when released", 'Put party buffs back beside the party list', 'Member order', 'Member names', 'Group to order' };
+-- The switch that makes one, on Show, always shows.
+local panel_only = { "Snap back beside the game's list when released", 'Put party buffs back beside the party list', 'Member order', 'Member names', 'Group to order',
+    'Panels of their own' };
 local other_names = { 'Snap buff panels to game windows', 'Reattach buff panels', 'Detached panel members', 'Snap panels of their own to game windows',
     'Reattach panels of their own', 'Member name display', 'Party group to edit' };
 local function draw_with(change)
@@ -47,7 +48,7 @@ end;
 local shown = draw_with(function() end);
 for _, label in ipairs(panel_only) do assert(not shown[label], 'With no group in a panel of its own, no ' .. label); end;
 for _, label in ipairs(other_names) do assert(not shown[label], 'Nor ' .. label); end;
-assert(shown['Panels of their own'] and shown['Your party in a panel of its own'], 'Panels of their own always shows.');
+assert(shown['Your party in a panel of its own'], 'The switch that makes one always shows.');
 -- A line in the header names them, so with none there is no line.
 local function panel_line()
     for name in pairs(h.drawn()) do
@@ -65,8 +66,16 @@ draw_with(function(p) p.groups[1].native_detached, p.groups[2].native_detached =
 assert(panel_line() == 'Your party and Alliance 1 are in panels of their own.', 'Two groups: ' .. tostring(panel_line()));
 draw_with(function(p) for group = 1, 3 do p.groups[group].native_detached = true; end; end);
 assert(panel_line() == 'Your party, Alliance 1 and Alliance 2 are in panels of their own.', 'Three groups: ' .. tostring(panel_line()));
+-- Panel to edit is a button for each group in a panel of its own, and the numbers below change the one pressed.
+h.on('party_ui', 'place');
+for group, name in ipairs({ 'Your party', 'Alliance 1', 'Alliance 2' }) do
+    assert(h.called('Button', name .. '##frame_Panel to edit_' .. group), 'Panel to edit has a button for ' .. name);
+end;
+h.draw('Alliance 1##frame_Panel to edit_2');
+h.slide('##frame_Panel width', 321);
+assert(h.s.party_ui.groups[2].detached_width == 321 and h.s.party_ui.groups[1].detached_width ~= 321, 'The numbers change the panel pressed.');
 labels = draw_with(function() end);
--- Show is the one switch over the party list buffs.
+-- Show is the one switch over Party list.
 assert(not labels['Show member effects'], 'Not on the panel: Show member effects.');
 -- The strips draw icons only, in the timer panels' look and the one time format, so the panel has no look of their own
 -- and no other effect display.

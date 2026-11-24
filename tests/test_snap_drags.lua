@@ -2,13 +2,13 @@
 -- snapping switches: a timer panel and the alert notices (ui/hud.lua), the party cooldown list
 -- (ui/cooldown_list.lua), the Phantom Roll and pet displays (ui/element_box.lua), the ready pulse's screen spot
 -- (ui/ready_pulse.lua) and a party list strip, beside the game's party list or in a panel of its own
--- (ui/native_party_hud.lua). Only a display ticked for Grid mode snaps, and only while Grid mode is on: until then,
+-- (ui/native_party_hud.lua). Only a display ticked to snap snaps, and only while Snap while moving is on: until then,
 -- and for a display not ticked, a drag follows the pointer exactly with no grid and no line, in edit mode too, which
 -- draws no grid of its own. A move snaps its nearest edge, a resize only the edge it pulls. While a ticked display's
 -- drag is under way the grid shows behind every display with Show the grid on, and the line it snapped to over them;
 -- both go when the drag ends. With every switch off a drag follows the pointer exactly, and a locked display never
 -- moves. The displays not dragged stay where they are. The game's party list is read from the press that may start a
--- Shift drag, with Grid mode on and a display ticked for it unlocked, so a drag snaps to it from its first move, and
+-- Shift drag, with Snap while moving on and a display ticked for it unlocked, so a drag snaps to it from its first move, and
 -- not while Shift is only held. Only the client readers, the game's party list, the chat log and the mouse are
 -- fixtures.
 local store = require('core.store');
@@ -158,13 +158,13 @@ local function others_kept(before, moved, why)
     end;
 end;
 
--- Grid mode starts off, with nothing ticked. While it is off each display goes exactly where it is dragged, moved or
+-- Snap while moving starts off, with nothing ticked. While it is off each display goes exactly where it is dragged, moved or
 -- pulled by an edge, with no grid and no line, ticked or not; while it is on, so does a display not ticked, though
--- every other is. The press of a drag reads no party list then, nor with Grid mode on and nothing ticked.
+-- every other is. The press of a drag reads no party list then, nor with Snap while moving on and nothing ticked.
 local snap = require('ui.snap');
 local e = s.edit_mode;
-assert(e.grid_mode == false and next(e.grid_displays) == nil, 'Grid mode starts off, with nothing ticked.');
--- The id each display is ticked for Grid mode by, and the recast panel a later pull takes.
+assert(e.grid_mode == false and next(e.grid_displays) == nil, 'Snap while moving starts off, with nothing ticked.');
+-- The id each display is ticked to snap by, and the recast panel a later pull takes.
 local ticks = { 'self_buffs', 'notices', 'cooldown_list', 'rolls', 'pet', 'pulse', 'strip_1' };
 for index, display in ipairs(displays) do display.id = ticks[index]; end;
 local function tick_all(on, but)
@@ -202,15 +202,15 @@ local function free(why, setup)
         assert(back_at.x == r.x and back_at.y == r.y and back_at.width == r.width, 'Fixture: ' .. display.name .. ' is dragged back.');
     end;
 end;
-free('Grid mode off', function() end);
-unread('Grid mode off');
+free('Snap while moving off', function() end);
+unread('Snap while moving off');
 tick_all(true);
-free('Grid mode off, every display ticked', function() end);
-unread('Grid mode off, every display ticked');
+free('Snap while moving off, every display ticked', function() end);
+unread('Snap while moving off, every display ticked');
 e.grid_mode = true;
-free('Grid mode on, the display dragged not ticked', function(display) tick_all(true, display.id); end);
+free('Snap while moving on, the display dragged not ticked', function(display) tick_all(true, display.id); end);
 tick_all(false);
-unread('Grid mode on, nothing ticked');
+unread('Snap while moving on, nothing ticked');
 tick_all(true);
 
 -- The game's party list is read from the press that may start a Shift drag, in that frame, as a drag can snap to it.
@@ -227,6 +227,11 @@ s.edit_mode.snap_party = true;
 for _, display in ipairs(displays) do display.lock(true); end;
 frame(0.2); frame(0.2);
 assert(elements.party_list == nil, 'Nor while every display is locked.');
+-- Arrange on screen moves a locked display too, so there a locked display ticked to snap has it read.
+app.callbacks.edit_mode(true); frame(0.2); frame(0.2);
+assert(elements.party_list and elements.party_list.x == 1300, 'In Arrange on screen, a locked display ticked to snap has the party list read.');
+app.callbacks.edit_mode(false); frame(0.2); frame(0.2);
+assert(elements.party_list == nil, 'Done arranging, with every display locked, it is read no more.');
 s.pet.locked, s.pet.enabled = false, false;
 frame(0.2); frame(0.2);
 assert(elements.party_list == nil, 'Nor while the only display unlocked is off.');
@@ -234,9 +239,9 @@ s.pet.enabled = true;
 frame(0.2); frame(0.2);
 assert(elements.party_list and elements.party_list.x == 1300, 'Turned on, unlocked and ticked, it has the party list read.');
 snap.tick(s, 'pet', false); frame(0.2); frame(0.2);
-assert(elements.party_list == nil, 'Nor while the only display unlocked is not ticked for Grid mode.');
+assert(elements.party_list == nil, 'Nor while the only display unlocked is not ticked to snap.');
 snap.tick(s, 'pet', true); e.grid_mode = false; frame(0.2); frame(0.2);
-assert(elements.party_list == nil, 'Nor while Grid mode is off.');
+assert(elements.party_list == nil, 'Nor while Snap while moving is off.');
 e.grid_mode = true;
 for _, display in ipairs(displays) do display.lock(false); end;
 mouse.down = false; frame(0.2); frame(0.2);
@@ -510,9 +515,9 @@ mouse.down = false;
 frame(); frame();
 assert(rect('##edit_hit_self_buffs').x == outline.x and rect('##edit_hit_self_buffs').y == outline.y and #app.state.history == steps,
     'Edit mode: a Shift click that doesn\'t move changes nothing: ' .. s.panels.self_buffs.x .. ', ' .. s.panels.self_buffs.y);
--- In edit mode too a display not ticked, and every display while Grid mode is off, goes exactly where it is dragged,
+-- In edit mode too a display not ticked, and every display while Snap while moving is off, goes exactly where it is dragged,
 -- with no grid and no line.
-for _, case in ipairs({ { true, false, 'Edit mode, Self buffs not ticked' }, { false, true, 'Edit mode, Grid mode off' } }) do
+for _, case in ipairs({ { true, false, 'Edit mode, Self buffs not ticked' }, { false, true, 'Edit mode, Snap while moving off' } }) do
     e.grid_mode = case[1];
     snap.tick(s, 'self_buffs', case[2]);
     frame(); frame();

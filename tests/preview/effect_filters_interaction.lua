@@ -23,10 +23,10 @@ local function difference(a, b, path)
 end;
 
 function PREVIEW.check_route()
-    assert(original, 'The fresh placement is done before Hidden everywhere opens.');
-    assert(require('ui.panel_frame').context() == 'hidden/show', 'The main page opens Hidden everywhere.');
+    assert(original, 'The fresh placement is done before the Hide list opens.');
+    assert(require('ui.panel_frame').context() == 'hidden/show', 'The top bar opens the Hide list.');
     assert(#app.state.settings.effect_filters.rules == 0, 'Navigation cannot hide an effect.');
-    assert(app.state.settings.party_ui.locked, 'Opening Hidden everywhere keeps the party lock intact.');
+    assert(app.state.settings.party_ui.locked, 'Opening the Hide list keeps the party lock intact.');
     app.state.history, app.state.redo, app.state.transaction = {}, {}, nil;
 end;
 function PREVIEW.check_sync()
@@ -82,6 +82,6 @@ return function()
                 and rect[3] <= win.x + win.width and rect[4] <= win.y + win.height,
                 'Rule editor control remains inside the visible settings window: ' .. label);
         end;
-        PREVIEW.log('Hidden everywhere: main page route, one rule for each effect, recipient rules and Undo/Redo passed.');
+        PREVIEW.log('Hide list: top bar route, one rule for each effect, recipient rules and Undo/Redo passed.');
     end;
 end;

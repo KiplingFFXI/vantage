@@ -1,4 +1,4 @@
--- The catalog holds what can exist on Phoenix (docs/VALIDATION.md has the audit): 271 effects, all of them in the pickers but
+-- The catalog holds what can exist on Phoenix (docs/VALIDATION.md has the audit): 273 effects, all of them in the pickers but
 -- Copy Image's icons for 2, 3 and 4 or more shadows, which list as Copy Image.
 -- The Utsusemi shadow icons and the others the game can send stay. An effect left out isn't lost: if the server ever sends
 -- one the game names, it tracks and draws under that name, and one nothing names shows nowhere. The Timer durations lists
@@ -9,30 +9,38 @@ local actions = require('data.actions');
 
 local rows = 0;
 for _ in pairs(entries) do rows = rows + 1; end;
-assert(rows == 271, 'The catalog has 271 effects: ' .. rows);
+assert(rows == 273, 'The catalog has 273 effects: ' .. rows);
 local list, listed, groups = catalog.list(), {}, {};
-assert(#list == 268, 'The pickers list 268 effects: ' .. #list);
+assert(#list == 270, 'The pickers list 270 effects: ' .. #list);
 for _, entry in ipairs(list) do listed[entry.id], groups[entry.group] = true, (groups[entry.group] or 0) + 1; end;
-for name, count in pairs({ Buffs = 133, Debuffs = 61, Other = 13, Rolls = 20, Songs = 24, Protection = 7, Travel = 6, Recovery = 3, Food = 1 }) do
+for name, count in pairs({ Buffs = 139, Debuffs = 58, Other = 12, Rolls = 20, Songs = 24, Protection = 7, Travel = 6, Recovery = 3, Food = 1 }) do
     assert(groups[name] == count, name .. ' lists ' .. count .. ': ' .. tostring(groups[name]));
 end;
 -- The client has no name or icon for these, and nothing can show them.
-for _, id in ipairs({ 791, 792, 793, 794, 795, 797, 799, 800, 801, 802, 803, 804, 805, 806 }) do
+for _, id in ipairs({ 791, 792, 793, 794, 795, 797, 799, 800, 801, 802, 803, 806 }) do
     assert(entries[id] == nil and not listed[id], 'Effect ' .. id .. ' is gone.');
 end;
--- Nothing names an effect at 640 or over, so no move gives one. An effect's row is only what it drops.
+-- Hysteria and Tomahawk have none either, but a player's item puts each on a monster, so each stays as a debuff under
+-- its own name with that item for a picture (tests/test_item_art_effects.lua).
+for id, item in pairs({ [804] = 5262, [805] = 18258 }) do
+    assert(entries[id] and listed[id] and entries[id].kind == 'debuff' and entries[id].item == item, 'Effect ' .. id .. ' stays, with its item.');
+end;
+-- Nothing else names an effect at 640 or over, so no other move gives one. An effect's row is only what it drops.
 local durations = require('data.effects');
 for id, row in pairs(durations.effects) do
     assert(id < 640 and next(row) == 'drops' and next(row, 'drops') == nil and #row.drops > 0, 'Effect ' .. id .. ' holds only its drops.');
 end;
-for _, kind in ipairs({ 'spells', 'abilities', 'skills', 'pacts' }) do
+local past, given = 0, {};
+for _, kind in ipairs({ 'spells', 'abilities', 'skills', 'pacts', 'weaponskills', 'automatons', 'pet_moves', 'charmed_skills', 'items', 'reactive', 'spikes' }) do
     for id, row in pairs(durations[kind]) do
-        assert((row.effect or 0) < 640, kind .. ' ' .. id .. ' gives an effect nothing names.');
+        if (row.effect or 0) >= 640 then past, given[row.effect] = past + 1, kind .. ' ' .. id; end
+        assert((row.effect or 0) < 640 or entries[row.effect] and entries[row.effect].item, kind .. ' ' .. id .. ' gives an effect nothing names.');
         for effect in pairs(row.by_effect or {}) do
             assert(effect < 640, kind .. ' ' .. id .. ' gives ' .. effect .. ', which nothing names.');
         end;
     end;
 end;
+assert(past == 2 and given[805] == 'abilities 150' and given[804] == 'items 5262', 'Only Tomahawk and a Bottle of Hysteroanima give one: ' .. past);
 -- Utsusemi's shadow counts arrive as the icons 444 to 446, which stay to be drawn and list as Copy Image, and an item's
 -- enchantment as 162 or 169.
 for _, id in ipairs({ 444, 445, 446 }) do assert(entries[id] and not listed[id], 'Effect ' .. id .. ' must stay, listed as Copy Image.'); end;
@@ -41,9 +49,8 @@ for _, id in ipairs({ 169, 162 }) do assert(listed[id], 'Effect ' .. id .. ' mus
 for _, id in ipairs({ 119, 120, 121, 122, 123, 124, 125, 171, 172, 259, 260, 261, 262, 263, 265, 266, 283, 574, 579 }) do
     assert(listed[id], 'Effect ' .. id .. ' was kept.');
 end;
--- The undecided ids taken out, Sigil, the Trust auras, and one of each other reason.
-for _, id in ipairs({ 277, 278, 279, 280, 281, 282, 404, 581, 268, 807, 808, 809, 810, 811, 812, 813,
-    23, 17, 222, 575, 275, 19, 270, 255, 603 }) do
+-- The undecided ids taken out, Sigil, and one of each other reason.
+for _, id in ipairs({ 277, 278, 279, 280, 281, 282, 404, 581, 268, 23, 17, 222, 575, 275, 19, 270, 255, 603 }) do
     assert(entries[id] == nil, 'Effect ' .. id .. ' can\'t exist on Phoenix.');
 end;
 local rolls = 0;
@@ -53,14 +60,13 @@ for _, effect in pairs(actions.rolls) do
 end;
 assert(rolls == 18, 'The 18 era rolls: ' .. rolls);
 
--- What the Timer durations picker offers: 436 spells and 355 abilities, in id order, and no Helix, Waltz or Trust.
+-- What the Timer durations picker offers: 436 spells and 355 abilities, in id order, and no Helix or Waltz.
 assert(#actions.spells == 436 and #actions.abilities == 355, 'The durations lists: ' .. #actions.spells .. ', ' .. #actions.abilities);
 local function has(values, id)
     for _, value in ipairs(values) do if value == id then return true; end; end;
     return false;
 end;
 for id = 278, 285 do assert(not has(actions.spells, id), 'No Helix: ' .. id); end;
-for id = 896, 1019 do assert(not has(actions.spells, id), 'No Trust: ' .. id); end;
 for id = 190, 195 do assert(not has(actions.abilities, id), 'No Waltz: ' .. id); end;
 assert(has(actions.spells, 57) and has(actions.spells, 143) and has(actions.abilities, 16), 'Haste, Erase and Mighty Strikes stay.');
 
@@ -81,7 +87,7 @@ assert(#view.rows == 1 and view.rows[1].effect == 280 and view.rows[1].name == '
 local quiet = require('core.tracker').new();
 local nameless = { valid = true, id = 1001, name = 'Tester', zone = 1, job = 1, self_known = true,
     self_effects = { { effect = 803, slot = 0, deadline = 1060, raw_timer = 3600 }, { effect = 40, slot = 1, deadline = 1060, raw_timer = 3600 } },
-    party = { { id = 1002, name = 'Friend', zone = 1, valid = true, revision = 1, effects = { { effect = 804, slot = 0 }, { effect = 999, slot = 1 } } } },
+    party = { { id = 1002, name = 'Friend', zone = 1, valid = true, revision = 1, effects = { { effect = 802, slot = 0 }, { effect = 999, slot = 1 } } } },
     entities = {} };
 quiet:reconcile(nameless, 1000);
 quiet:observe({ { kind = 'apply', entity_id = 1002, effect = 806, source = 1001 } }, 1000, nameless);

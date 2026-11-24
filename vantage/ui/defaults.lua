@@ -22,6 +22,8 @@ end
 defaults.panel_names = { self_buffs = 'Self buffs', self_debuffs = 'Self debuffs', target = 'Target timers', party = 'Party members\' timers',
     watch = 'Watched enemy timers', spell_recasts = 'Spell recasts', ability_recasts = 'Ability recasts', item_recasts = 'Item recasts', recasts = 'Recasts' }
 defaults.field_ids = { 'name', 'target', 'source', 'elapsed', 'total', 'time' }
+-- The parts a panel can give a color of its own, in its colors map.
+defaults.color_parts = { 'background', 'border', 'track', 'title', 'label', 'value', 'detail', 'fill_start', 'fill_end', 'warning' }
 -- Panel box choices. Shared follows the shared Background and Border.
 defaults.panel_boxes = { 'shared', 'both', 'background', 'border', 'none' }
 defaults.countdown_keys = { 'countdown_bold', 'countdown_shadow', 'countdown_outline', 'countdown_outline_color' }
@@ -32,13 +34,13 @@ defaults.lit_panels = { target = true, watch = true, self_debuffs = true, party 
 -- Party timers and watched enemies start as bars, which name whose effect each row is.
 local function panel(id, x, y, enabled)
     local bars = defaults.recast_panels[id] or id == 'party' or id == 'watch'
-    local result = { enabled = enabled, x = x, y = y, width = 300, locked = true, mode = bars and 'bars' or 'icons',
+    local result = { enabled = enabled, x = x, y = y, width = 300, locked = true, preview = false, mode = bars and 'bars' or 'icons',
         sort = defaults.recast_panels[id] and 'remaining' or 'longest', direction = 'drain',
         stack_direction = bars and 'vertical' or 'horizontal', growth = 'right', item_width = 280,
         max_rows = 32, height_limit = 700, show_icon = true, show_name = true, show_time = true, show_target = id == 'party' or id == 'watch',
         show_source = false, show_elapsed = false, show_total = false, mine_only = false, filter = '',
         include = {}, exclude = {}, order = {}, pinned = {}, groups = {}, members = {}, title = defaults.panel_names[id], labels = {},
-        empty = 'hide', group_by = 'none', show_heading = true, box = 'shared', warning_seconds = 10, horizon = 300,
+        empty = 'hide', group_by = 'none', show_heading = true, box = 'shared', warning_seconds = defaults.recast_panels[id] and 10 or 15, horizon = 300,
         show_fill = true, show_text = true, bar_style = defaults.recast_panels[id] and 'rail' or 'full', fill_direction = 'right',
         row_height = 0, bar_thickness = defaults.recast_panels[id] and 8 or 4, gradient = false, warning_enabled = true, warning_mark = false,
         recast_categories = id == 'recasts' and { spell = true, ability = true, item = true } or nil,
@@ -60,8 +62,9 @@ local function panel(id, x, y, enabled)
     end
     -- Watched enemies can list the enemies you debuff as well as the ones you watch.
     if id == 'watch' then result.list_debuffed = false end
-    -- Party members' timers can show only what job abilities put on.
-    if id == 'party' then result.abilities_only = false end
+    -- Party members' timers can show only what job abilities put on, take your own effects too, and show one cast on
+    -- several members as one row.
+    if id == 'party' then result.abilities_only, result.include_self, result.fold_casts = false, false, false end
     -- Target timers can stay away while your target is you, as the self panels show your own effects.
     if id == 'target' then result.hide_self = false end
     return result
@@ -71,7 +74,9 @@ function defaults.rule(id)
     return { id = id or 'rule_1', name = 'New alert', enabled = true, domain = 'status', event = 'remaining', effect = 0, scope = 'self',
         entity_id = 0, thresholds = { 30, 10 }, unit = 'seconds', visual = true, chat = false, sound = '',
         emphasis = true, combat = 'any', jobs = {}, cooldown = 10, repeat_seconds = 0, duration = 4,
-        volume = -1, flash = false, flash_color = { 1, 0.86, 0.45, 0.8 }, flash_seconds = 4 }
+        volume = -1, flash = false, flash_color = { 1, 0.86, 0.45, 0.8 }, flash_seconds = 4,
+        -- Its notice's own colors, by part. Empty, the notice has the Alerts colors.
+        notice_colors = {} }
 end
 
 function defaults.make()
@@ -88,10 +93,10 @@ function defaults.make()
         edit_mode = require('core.anchors').make_edit(),
         enabled = true, recast_display = 'separate', window = { open = false, x = 100, y = 80, width = 960, height = 680, tab = 'Home',
             sections = {}, peek = true },
-        preview = false, replace_game_buffs = false,
+        preview = false, replace_game_buffs = false, replace_game_pet_bar = false,
         shared_layout = false, shared_scope = 'placement', job_profiles = {}, active_profile = '',
         visibility = { hide_events = true, hide_map = true, hide_ui = true, hide_typing = false },
-        style = { theme = 'Phoenix', window_type = 1, gauge_art = 'Original FFXI', icon_art = 'Client', recast_icon_art = 'Original FFXI', recast_icon_source = 'effect', font = 'Agave', font_size = 16, scale = 1, opacity = 0.92, background = true, minimal = false,
+        style = { theme = 'Phoenix', window_type = 1, gauge_art = 'Original FFXI', icon_art = 'Original FFXI', recast_icon_art = 'Original FFXI', recast_icon_source = 'effect', font = 'Agave', font_size = 16, scale = 1, opacity = 0.92, background = true, minimal = false,
             rounding = 5, border = true, bar_height = 25, gap = 4, icon_size = 28, title_size = 15,
             text_shadow = true, hover = true,
             status_time_color = true, text_outline = false,
@@ -101,7 +106,9 @@ function defaults.make()
             spell_recasts = panel('spell_recasts', 670, 420, false), ability_recasts = panel('ability_recasts', 985, 420, false),
             item_recasts = panel('item_recasts', 985, 120, false), recasts = panel('recasts', 670, 420, true) },
         watch_ids = {}, alerts = { enabled = true, muted = false, quiet_events = true, volume = 70, rules = {},
-            notice_x = 985, notice_y = 10, notice_width = 440, notice_height = 0, notice_locked = true, max_notices = 4 },
+            notice_x = 985, notice_y = 10, notice_width = 440, notice_height = 0, notice_locked = true, max_notices = 4,
+            -- The notices' text: 0 is the shared Text size, and a part with no color here has the shared one.
+            notice_text_size = 0, notice_colors = {} },
         tracking = { stale_seconds = 180, max_entities = 64, follow_subtarget = true },
         diagnostics = { record = false, max_entries = 200 },
         chat_colors = { tag_brackets = 81, tag_word = 6, replies = 106 },
@@ -118,22 +125,71 @@ function defaults.make()
     return result
 end
 
-local function copy(value)
-    if type(value) ~= 'table' then return value end
-    local result = {}
-    for key, entry in pairs(value) do result[key] = copy(entry) end
-    return result
-end
+-- What 1.3.0 started with where this version starts with something else: the timer panels' Seconds left and the
+-- ready pulse color (core/ready_pulse.lua). A settings file saved by 1.3.0 still holds them, so Import and add
+-- (core/share.lua) counts them as never changed, as it does what a fresh install has.
+defaults.former = { panels = {}, ready_pulse = { color = { 1, 0.86, 0.45, 1 } } }
+for _, id in ipairs({ 'self_buffs', 'self_debuffs', 'target', 'party', 'watch' }) do defaults.former.panels[id] = { warning_seconds = 10 } end
+
+local copy = require('core.tables').copy
 defaults.copy = copy
 
--- Whether any display shows samples now, which makes Show samples End samples.
+-- Whether a timer or recast panel shows samples: every one while settings.preview is on, as Show samples on the main
+-- page turns it on, else each by its own Show samples.
+function defaults.sampled(settings, id)
+    return settings.preview == true or settings.panels[id].preview == true
+end
+
+-- Whether any timer or recast panel shows samples, with no table made. A panel's own Show samples counts only while
+-- the panel is on, as for End samples (samples_on_displays), so one the recast layout doesn't show makes none.
+function defaults.any_sampled(settings)
+    if settings.preview then return true end
+    for _, id in ipairs(defaults.panel_order) do
+        if settings.panels[id].preview and defaults.panel_enabled(settings, id) then return true end
+    end
+    return false
+end
+
+-- A panel's own Show samples. Turned off while every panel shows them, the others that are on keep theirs. One that's
+-- off takes none, so it comes back live.
+function defaults.sample_panel(settings, id, on)
+    if not on and settings.preview then
+        settings.preview = false
+        for _, key in ipairs(defaults.panel_order) do settings.panels[key].preview = key ~= id and defaults.panel_enabled(settings, key) end
+    end
+    settings.panels[id].preview = on
+end
+
+-- The displays that show samples now, by name, which makes Show samples End samples.
+function defaults.samples_on_displays(settings)
+    local names = {}
+    for _, id in ipairs(defaults.panel_order) do
+        if settings.enabled and defaults.panel_enabled(settings, id) and defaults.sampled(settings, id) then
+            names[#names + 1] = defaults.panel_names[id]
+        end
+    end
+    local others = { { settings.party_ui, 'Party list' }, { settings.overhead, 'Overhead icons' },
+        { settings.party_cooldowns, 'Party cooldowns' }, { settings.rolls, 'Phantom Roll' }, { settings.pet, 'Pet' } }
+    for _, entry in ipairs(others) do if entry[1].preview then names[#names + 1] = entry[2] end end
+    return names
+end
+
 function defaults.samples_showing(settings)
-    return settings.preview and defaults.any_timer_on(settings) or settings.party_ui.preview or settings.overhead.preview
-        or settings.party_cooldowns.preview or settings.rolls.preview or settings.pet.preview
+    return #defaults.samples_on_displays(settings) > 0
+end
+
+-- Whether samples show on every display that is on, so samples_on would add none.
+function defaults.samples_everywhere(settings)
+    if not defaults.samples_showing(settings) or defaults.any_timer_on(settings) and not settings.preview then return false end
+    for _, config in ipairs({ settings.party_ui, settings.overhead, settings.rolls, settings.pet }) do
+        if config.enabled and not config.preview then return false end
+    end
+    local watch = settings.party_cooldowns
+    return not (watch.enabled and watch.list.enabled and not watch.preview)
 end
 
 -- Samples only on what is on: a display that is off stays off. Says whether any display took them.
-defaults.no_samples = 'Samples show on the timer panels, Party list buffs, Overhead icons, the Party cooldowns list, Phantom Roll and Pet. Turn one on first.'
+defaults.no_samples = 'Samples show on the timer panels, Party list, Overhead icons, the Party cooldowns list, Phantom Roll and Pet. Turn one on first.'
 function defaults.samples_on(settings)
     local any = false
     if defaults.any_timer_on(settings) then settings.preview, any = true, true end
@@ -148,6 +204,7 @@ end
 
 function defaults.samples_off(settings)
     settings.preview = false
+    for _, id in ipairs(defaults.panel_order) do settings.panels[id].preview = false end
     for _, config in ipairs({ settings.party_ui, settings.overhead, settings.party_cooldowns, settings.rolls, settings.pet }) do config.preview = false end
 end
 
@@ -170,13 +227,29 @@ end
 
 -- Replace the game's buff icons (core/game_buffs.lua): whether the settings ask for it now, and when its tick is on
 -- but they don't, a line saying why. The game's row holds your buffs and your debuffs, so both self panels must be on
--- to stand in for it, and samples aren't your effects.
+-- and showing to stand in for it, which they aren't while the timer panels are paused, and samples aren't your effects.
 function defaults.game_buffs_replaced(settings)
     if settings.replace_game_buffs ~= true then return false end
-    if not settings.enabled or not defaults.panel_enabled(settings, 'self_buffs') or not defaults.panel_enabled(settings, 'self_debuffs') then
+    if not defaults.panel_enabled(settings, 'self_buffs') or not defaults.panel_enabled(settings, 'self_debuffs') then
         return false, 'This needs Self buffs and Self debuffs on. Until then the game draws its own buff icons.'
     end
-    if settings.preview then return false, 'While samples show, the game draws its own buff icons.' end
+    if not settings.enabled then return false, 'While the timer panels are paused, the game draws its own buff icons.' end
+    if defaults.sampled(settings, 'self_buffs') or defaults.sampled(settings, 'self_debuffs') then
+        return false, 'While samples show, the game draws its own buff icons.'
+    end
+    return true
+end
+
+-- Replace the game's pet bar (core/game_pet_bar.lua), the same way. The game's line holds the pet's name, HP and TP,
+-- so the Pet display must be on with its bars to stand in for it, and a sample isn't your pet. The Pet display doesn't
+-- pause with the timer panels, so pausing them leaves this in effect.
+function defaults.game_pet_bar_replaced(settings)
+    if settings.replace_game_pet_bar ~= true then return false end
+    local pet = settings.pet
+    if type(pet) ~= 'table' or not pet.enabled or not pet.show_vitals then
+        return false, 'This needs the Pet display on with Show HP, MP and TP. Until then the game draws its own pet bar.'
+    end
+    if pet.preview then return false, 'While the sample pet shows, the game draws its own pet bar.' end
     return true
 end
 
@@ -216,17 +289,14 @@ local function fill(value, base)
     return value
 end
 
-local function choice(value, choices, fallback)
-    for _, allowed in ipairs(choices) do if value == allowed then return value end end
-    return fallback
-end
+local choice = numbers.choice
 
 -- How many ids a panel's list or map keeps, and how many thresholds a rule keeps: far more than anyone picks, and few
 -- enough that what reads them every frame stays cheap, whatever a hand edit or an import holds.
 local LIST_MOST, THRESHOLDS_MOST = 256, 16
 -- Copy Image (66) shows its shadows as icons 444, 445 and 446, and every copy leaves the tracker as 66, so an effect id
 -- one of them names reads as 66 too, or it would never match.
-local copy_image = { [444] = 66, [445] = 66, [446] = 66 }
+local copy_image = require('data.shared_ids').copy_image
 
 -- most keeps the first most ids, and fold, when given, turns an id into the one it stands for.
 local function ids(value, maximum, minimum, most, fold)
@@ -285,9 +355,12 @@ local function effect_map(value, maximum, fold, tidy)
     return result
 end
 
-local function rgba(value, fallback)
+local rgba = numbers.rgba
+
+-- A notice's own colors, by part. Its text is the only part. A part saved with no color has none of its own.
+local function notice_colors(value, fallback)
     local result = {}
-    for i = 1, 4 do result[i] = number(type(value) == 'table' and value[i], 0, 1, fallback[i]) end
+    if type(value) == 'table' and type(value.text) == 'table' then result.text = rgba(value.text, fallback) end
     return result
 end
 
@@ -314,8 +387,14 @@ function defaults.tidy(settings)
     if type(settings) ~= 'table' or next(settings) == nil then settings = defaults.make() end
     -- These two come before the fill, which would put the default's numbered entries beside a list given as an object
     -- ("1" to "3", from a hand edit or /vg set).
+    local party_lit = type(settings.party_ui) == 'table' and type(settings.party_ui.effects) == 'table' and settings.party_ui.effects.dispel_color ~= nil
     settings.party_ui = require('ui.party_defaults').tidy(settings.party_ui)
     settings.overhead = require('ui.overhead_defaults').tidy(settings.overhead)
+    -- Party list lit its icons in Overhead icons' glow and color before it had its own, so an older save keeps that look.
+    if not party_lit then
+        settings.party_ui.effects.dispel_color = defaults.copy(settings.overhead.dispel_color)
+        settings.party_ui.effects.dispel_glow = settings.overhead.dispel_glow
+    end
     settings = fill(settings, defaults.make())
     -- A display is a table, a newer Vantage's too. Anything else in the map, from a hand edit or /vg set, goes, as what
     -- reads every display takes each one as a table.
@@ -335,7 +414,9 @@ function defaults.tidy(settings)
     s.theme = choice(s.theme, theme.names, 'Phoenix')
     s.window_type = number(s.window_type, 1, 8, 1, true)
     s.gauge_art = choice(s.gauge_art, { 'Original FFXI', 'XI View' }, 'Original FFXI')
-    s.icon_art = choice(s.icon_art, { 'Client', 'Original FFXI', 'XI View' }, 'Original FFXI')
+    -- An icon set of your own keeps its name while its folder is away, and shows the game's icons until it's back.
+    s.icon_art = require('ui.icon_packs').valid_name(s.icon_art) and s.icon_art
+        or choice(s.icon_art, { 'Original FFXI', 'XI View' }, 'Original FFXI')
     s.recast_icon_art = choice(s.recast_icon_art, { 'Original FFXI', 'XI View' }, 'Original FFXI')
     s.recast_icon_source = choice(s.recast_icon_source, { 'effect', 'action' }, 'effect')
     for key, range in pairs({ font_size = { 8, 48, 16 }, title_size = { 0, 48, 15 },
@@ -364,7 +445,9 @@ function defaults.tidy(settings)
         end
         if defaults.lit_panels[id] then p.dispel_color = rgba(p.dispel_color, defaults.dispel_color) end
         if id == 'watch' then p.list_debuffed = p.list_debuffed == true end
-        if id == 'party' then p.abilities_only = p.abilities_only == true end
+        if id == 'party' then
+            p.abilities_only, p.include_self, p.fold_casts = p.abilities_only == true, p.include_self == true, p.fold_casts == true
+        end
         if id == 'recasts' then
             for _, kind in ipairs({ 'spell', 'ability', 'item' }) do p.recast_categories[kind] = p.recast_categories[kind] == true end
         end
@@ -388,9 +471,9 @@ function defaults.tidy(settings)
         if p.icon_countdown_size > 0 then p.icon_countdown_size = math.max(6, p.icon_countdown_size) end
         p.icon_countdown_gap = number(p.icon_countdown_gap, 0, 16, 0, true)
         p.countdown_outline_color = rgba(p.countdown_outline_color, { 0, 0, 0, 1 })
-        for key, range in pairs({ x = { 0, 16000, 40 }, y = { 0, 16000, 120 }, width = { 24, 1400, 300 }, item_width = { 80, 1400, 280 },
-            max_rows = { 1, 64, 32 }, height_limit = { 24, 16000, 700 }, warning_seconds = { 0, 300, 10 }, horizon = { 10, 86400, 300 },
-            row_height = { 0, 100, 0 }, bar_thickness = { 1, 32, defaults.recast_panels[id] and 8 or 4 }, min_width = { 24, 1400, 160 }, max_width = { 24, 2400, 700 } }) do
+        for key, range in pairs({ x = { 0, 16000, 40 }, y = { 0, 16000, 120 }, width = { 24, 2400, 300 }, item_width = { 80, 1400, 280 },
+            max_rows = { 1, 64, 32 }, height_limit = { 24, 16000, 700 }, warning_seconds = { 0, 300, defaults.recast_panels[id] and 10 or 15 }, horizon = { 10, 86400, 300 },
+            row_height = { 0, 100, 0 }, bar_thickness = { 1, 32, defaults.recast_panels[id] and 8 or 4 }, min_width = { 24, 2400, 160 }, max_width = { 24, 2400, 700 } }) do
             p[key] = number(p[key], range[1], range[2], range[3], true)
         end
         p.max_width = math.max(p.min_width, p.max_width)
@@ -403,7 +486,7 @@ function defaults.tidy(settings)
         p.field_dividers = field_map(p.field_dividers, function(v) return text(v, '', 20) end)
         p.separator, p.label_separator = text(p.separator, '  ', 20), text(p.label_separator, ' ', 20)
         local colors = {}
-        for _, key in ipairs({ 'background', 'border', 'track', 'title', 'label', 'value', 'detail', 'fill_start', 'fill_end', 'warning' }) do
+        for _, key in ipairs(defaults.color_parts) do
             if p.colors[key] ~= nil then colors[key] = rgba(p.colors[key], s.text_color) end
         end
         p.colors = colors
@@ -454,6 +537,7 @@ function defaults.tidy(settings)
             r.volume = number(r.volume, -1, 100, -1, true)
             r.flash_seconds = number(r.flash_seconds, 0.1, 30, 4)
             r.flash_color = rgba(r.flash_color, s.warning_color)
+            r.notice_colors = notice_colors(r.notice_colors, s.text_color)
             r.sound = text(r.sound, '', 160):match('[^\\/]*$') or ''
             if not r.sound:lower():match('%.wav$') and not r.sound:lower():match('%.mp3$') then r.sound = '' end
             rules[#rules + 1] = r
@@ -466,6 +550,10 @@ function defaults.tidy(settings)
         settings.alerts[key] = number(settings.alerts[key], range[1], range[2], range[3], true)
     end
     settings.alerts.notice_height = number(settings.alerts.notice_height, 0, 16000, 0, true)
+    -- 0 is the shared Text size. A size of its own is in that slider's range.
+    settings.alerts.notice_text_size = number(settings.alerts.notice_text_size, 0, 48, 0, true)
+    if settings.alerts.notice_text_size > 0 then settings.alerts.notice_text_size = math.max(8, settings.alerts.notice_text_size) end
+    settings.alerts.notice_colors = notice_colors(settings.alerts.notice_colors, s.text_color)
     if settings.alerts.notice_height > 0 then settings.alerts.notice_height = math.max(80, settings.alerts.notice_height) end
     settings.tracking.stale_seconds = number(settings.tracking.stale_seconds, 15, 1800, 180, true)
     settings.tracking.max_entities = number(settings.tracking.max_entities, 8, 128, 64, true)

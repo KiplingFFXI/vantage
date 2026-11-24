@@ -84,8 +84,21 @@ assert(app.state.settings.alerts.volume ~= 0.25 and said('Reset alerts. /vg undo
 local copied, copy_shown = nil, app.callbacks.copy_shown;
 app.callbacks.copy_shown = function(panel, details) copied = { panel, details }; return true; end;
 command('/vg copy Target DETAILS');
-app.callbacks.copy_shown = copy_shown;
 assert(copied and copied[1] == 'target' and copied[2] == true, '/vg copy takes its panel and details in any case.');
+-- A recast panel's key copies too, and a word that is no key is refused with every key it takes. A lone details is no
+-- key, as it goes after one.
+copied = nil;
+command('/vg copy recasts');
+assert(copied and copied[1] == 'recasts' and copied[2] == false, '/vg copy takes a recast panel.');
+for _, typed in ipairs({ 'details', 'recast' }) do
+    local printed = #MOCK.printed;
+    copied = nil;
+    command('/vg copy ' .. typed);
+    assert(not copied and #MOCK.printed == printed + 1 and MOCK.printed[#MOCK.printed]:find(
+        'Choose self_buffs, self_debuffs, target, party, watch, spell_recasts, ability_recasts, item_recasts or recasts.', 1, true),
+        '/vg copy ' .. typed .. ' is refused with every key it takes: ' .. tostring(MOCK.printed[#MOCK.printed]));
+end;
+app.callbacks.copy_shown = copy_shown;
 
 -- An observation that can't be read goes with its frame, so the refreshes after it work.
 local durations, prepare = require('core.durations'), require('core.durations').prepare;

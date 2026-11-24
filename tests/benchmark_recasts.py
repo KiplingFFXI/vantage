@@ -14,8 +14,11 @@ local spell_count,ability_count,item_count,enabled,iterations=...;
 local count,known_count,resource_count=0,0,0;
 local function read(value) count=count+1;return value;end;
 local function resource(value) resource_count=resource_count+1;return value;end;
+-- The first spell_count spells on data/actions.lua's list run. A spell off it is read only if you know it.
+local running={};
+for index,id in ipairs(require('data.actions').spells) do if index<=spell_count then running[id]=true;end;end;
 local manager={
-    GetSpellTimer=function(_,id) return read(id<spell_count and 60000 or 0);end,
+    GetSpellTimer=function(_,id) return read(running[id] and 60000 or 0);end,
     GetAbilityTimerId=function(_,slot) return read(slot<ability_count and slot or 0);end,
     GetAbilityTimer=function(_,slot) return read(slot<ability_count and 60000 or 0);end,
 };
@@ -38,7 +41,8 @@ local player={GetMainJob=function() return read(1);end,GetIsZoning=function() re
     GetSubJob=function() return read(2);end,GetMainJobLevel=function() return read(75);end,GetSubJobLevel=function() return read(37);end,
     HasAbilityData=function() return read(true);end,
     HasAbility=function(_,id) known_count=known_count+1;return read(id%2==0);end,
-    HasPetCommand=function() known_count=known_count+1;return read(false);end};
+    HasPetCommand=function() known_count=known_count+1;return read(false);end,
+    HasSpell=function() return read(false);end};
 local memory={GetRecast=function() return manager;end,GetInventory=function() return inventory;end,
     GetParty=function() return party;end,GetPlayer=function() return player;end};
 AshitaCore.GetMemoryManager=function() return memory;end;

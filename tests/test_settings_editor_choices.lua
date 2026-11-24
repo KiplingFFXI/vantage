@@ -36,8 +36,7 @@ end;
 
 require('ui.panel_frame').open('party_ui', 'filters');
 draw('Display');
-browse('Display', nil, 'frame_Find an effect', 'Haste');
-browse('Display', 'Haste##33');
+browse('Display', 'Haste##effect_33');
 draw('Display', 'Show only##frame');
 assert(s.party_ui.effects.include[1] == 33, 'Edits still apply to the selected effect.');
 assert(writes == 1 and edits == 1, 'Each actual edit saves once.');

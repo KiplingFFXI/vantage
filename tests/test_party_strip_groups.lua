@@ -1,4 +1,4 @@
--- A group in a panel of its own lists its members in the slot order chosen on Party list buffs, and leaves you out
+-- A group in a panel of its own lists its members in the slot order chosen on Party list, and leaves you out
 -- when Your own row is Never. The Up and Down buttons reorder the slots as one Undo step each, and the frame of a click
 -- still shows each slot once.
 local layout, overlay, hud = require('ui.party_layout'), require('ui.native_party_hud'), require('ui.party_hud');
@@ -66,5 +66,41 @@ assert(shown == 'Slot 6,Slot 4,Slot 2,Slot 1,Slot 5,Slot 3', 'The frame of the c
 h.draw('Up##party_slot');
 assert(table.concat(config.groups[1].order, ',') == '5,3,1,0,4,2' and #history == 2, 'Up moves it back.');
 assert(table.concat(config.groups[2].order, ',') == '0,1,2,3,4,5', 'Only the party chosen to edit is reordered.');
+-- Reset this tab puts back what Size and place sets for every group, not only the one picked: its member order and
+-- where a moved group sits. A panel of its own gets what ticking it gives where it is now, so no two panels end up on
+-- top of each other. Which groups have a panel of their own is Show's, so it stays.
+local widget, elements = require('ui.party_size_widget'), require('ui.elements');
+config = h.s.party_ui;
+config.groups[3].native_detached = false;
+config.groups[2].order = { 1, 0, 2, 3, 4, 5 };
+config.groups[2].detached_width, config.groups[2].detached_x = 335, 702;
+config.groups[3].native_side, config.groups[3].native_x, config.groups[3].native_y = 'left', 30, -12;
+elements.record('strip_1', { x = 830, y = 600, width = 420, height = 200 });
+elements.record('strip_2', { x = 380, y = 600, width = 420, height = 200 });
+local fresh = require('ui.party_defaults').make();
+local ticked = copy(config);
+for group = 1, 3 do
+    local start = fresh.groups[group];
+    ticked.groups[group].native_side, ticked.groups[group].native_x, ticked.groups[group].native_y = start.native_side, start.native_x, start.native_y;
+    if ticked.groups[group].native_detached then widget.place(ticked, group, widget.rooms(h.s, h.app.callbacks), h.s.style); end;
+end;
+h.draw('Reset this tab##frame');
+h.draw();
+local panels = h.s.party_ui.groups;
+for group = 1, 3 do
+    local now, start = panels[group], fresh.groups[group];
+    assert(table.concat(now.order, ',') == table.concat(start.order, ',') and now.native_side == start.native_side
+        and now.native_x == start.native_x and now.native_y == start.native_y and now.native_detached == (group ~= 3),
+        'Reset this tab puts back group ' .. group .. '\'s order and spot, and keeps which groups have a panel of their own.');
+end;
+for group = 1, 2 do
+    for _, key in ipairs({ 'detached_x', 'detached_y', 'detached_width', 'detached_height' }) do
+        assert(panels[group][key] == ticked.groups[group][key], 'Panel ' .. group .. ' gets what ticking it gives: ' .. key);
+    end;
+end;
+local one, two = panels[1], panels[2];
+assert(one.detached_x >= two.detached_x + two.detached_width or two.detached_x >= one.detached_x + one.detached_width
+    or one.detached_y >= two.detached_y + two.detached_height or two.detached_y >= one.detached_y + one.detached_height,
+    'The two panels don\'t cover each other.');
 assert(#MOCK.commands == 0);
 return true;

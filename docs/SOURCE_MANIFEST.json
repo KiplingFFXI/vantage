@@ -1,119 +1,123 @@
 {
   "assumptions": "RESTRICT_CONTENT enabled; ROTZ/COP/TOAU enabled; later expansions disabled",
-  "duration_revision": "be61bc997d8c29f17532c223e1f8c63ae8d6f937",
-  "phoenix_revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+  "duration_revision": "2c23661d5b8c87130a0b4d5b9e2e09d0fcf09938",
+  "phoenix_revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
   "sources": {
     "data/enums/mod.yaml": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "b1ff94249279a527da40d2376d567e213eb515176150435bc62958faebfd86f1"
     },
     "data/merits.yaml": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
-      "sha256": "4250497c906f15b9ad1e536078f6b92bf88c04fec0b8c4a119b64a053703d58b"
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
+      "sha256": "fca109d2b1f3c6841a613305f7bcff141b0e5c98cce803d60c5ca836d8265fd3"
     },
     "data/status_effects.yaml": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "2a02e943e89f77f0cbd0200eae5ba8d89714ed3ade894f07780d8eb88ac5d7b2"
     },
     "duration tables": {
-      "revision": "be61bc997d8c29f17532c223e1f8c63ae8d6f937",
-      "sha256": "a3217ce43e6fe3237af98aa336ac43478df33269f45c8d3a63e0feeab533d913"
+      "revision": "2c23661d5b8c87130a0b4d5b9e2e09d0fcf09938",
+      "sha256": "074a2d3d93673f14b8bd88ca7e10471fb8cfa11560e565b7a1fdae24f99dba5c"
     },
     "modules/era/data/merits.yaml": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "67fd04ca826140609c212a98735cf723f81123aec7b8b8d6b8abf456f4fbd095"
     },
     "modules/era/lua/globals/job_utils/corsair.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
-      "sha256": "3f1593dfca8144a918573a1f0f62a3fc93dbed6649b833b7913848f56c7a5425"
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
+      "sha256": "70c5b84a16189eafe9df291405aa302f3612b08fa157ba0706dcb5e7491a13d8"
     },
     "modules/init.txt": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "5730155bb07a30eec463edd9cef8aaffa7dd87915a0ce22a0dd6ea2bd85559c7"
     },
     "modules/phoenix/lua/globals/spells/enfeebling_spell.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "5422ed7962dc7ec6d568bb152c237c1afb19986a24ac1d1ba2659748e871c3fc"
     },
     "modules/phoenix/lua/globals/spells/enhancing_ninjutsu.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "9d9da5a954be1f3735c1ac900954a965ece607675ded566a689262d55dc36d5b"
     },
     "modules/phoenix/lua/globals/spells/enhancing_spell.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "ab94f36e3d9e415c9c39b75f0092b87872bf6634309ed0a771da2b07040b34a7"
     },
+    "scripts/enum/item.lua": {
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
+      "sha256": "b016e9fc8eb4d0c91faa533bb7fd1a9f04d145d537bf979fc3d97c36e6d49e70"
+    },
     "scripts/enum/job_ability.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "9004f326979fcfd3d1a8a8fea7d6ad9dcb27c6a1e9ba4819c1891461c07a073e"
     },
     "scripts/enum/magic.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "82f9e77064f3df564c189596e380ec2dde32b5528d4c77692a00837a51a5aca2"
     },
     "scripts/globals/job_utils/corsair.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "5f9e922314d2fc9b4423daffce013d4bb24b0ccf91cf94b4f86724480ebf4841"
     },
     "scripts/globals/spells/enfeebling_song.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "c3a3eef1fb085a38dbb8d9978b166d8c1a50bf8332f8c7ba17a778391c7a5bc5"
     },
     "scripts/globals/spells/enfeebling_spell.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "67633331027b86776dfd0d93ae32821c677ede6e088b7d8c8f2715225a7bd254"
     },
     "scripts/globals/spells/enhancing_song.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "7990bda29928e7fded656a1f8286577568076ee4e3230a4a7eff00d3722ed5ae"
     },
     "scripts/globals/spells/enhancing_spell.lua": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "aa9593bd4dd51e1edaf74abcd29bb18f291ac4fb434f400676077a3f73d2bd8d"
     },
     "sql/abilities.sql": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "a96f66104561bd55d706392a7620750b7e589f63db9850a655a321f5a412dcba"
     },
     "sql/item_mods.sql": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "915e04f1d4d3e141481eebd5d6a5c574d9473626115591d138814b3429b23a3a"
     },
     "sql/spell_list.sql": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "ee2354dbea70e2db0d58b4065992a4084b18b87c541e46ece4b6e0e80256cc7d"
     },
     "src/map/enums/msg_basic.h": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "2b850d0c768abecc43683c0eea1b2f24cb7702b58a63c3b0e37dc92dddc6ec3b"
     },
     "src/map/enums/msg_std.h": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "d2a7292be0128015143bc73c71d229e1955219d3442e65ed3ca096831887cb79"
     },
     "src/map/packets/s2c/0x028_battle2.cpp": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "f9e236cf4a3df16cc23b0a3a66885290a9862317a6034bef441b8b44edd76126"
     },
     "src/map/packets/s2c/0x029_battle_message.cpp": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "b55d943fe285792eb5f7fe8da34481d325a3f18ffe9d8131dcee1c0330306f07"
     },
     "src/map/packets/s2c/0x063_miscdata_status_icons.cpp": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "633f29b3d27ca4bf7ed78d628eba4cacac8629764c24a45c915518b506f1bacf"
     },
     "src/map/packets/s2c/0x076_group_effects.cpp": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "2cb185630e1b4bf55ffaa6bc5e0941d2af4b50a66975bd956794e6742879acad"
     },
     "src/map/packets/s2c/0x08c_merit.h": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
       "sha256": "ca9b47b2c2bc0677b5a9b5fef0ff0a2fd74a083d3c6d54ba3dd4db32d0bbd4cb"
     },
     "src/map/status_effect_container.cpp": {
-      "revision": "ed41f351f63b24e015059c5a58f1c29eb3f198ac",
-      "sha256": "50b78aa59c2ad1144bdab460cec0ab2cf078c74e8c82c4a831f6472c5616081e"
+      "revision": "978502097031e587dbc618392cc8b868e3cbe3ab",
+      "sha256": "2dc8e4b5f244ea7e890f818454e7c5a173a92a4f8bcad8c258ab7a221d092824"
     }
   }
 }

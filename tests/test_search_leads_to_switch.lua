@@ -1,7 +1,7 @@
 -- A search result opens a page that shows what it named. A control a page draws only in some state is left out while
 -- that state is off, and its name finds the switch that shows it, or the Add button of a list with no entries yet. The
 -- match line and its buttons show only while something matches, and a topic with nothing to light up takes the search
--- away, as a link does. tests/test_search_hidden_controls.lua covers Grid mode and panels of their own.
+-- away, as a link does. tests/test_search_hidden_controls.lua covers snapping and panels of their own.
 local store, defaults = require('core.store'), require('ui.defaults');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {},
     party = {}, entities = {} };
@@ -83,7 +83,7 @@ local function spell_panel(s) s.panels.spell_recasts.enabled = true; end;
 local function ability_panel(s) s.panels.ability_recasts.enabled = true; end;
 local function pulse_on(s) s.ready_pulse.enabled = true; end;
 for _, row in ipairs({
-    { 'Display', 'Rule name', 'New alert', nil, with_rule(false), nil, 'notices' },
+    { 'Display', 'Alert name', 'New alert', nil, with_rule(false), nil, 'notices' },
     { 'Display', 'Your alerts', 'New alert', nil, with_rule(false), nil, 'notices' },
     { 'Display', 'Flash color', 'New alert', nil, with_rule(true), nil, 'notices' },
     { 'Display', 'Flash color', 'Flash the bar', with_rule(false), with_rule(true), nil, 'notices' },
@@ -91,8 +91,8 @@ for _, row in ipairs({
     { 'Display', 'Threshold unit', 'Trigger', with_rule(false, 'gain'), with_rule(false, 'remaining'), nil, 'notices' },
     { 'Display', 'Specific member', 'Alert type', with_rule(false, 'ready', 'recast'), with_rule(false, 'gain', 'status', 'party'), nil, 'notices' },
     { 'Display', 'Specific member', 'Who to watch', with_rule(false, 'gain', 'status'), with_rule(false, 'gain', 'status', 'party'), nil, 'notices' },
-    { 'Durations', 'Change the time to', 'Add duration override', nil, override('fixed') },
-    { 'Durations', 'Fixed time', 'Add duration override', nil, override('fixed') },
+    { 'Durations', 'Change the time to', 'What to override', nil, override('fixed') },
+    { 'Durations', 'Fixed time', 'What to override', nil, override('fixed') },
     { 'Durations', 'Fixed time', 'Change the time to', override('percent'), override('fixed') },
     { 'Durations', 'Percent of the estimate', 'Change the time to', override('fixed'), override('percent') },
     { 'Durations', 'Clear learned durations', 'Learn from my casts', nil,
@@ -105,20 +105,20 @@ for _, row in ipairs({
     { 'Display', 'Editing', 'Show as', combined, nil, true },
     -- The other panels' Moves with stays a result: each panel has its own.
     { 'Display', 'Side', 'Moves with', nil, function(s) s.panels.self_buffs.anchor.to = 'chat'; end, true },
-    { 'Display', 'Across from it', 'Moves with', nil, function(s) s.panels.self_buffs.anchor.to = 'screen'; end, true },
-    { 'Display', 'Across the screen', 'Your party in a panel of its own', nil, detached, nil, 'party_ui', 'place' },
-    { 'Display', 'Panel height', 'Your party in a panel of its own', nil, detached, nil, 'party_ui', 'place' },
+    { 'Display', 'Across from it', 'Moves with', nil, function(s) s.panels.self_buffs.anchor.to = 'screen'; end, true, 'self_buffs', 'place' },
+    { 'Display', 'Across the screen', 'Your party in a panel of its own', nil, detached, nil, 'party_ui', 'show' },
+    { 'Display', 'Panel height', 'Your party in a panel of its own', nil, detached, nil, 'party_ui', 'show' },
     -- Layout's own help and the other swap's name share these words, so it stays a result too.
     { 'Display', 'Swap the lines', 'Layout', layout('single'), layout('lines'), true, 'overhead' },
     { 'Display', 'Swap the sides', 'Layout', layout('lines'), layout('split'), true, 'overhead' },
     { 'Display', 'Offset in yalms', 'Add head offset', nil, function(s) s.overhead.head.offsets = { Crab = 1 }; end, nil, 'overhead', 'place' },
     -- What can't do anything now goes, and its name finds what brings it back.
     { 'Display', 'Make the effect\'s bar stand out', 'Trigger', with_rule(false, 'ready', 'recast'), with_rule(false, 'gain'), true, 'notices' },
-    { 'Display', 'Repeat reminder', 'Trigger', with_rule(false, 'gain'), with_rule(false, 'remaining'), true, 'notices' },
+    { 'Display', 'Repeat every', 'Trigger', with_rule(false, 'gain'), with_rule(false, 'remaining'), true, 'notices' },
     { 'Display', 'Minimum time between repeats', 'Trigger', with_rule(false, 'gain'), with_rule(false, 'missing'), true, 'notices' },
     { 'Display', 'Spells while my MP is too low', 'Show this display', nil, spell_panel, true, 'spell_recasts' },
     { 'Display', 'Abilities under Amnesia', 'Show this display', spell_panel, ability_panel, true, 'spell_recasts' },
-    { 'Display', 'When the pulse plays', 'Pulse when a long recast is ready', nil, pulse_on, nil, 'spell_recasts' },
+    { 'Display', 'Only recasts of at least', 'Pulse when a long recast is ready', nil, pulse_on, nil, 'pulse' },
     { 'Display', 'Not reached color', 'Show who got it', function(s) s.rolls.show_members = false; end, function(s) s.rolls.show_members = true; end, nil, 'rolls' },
     { 'Display', 'HP bar', 'Show HP, MP and TP', function(s) s.pet.show_vitals = false; end, function(s) s.pet.show_vitals = true; end, nil, 'pet', 'show' },
     { 'Display', 'Show automaton HP as a number', 'Show HP, MP and TP', function(s) s.pet.show_vitals = false; end, function(s) s.pet.show_vitals = true; end, nil,
@@ -204,7 +204,7 @@ every_result(fresh(function(s)
 end));
 
 -- Each of the states counts.
-assert(#require('ui.search_index').states >= 40, 'Fixture: the search key has room for every state.');
+assert(#require('ui.search_index').states >= 35, 'Fixture: the search key has room for every state.');
 for index, state in ipairs(require('ui.search_index').states) do assert(type(state.on) == 'function', 'State ' .. index .. ' reads the settings.'); end;
 
 -- Nothing is read with an empty box.
@@ -267,10 +267,18 @@ do
     query = '';
     draw(s, 'Home');
     -- A topic for a display opens it as a link does.
-    click('wav', 'Alert sounds and notices  /  Alerts');
+    click('wav', 'Alerts: recasts, rules, sounds and notices  /  Alerts');
     assert(s.window.tab == 'Display' and require('ui.panel_frame').context() == 'notices/show' and box() == '', 'A topic says the display, and goes there.');
     query = '';
     draw(s, 'Home');
+    -- Alerts has one topic, and the words of the five it used to have still find it.
+    for _, word in ipairs({ 'recast alert', 'create', 'edit', 'sound', 'scope', 'conditions', 'flash', 'volume', 'haste', 'estimates' }) do
+        local topics = {};
+        for _, result in ipairs(window.search(word)) do
+            if result.topic and result.panel == 'notices' then topics[#topics + 1] = result.label; end;
+        end;
+        assert(#topics == 1 and topics[1] == 'Alerts: recasts, rules, sounds and notices', word .. ' finds the one Alerts topic: ' .. table.concat(topics, ', '));
+    end;
 end;
 
 -- While the box holds text the search goes by what the page last read of the profiles, so it never reads their file.

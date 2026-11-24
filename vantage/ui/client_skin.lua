@@ -43,6 +43,9 @@ function skin.active(style)
     return style.theme == 'Original FFXI'
 end
 
+-- What a panel given no colors reads in their place, made once: it is only read.
+local no_colors = {}
+
 -- Keep texture pieces at their own size, including partial tiles at the edges. An edge whose art is the same all along
 -- its length is one piece (edge, above).
 -- background and border, when given, replace style.background and style.border for this box.
@@ -53,7 +56,7 @@ function skin.panel(list, rect, style, colors, opacity, background, border)
     local bg, corner = assets.texture('window', 'newtex', style.window_type), assets.texture('window', 'corner', style.window_type)
     local horizontal, vertical = assets.texture('window', 'hfr1', style.window_type), assets.texture('window', 'vfr1', style.window_type)
     if not bg or not corner or not horizontal or not vertical then return false end
-    colors = colors or {}
+    colors = colors or no_colors
     local x, y, w, h = rect.x, rect.y, rect.width, rect.height
     local scale = style.scale
     opacity = opacity or style.opacity
@@ -114,7 +117,7 @@ end
 -- What paint_menu paints with, filled in place each time so a frame makes no table or closure for it. The binding
 -- copies a vector when it is called and keeps none, and skin.panel keeps neither the box nor the style.
 local menu_box, menu_style = { x = 0, y = 0, width = 0, height = 0 }, { scale = 1, opacity = 1, background = true, border = true }
-local clip_min, clip_max, point_a, point_b, point_c, no_colors = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, {}
+local clip_min, clip_max, point_a, point_b, point_c = { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }
 local fallback_color = { 0, 0, 0, 0 }
 
 local function clip_bounds(draw)
@@ -276,7 +279,7 @@ function skin.fallback_background(style, override)
     return style.background_color
 end
 
--- More look asks each frame, so the answer goes through one table.
+-- Artwork asks each frame, so the answer goes through one table.
 local window_status = {}
 function skin.window_reason(window_type)
     local status = assets.status('window', window_type, window_status)

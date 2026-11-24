@@ -27,6 +27,8 @@ local hud = require('ui.hud');
 local snapshot = { valid = true, id = 1001, zone = 230, job = 1, name = 'Aster' };
 local model, notifier, now = recasts.new(), alerts.new(), 100;
 local function get(view, id) for _, row in ipairs(view.rows) do if row.recast_id == id then return row; end; end; end;
+-- A row as it is now. The next view refills it (core/recasts.lua), so one kept to compare with a later view is a copy.
+local function held(row) local kept = {}; for key, value in pairs(row) do kept[key] = value; end; return kept; end;
 -- One 0.1 s sample: the client counts its live timers down in 1/60 s ticks.
 local function step(rules)
     now = now + 0.1;
@@ -48,10 +50,10 @@ abilities[0], abilities[1], abilities[2] = { id = 0, timer = 0 }, { id = 5, time
 step({ started }); step({ started });
 abilities[1].timer = 30 * 60;
 local view, notices = step({ started });
-local first = get(view, 5);
+local first = held(get(view, 5));
 assert(first.total > 29 and #notices == 1 and notices[1].message:find('Provoke', 1, true), 'Fixture: Provoke is used once.');
 for _ = 1, 123 do step({ started }); end;
-local before = get(model:view(now), 5);
+local before = held(get(model:view(now), 5));
 -- Berserk is used 12.4 s later: Phoenix sends Berserk at 300 s and Provoke rounded up.
 abilities[2].timer = 300 * 60;
 resync();
@@ -70,7 +72,7 @@ for tenth = 0, 9 do
     abilities[1].timer, abilities[2].timer = 0, 0;
     step(); step();
     abilities[1].timer = 30 * 60; step();
-    local used = get(model:view(now), 5);
+    local used = held(get(model:view(now), 5));
     for _ = 1, 50 + tenth do step(); end;
     resync(); step();
     local row = get(model:view(now), 5);

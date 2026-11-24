@@ -7,12 +7,16 @@ for _, name in ipairs(theme.names) do
     appearance.names[#appearance.names + 1], known[name] = name, true
 end
 appearance.names[#appearance.names + 1], known['XI View'] = 'XI View', true
+-- The name each skin shows by, in the main page's list and in Undo, whether it was picked there or with /vg skin. The
+-- Minimal theme is the Frameless skin.
+appearance.labels = {}
+for _, name in ipairs(appearance.names) do appearance.labels[name] = name == 'Minimal' and 'Frameless' or name end
 
 local function preset(name)
     local native = name == 'Original FFXI' or name == 'XI View'
     return { theme = native and 'Original FFXI' or name, native = native, minimal = name == 'Minimal',
         font = native and name or 'Agave', gauge_art = name == 'XI View' and name or 'Original FFXI',
-        icon_art = native and name or 'Client', recast_icon_art = name == 'XI View' and name or 'Original FFXI' }
+        icon_art = name == 'XI View' and name or 'Original FFXI', recast_icon_art = name == 'XI View' and name or 'Original FFXI' }
 end
 
 -- The parts of XI View the last look given to uses_xiview draws with, which its warmup steps make: art (its font file's
@@ -20,8 +24,8 @@ end
 -- icons). A part no step makes is made on its first use, as for a look without XI View.
 local xiview_parts = {}
 
--- Whether a saved look draws anything with XI View: the main font or artwork, or the party list buffs' own icons while
--- they are on. Which parts it draws with is kept for the warmup steps.
+-- Whether a saved look draws anything with XI View: the main font or artwork, or Party list's own icons while
+-- it is on. Which parts it draws with is kept for the warmup steps.
 function appearance.uses_xiview(settings)
     local style = type(settings) == 'table' and type(settings.style) == 'table' and settings.style or {}
     -- A display that is off draws nothing.
@@ -45,7 +49,16 @@ function appearance.warmup_steps()
         step.run = function() if xiview_parts[part] then run() end end
         steps[#steps + 1] = step
     end
-    for _, step in ipairs(assets.xiview_steps()) do gate(step, 'art') end
+    -- A look without XI View's face would keep its font pixels all session, so they go once the art is up. Anything
+    -- that wants them later reads them from the file again (assets.raw).
+    for _, step in ipairs(assets.xiview_steps()) do
+        local run = step.run
+        step.run = function()
+            run()
+            if not xiview_parts.face then assets.release_pixels('xiview_font', 'moji') end
+        end
+        gate(step, 'art')
+    end
     gate(assets.step('fonts.face.xiview', function() return client_fonts.current('XI View') end, function()
         client_fonts.prepare()
         client_fonts.available('XI View')
@@ -123,11 +136,14 @@ function appearance.apply(settings, name, options)
         end
     end
 
-    -- The party list buffs wear the timer panels' look. With matching fonts and artwork they take the skin's icons.
+    -- Party list wears the timer panels' look. With matching fonts and artwork it takes the skin's icons.
     local party = settings.party_ui
     if matching and type(party) == 'table' and type(party.style) == 'table' then party.style.icon_art = choice.icon_art end
     appearance.overhead_look(settings.overhead)
     appearance.element_look(settings)
+    -- Alerts the same way: the notices' own text color starts again. A rule's own Notice color stays, as a color set
+    -- for one effect does.
+    if type(settings.alerts) == 'table' then settings.alerts.notice_colors = {} end
     return true
 end
 
@@ -151,7 +167,7 @@ local function overrides(colors)
     return type(colors) == 'table' and next(colors) ~= nil
 end
 
--- The party list buffs' own icons: their own choice, or the timer panels' where they have none.
+-- Party list's own icons: its own choice, or the timer panels' where it has none.
 local function party_icons(settings)
     local party = type(settings.party_ui) == 'table' and settings.party_ui or {}
     local own = type(party.style) == 'table' and party.style.icon_art or nil
@@ -172,6 +188,11 @@ local function element_summary(settings, key)
     for _, color in ipairs(appearance.element_colors[key]) do out[color] = copy(config[color]) end
     return out
 end
+-- And Alerts': the notices' own colors.
+local function notice_look(settings)
+    local alerts = type(settings.alerts) == 'table' and settings.alerts or {}
+    return copy(type(alerts.notice_colors) == 'table' and alerts.notice_colors or {})
+end
 local function same_summary(settings, previous)
     if not previous or not equal(settings.style, previous.style) then return false end
     local overhead, saved = type(settings.overhead) == 'table' and settings.overhead or {}, previous.overhead
@@ -179,6 +200,7 @@ local function same_summary(settings, previous)
     for key in pairs(appearance.element_colors) do
         if not equal(element_summary(settings, key), previous.elements[key]) then return false end
     end
+    if not equal(notice_look(settings), previous.notices) then return false end
     if party_icons(settings) ~= previous.party_icons then return false end
     local count = 0
     for id, panel in pairs(settings.panels or {}) do
@@ -204,6 +226,7 @@ local function summary_snapshot(settings)
     out.overhead = overhead_look(settings)
     out.elements = {}
     for key in pairs(appearance.element_colors) do out.elements[key] = element_summary(settings, key) end
+    out.notices = notice_look(settings)
     return out
 end
 
@@ -222,7 +245,7 @@ function appearance.describe(settings)
     if theme.current(settings) ~= choice.theme or style.font ~= choice.font or style.gauge_art ~= choice.gauge_art
         or style.icon_art ~= choice.icon_art or style.recast_icon_art ~= choice.recast_icon_art
         or (style.minimal == true) ~= choice.minimal or (style.background ~= false) == choice.minimal
-        or (style.border ~= false) == choice.minimal then differs('Shared timer appearance', 'Home', nil, 'style') end
+        or (style.border ~= false) == choice.minimal then differs('The main page\'s look', 'Home', nil, 'style') end
     for id, panel in pairs(settings.panels or {}) do
         if type(panel) == 'table' then
             if overrides(panel.colors) or choice.native and (panel.bar_style ~= 'rail' or panel.bar_thickness ~= 8 or panel.gradient) then
@@ -247,6 +270,7 @@ function appearance.describe(settings)
         end
         if changed then differs(entry[2], entry[3], entry[4], entry[1]) end
     end
+    if overrides(notice_look(settings)) then differs('Alerts', 'Display', 'notices', 'notices') end
     local current = #differences > 0 and mixed or name
     summary_cache = { owner=settings, source=summary_snapshot(settings), name=current, differences=differences }
     return current, differences
@@ -273,6 +297,8 @@ local function display_look(settings, entry)
         return overhead_look(settings)
     elseif appearance.element_colors[entry.look] then
         return element_summary(settings, entry.look)
+    elseif entry.look == 'notices' then
+        return notice_look(settings)
     end
 end
 -- Saved colors round a little, as describe allows.

@@ -27,5 +27,15 @@ s.party[2].zone=1;s.party[2].scope='party';s.party[2].group=1;s.party[2].slot=2;
 tracker:reconcile(s,6);tracker:observe({{kind='apply',entity_id=30,effect=40,source=20,duration=30}},6,s);
 s.party[2].scope='alliance';s.party[2].group=3;s.party[2].slot=12;tracker:reconcile(s,7);
 v=tracker:view(7,{},s);for _,row in ipairs(v.rows) do if row.entity_id==30 then assert(row.scope=='alliance');end;end
+-- An alliance member KO'd past the defeat message's range shows only as HP 0, which takes what was on them, once.
+local had=false;for _,row in ipairs(v.rows) do if row.entity_id==30 then had=true;end;end
+assert(had,'Fixture: the alliance member has a row.');
+tracker:drain_events();s.party[2].hpp=0;tracker:reconcile(s,7.5);v=tracker:view(7.5,{},s);
+for _,row in ipairs(v.rows) do assert(row.entity_id~=30,'An alliance member at HP 0 keeps no rows.');end
+local version=tracker.version;tracker:reconcile(s,7.6);
+local events=tracker:drain_events();
+assert(tracker.version==version,'It drops them once.');
+assert(#events==0,'Quietly: '..tostring(events[1] and events[1].kind));
+s.party[2].hpp=nil;
 s.party[2]=nil;tracker:reconcile(s,8);v=tracker:view(8,{},s);
 for _,row in ipairs(v.subjects) do assert(row.id~=30,'Departed alliance members do not remain roster subjects.');end

@@ -4,22 +4,11 @@
 local SELF, MOB = 1001, 0x1000123;
 local app = dofile(ADDON_DIR .. '/vantage.lua');
 MOCK.fire('load'); app.refresh(0);
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One row for each { message, param } on the mob.
 local function action(actor, category, id, rows)
-    local bytes, at = MOCK.bytes(512), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, 1); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    putbits(bytes, at, 32, MOB); putbits(bytes, at + 32, 4, #rows); at = at + 36;
-    for _, row in ipairs(rows) do
-        putbits(bytes, at + 27, 17, row[2]); putbits(bytes, at + 44, 10, row[1]); at = at + 87;
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    local results = {};
+    for i, row in ipairs(rows) do results[i] = { message = row[1], param = row[2] }; end
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, { { id = MOB, rows = results } }));
 end
 assert(app.state.snapshot.valid and app.state.snapshot.id == SELF, 'Fixture: the player is in the game.');
 app.state.snapshot.entities = app.state.snapshot.entities or {};

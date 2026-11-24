@@ -93,8 +93,22 @@ do -- Section: a string wrapped by Discord or chat reads; any change inside it i
         local payload, why = share.read(case[2]);
         assert(payload and payload.kind == (case[2]:find('"profile"', 1, true) and 'profile' or 'alerts'), case[1] .. ' reads: ' .. tostring(why));
     end;
+    -- A } after the string, in a note or in a second string, is not part of it, so the first string reads.
+    local filters = assert(share.export(fresh(), 'filters', nil, NAME));
+    for _, case in ipairs({ { 'a note with a } after it', small .. ' thanks :}', 'alerts' },
+        { 'two strings in one message', 'alerts: ' .. small .. '\nfilters: ' .. filters, 'alerts' },
+        { 'two strings the other way round', '```\n' .. filters .. '\n' .. small .. '\n```', 'filters' } }) do
+        local payload, why = share.read(case[2]);
+        assert(payload and payload.kind == case[3], case[1] .. ' reads the first string: ' .. tostring(why));
+    end;
+    -- A { or } in the data's text, or a quote before one, doesn't end the string early.
+    local braced = fresh();
+    braced.panels.self_buffs.title = 'Say "}" {here}';
+    local curly = assert(share.export(defaults.tidy(braced), 'element', 'self_buffs', NAME));
+    local read, why = share.read('> `' .. curly .. '` :}');
+    assert(read and read.data.title == 'Say "}" {here}', 'A } in the data\'s text is not its end: ' .. tostring(why));
     local damaged = small:sub(1, -3) .. (small:sub(-2, -2) == '1' and '2' or '1') .. small:sub(-1);
-    for _, text in ipairs({ '`' .. damaged .. '`', '> ' .. damaged, 'Look: ' .. small:sub(1, -2) .. ' }' }) do
+    for _, text in ipairs({ '`' .. damaged .. '`', '> ' .. damaged, 'Look: ' .. small:sub(1, -2) .. ' }', damaged .. ' thanks :}' }) do
         local payload, why = share.read(text);
         assert(payload == nil and why:find('checksum', 1, true), 'A change inside the string is still refused: ' .. tostring(why));
     end;

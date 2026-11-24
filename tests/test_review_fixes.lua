@@ -11,8 +11,7 @@ local catalog = { { id = 0, name = 'Ko' }, { id = 33, name = 'Haste' }, { id = 2
 window.main_helpers.catalog = function() return catalog; end;
 h.fresh();
 h.on('hidden', 'show');
-h.type('##frame_Find an effect', 'Haste');
-h.pick('##frame_Effect', 'Haste##33');
+h.choose('Haste', 33);
 h.draw('Add a rule##frame');
 h.draw();
 h.draw('Use this rule##frame');
@@ -90,10 +89,9 @@ local function finds(query, label)
     for _, result in ipairs(window.search(query)) do if result.label == label and result.panel == 'target' then return true; end; end;
     return false;
 end;
-h.type('##frame_Find an effect', 'Haste');
-assert(finds('rename it', 'Rename it'), 'With one picked it is its own row.');
-h.type('##frame_Find an effect', 'qqqqq');
-assert(finds('rename it', 'Find an effect'), 'With none picked it goes by the box that picks one, though no setting changed.');
+assert(finds('rename it', 'Choose an effect'), 'With none picked it goes by the list that picks one.');
+h.choose('Haste', 33);
+assert(finds('rename it', 'Rename it'), 'With one picked it is its own row, though no setting changed.');
 
 -- Recasts in one panel, shown with every kind ticked off, has rows to show.
 h.fresh(function(s)
@@ -114,16 +112,22 @@ command('/vg recasts show');
 kinds = app.state.settings.panels.recasts.recast_categories;
 assert(app.state.settings.panels.recasts.enabled and kinds.spell and kinds.ability and kinds.item, 'So does /vg recasts show.');
 
--- Reset this display says what it leaves.
+-- Reset all of this display says what it leaves.
 local function question(id, words)
     h.fresh();
     h.on(id, 'show');
-    h.draw('Reset this display##frame');
+    h.draw('Reset all of this display##frame');
     h.draw();
     assert(h.says(words), id .. ' says: ' .. words);
 end;
-question('target', 'Follow the cursor stays as it is.');
-question('spell_recasts', 'Recast marks and the ready pulse stay as they are.');
+-- Follow the cursor is on the main page now, so Target timers neither draws it nor names it when it resets.
+h.fresh();
+h.on('target', 'show');
+assert(not h.called('Checkbox', 'Follow the cursor while I am choosing a target##frame'), 'Target\'s Show has no Follow the cursor.');
+h.draw('Reset all of this display##frame');
+h.draw();
+assert(not h.says('Follow the cursor'), 'Target timers\' reset says nothing of Follow the cursor.');
+question('spell_recasts', 'Recast tints and the ready pulse stay as they are.');
 
 -- Ending soon shows on a countdown wherever nothing else says it, and over a Countdown color.
 local WARN, OWN, ROW = { 1, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 0, 1, 1 };
@@ -184,7 +188,7 @@ assert(s.panels.self_buffs.blink_icons == usual.panels.self_buffs.blink_icons an
     'Blink comes back with them.');
 
 -- Undo says each step by the name the player knows.
-for section, label in pairs({ self_buffs = 'Reset Self buffs', rolls = 'Reset Phantom Roll', pet = 'Reset Pet', alerts = 'Reset Alerts', party_ui = 'Reset Party list buffs',
+for section, label in pairs({ self_buffs = 'Reset Self buffs', rolls = 'Reset Phantom Roll', pet = 'Reset Pet', alerts = 'Reset Alerts', party_ui = 'Reset Party list',
     party_cooldowns = 'Reset Party cooldowns', overhead = 'Reset Overhead icons', job_profiles = 'Unlink all jobs', watch_list = 'Reset watch list' }) do
     assert(customization.reset_label(section) == label, 'Undo says ' .. label .. ': ' .. customization.reset_label(section));
 end;

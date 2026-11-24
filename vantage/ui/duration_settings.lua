@@ -2,9 +2,9 @@ local durations = require('core.durations');
 local effect_editor = require('ui.effect_settings');
 -- The Timer durations page: duration overrides and the times learned from your casts (settings.durations).
 local page = {};
--- What the pickers hold. rule is the override picked to edit, and place where it was last seen in the list. None of it is
--- saved.
-local pick = { kind = 'spell', query = '', name = '', place = 1 };
+-- What the pickers hold. effect is what to override, of the kind in chosen, rule the override picked to edit, and place
+-- where it was last seen in the list. None of it is saved.
+local pick = { kind = 'spell', name = '', place = 1 };
 -- What the override list calls each rule, and the learned lines: made again when the settings change. Without a revision
 -- to go by, each draw makes them.
 local listed, learned = {}, {};
@@ -16,19 +16,7 @@ local learned_kinds = { skill = 'A monster skill', pact = 'A pet skill' };
 local no_name = { Spell = 'A spell with no name', Ability = 'An ability with no name' };
 local function plain_name(name) return no_name[name:match('^(%a+) %d+$')] or name; end
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-local function field(object, key)
-    if object == nil then return nil; end
-    local ok, value = pcall(index_of, object, key);
-    if ok then return value; end
-end
-local function resource_name(resource)
-    local value = field(field(resource, 'Name'), 1);
-    if type(value) ~= 'string' then return nil; end
-    value = value:gsub('%c', ''):match('^%s*(.-)%s*$');
-    if value ~= '' and value ~= '.' then return value:sub(1, 60); end
-end
+local field, resource_name = require('core.guard').field, require('core.guard').resource_name;
 local function resource(kind, id)
     local ok, resources = pcall(function() return AshitaCore:GetResourceManager(); end);
     if not ok or resources == nil then return nil; end
@@ -47,7 +35,7 @@ local function action_name(kind, id, catalog)
         for _, entry in ipairs(catalog or {}) do if entry.id == id then return entry.name; end end
         return require('core.catalog').get(id).name;
     end
-    if names[kind] and names[kind][id] == nil then names[kind][id] = resource_name(resource(kind, id)) or false; end
+    if names[kind] and names[kind][id] == nil then names[kind][id] = resource_name(resource(kind, id), 60) or false; end
     return names[kind] and names[kind][id] or (kind == 'spell' and 'Spell ' or kind == 'ability' and 'Ability ' or 'Action ') .. id;
 end
 
@@ -119,6 +107,8 @@ end
 local now = {};
 local function edit(fn, label) now.c.changed(fn, true, label); end;
 
+local function choose(id) pick.effect = id; end;
+
 local function add_override()
     local c, overrides = now.c, now.overrides;
     if not pick.effect then return; end;
@@ -161,18 +151,19 @@ function page.draw(imgui, settings, view, callbacks, c)
     imgui.TextWrapped('How long Vantage counts the effects it estimates: those on mobs, party members and other players. Your own effects follow the game\'s timers.');
 
     if c.section('Duration overrides', 'Your own time for a spell, ability or effect, on every mob and player or one by name.', true) then
-        imgui.TextWrapped('A fixed time goes before a learned time, and adding, taking away or a percent change it. One for a spell or ability goes before one for its effect, and one with a name before one without.');
+        imgui.TextWrapped('A fixed time goes before a learned one, and adding, taking away or a percent changes it. A spell\'s or ability\'s goes before its effect\'s, and a named one before one without.');
         (c.choice or c.combo)('Override applies to', pick, 'kind', durations.kinds, kind_labels, 'Spells and job abilities are matched by what was used, effects by what landed from anything.');
         local revision = c.catalog_revision and c.catalog_revision();
         local statuses = require('ui.filter_settings').status_catalog(c.catalog(), revision);
         local catalog = pick.kind == 'effect' and statuses or action_catalog(pick.kind);
-        (c.query or c.text)('Find what to override', pick, 'query', 'Search by name. Searching changes nothing.', 60);
+        -- A spell and an effect can share a number, so a new kind starts with nothing picked.
+        if pick.chosen ~= pick.kind then pick.effect, pick.chosen = nil, pick.kind; end;
         -- The effects go by the window's catalog revision. A spell or ability list never changes once it's made.
         effect_editor.selection(catalog, pick, pick.kind == 'effect' and revision or 0);
-        if pick.effect then
-            (c.choice or c.combo)('What to override', pick, 'effect', pick.ids, pick.labels);
-        else imgui.TextWrapped('Nothing matches. Try another name.'); end;
-        c.button('Add duration override', add_override, 'Adds a fixed time of 60 seconds for the pick above. Change it below.');
+        c.effect_picker('What to override', pick.effect, choose, false, pick.kind == 'effect' and 'status' or pick.kind,
+            pick.effect and plain_name(pick.labels[pick.effect]) or 'Choose one', catalog);
+        c.mark('What to override');
+        if pick.effect then c.button('Add duration override', add_override, 'Adds a fixed time of 60 seconds for the pick above. Change it below.'); end;
         if #overrides == 0 then
             imgui.TextWrapped('No duration overrides yet.');
         else
@@ -182,8 +173,11 @@ function page.draw(imgui, settings, view, callbacks, c)
                 listed.ids, listed.labels = {}, {};
                 -- Each rule is named by its own kind, whatever the pick above is on.
                 for index, rule in ipairs(overrides) do listed.ids[index], listed.labels[index] = index, rule_label(index, rule, statuses); end;
+                listed.count = string.format('%d duration override%s.', #overrides, #overrides == 1 and '' or 's');
                 listed.settings, listed.revision, listed.overrides, listed.statuses = settings, revision, overrides, statuses;
             end;
+            -- How many there are, then the one to edit. Override to edit lists every one.
+            imgui.TextWrapped(listed.count);
             picked_place(overrides);
             (c.choice or c.combo)('Override to edit', pick, 'place', listed.ids, listed.labels, 'Picking one changes nothing.');
             -- Picking one moves the place, and the rule there is the one picked.
@@ -211,7 +205,7 @@ function page.draw(imgui, settings, view, callbacks, c)
     end;
 
     if c.section('Learned durations', 'Times from your own casts, from when Vantage saw them land to their wear-off.', true) then
-        c.check('Learn from my casts', config, 'learn', 'Keeps the time from landing to wear-off of your own effects on others, by spell and by mob name, and counts your casts from their middle one once there are enough. A sleep broken by a hit or beside a damage tick, a removal and a death teach nothing.');
+        c.check('Learn from my casts', config, 'learn', 'Learns how long your own effects on others last, by spell and mob name, from your casts\' middle time once there are enough. Broken, removed or cut short by a death, they teach nothing.');
         if config.learn then c.number('Casts before a learned time is used', config, 'learn_samples', 1, 9, 'Up to nine times are kept for each spell on each mob name, the newest ones.', true); end;
         local revision = callbacks and callbacks.settings_revision and callbacks.settings_revision();
         if learned.settings ~= settings or revision == nil or learned.revision ~= revision or learned.from ~= config.learned then
@@ -230,6 +224,9 @@ function page.draw(imgui, settings, view, callbacks, c)
         if count > 0 then c.button('Clear learned durations', clear_learned, 'Forget every learned time. Undo brings them back.'); end;
     end;
 end;
+
+-- Whether something to override is picked, which Add duration override needs.
+function page.picked() return pick.effect ~= nil; end;
 
 -- The override picked, if there are any.
 function page.override(settings)

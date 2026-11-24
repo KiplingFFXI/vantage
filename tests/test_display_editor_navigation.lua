@@ -40,9 +40,9 @@ local function draw(page, button)
 end;
 -- A panel's tabs: each shows its own rows, and Locked and the reset are on all of them.
 local panels = require('ui.panel_frame');
-local timer_rows = { show = 'frame_Layout', look = 'Show the bar##frame', filters = 'frame_Find an effect', place = 'frame_Across', when = 'frame_From_min' };
-local recast_rows = { show = 'frame_Layout', look = 'Show the bar##frame', filters = 'frame_Find a recast', place = 'frame_Across', when = 'frame_From_min' };
-local party_rows = { show = 'Countdowns##frame', look = 'frame_Opacity', filters = 'frame_Find an effect',
+local timer_rows = { show = 'frame_Layout', look = 'Show the bar##frame', filters = 'Effect', place = 'frame_Across', when = 'frame_From_min' };
+local recast_rows = { show = 'frame_Layout', look = 'Show the bar##frame', filters = 'Recast', place = 'frame_Across', when = 'frame_From_min' };
+local party_rows = { show = 'Countdowns##frame', look = 'frame_Opacity', filters = 'Effect',
     place = "frame_Gap from the game's list", when = 'frame_From_min' };
 for id, tab_rows in pairs({ self_buffs = timer_rows, spell_recasts = recast_rows, party_ui = party_rows }) do
     panels.open(id, 'show');
@@ -53,7 +53,7 @@ for id, tab_rows in pairs({ self_buffs = timer_rows, spell_recasts = recast_rows
         for other, label in pairs(tab_rows) do
             if other ~= tab.key then assert(not seen[label], 'Other tabs are hidden: ' .. label); end;
         end;
-        assert(seen['Locked##frame'] and seen['Reset this display##frame'], 'Locked and the reset are on every tab: ' .. tab.key);
+        assert(seen['Locked##frame'] and seen['Reset all of this display##frame'], 'Locked and the reset are on every tab: ' .. tab.key);
     end;
     query = 'font';
     panels.open(id, 'place');
@@ -71,7 +71,7 @@ local shared_fonts = draw('Home');
 assert(shared_fonts['main_font'] and shared_fonts['main_icon_art'], 'The main page has the shared font and artwork a panel\'s Look tab points to.');
 window.main_helpers.open_page('Display', 'self_buffs', 'filters');
 local seen = draw(s.window.tab);
-assert(s.window.tab == 'Display' and seen['frame_Find an effect'], 'A link to a display\'s Filters tab opens it.');
+assert(s.window.tab == 'Display' and seen['Effect'], 'A link to a display\'s Filters tab opens it.');
 panels.open('self_buffs', 'place');
 panels.open('self_debuffs', 'look');
 panels.open('self_buffs');

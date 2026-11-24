@@ -49,11 +49,11 @@ local function set_packet(job_id, sub, spells)
     return MOCK.packet(0x044, bytes);
 end
 
--- The list is Phoenix's, at its revision, less what can't exist there: 128 effects, buffs such as Haste, Protect and
--- Stoneskin, no 2-hours.
+-- The list is Phoenix's, at its revision, less what can't exist there and the two shields that can't come off a mob:
+-- 126 effects, buffs such as Haste, Protect and Stoneskin, no 2-hours.
 local count = 0;
 for id, on in pairs(dispel.buffs) do assert(on == true and type(id) == 'number', 'Plain ids'); count = count + 1; end
-assert(count == 128, 'Phoenix flags 180 effects dispelable, and 52 of them can\'t exist there: ' .. count);
+assert(count == 126, 'Phoenix flags 180 effects dispelable, 52 of them can\'t exist there, and Arrow Shield and Magic Shield never come off a mob: ' .. count);
 assert(dispel.buffs[33] and dispel.buffs[40] and dispel.buffs[37] and dispel.buffs[43] and dispel.buffs[310],
     'Haste, Protect, Stoneskin, Refresh and the rolls are on it.');
 assert(not dispel.buffs[600] and not dispel.buffs[277], 'An effect the catalog dropped is not.');

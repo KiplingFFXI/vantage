@@ -110,3 +110,62 @@ do -- Section: a spot goes in whole. A display you moved only across keeps both 
     candidate = assert(share.candidate(yours, export(theirs, 'element', 'self_buffs'), 'add'));
     assert(candidate.panels.self_buffs.x == 111 and candidate.panels.self_buffs.y == 222, 'One you never moved takes their spot whole.');
 end; -- end of section
+
+do -- Section: a display's size and the way it fills are settings of their own, apart from its spot, in a layout too.
+    for _, change in ipairs({ 'width', 'fills' }) do
+        local yours, theirs = fresh(), fresh();
+        if change == 'width' then
+            yours.panels.target.width, yours.rolls.width, yours.pet.width = 420, yours.rolls.width + 50, yours.pet.width + 50;
+            yours.alerts.notice_width, yours.party_cooldowns.list.width, yours.ready_pulse.size = 600, yours.party_cooldowns.list.width + 50, 96;
+        else yours.panels.target.stack_direction, yours.panels.target.growth = 'vertical', 'left'; end;
+        theirs.panels.target.x, theirs.panels.target.y = 900, 600;
+        theirs.rolls.x, theirs.rolls.y, theirs.pet.x, theirs.pet.y = 55, 65, 35, 45;
+        theirs.alerts.notice_x, theirs.alerts.notice_y = 15, 25;
+        theirs.party_cooldowns.list.x, theirs.party_cooldowns.list.y = 75, 85;
+        theirs.ready_pulse.spot, theirs.ready_pulse.x, theirs.ready_pulse.y = 'screen', 95, 105;
+        for _, kind in ipairs({ 'profile', 'layout' }) do
+            local candidate = assert(share.candidate(yours, export(theirs, kind), 'add'));
+            local said = kind .. ' with your ' .. change .. ' changed: ';
+            local panel = candidate.panels.target;
+            assert(panel.x == 900 and panel.y == 600, said .. 'Target timers takes the export\'s spot: ' .. panel.x .. ',' .. panel.y);
+            assert(panel.width == yours.panels.target.width and panel.stack_direction == yours.panels.target.stack_direction
+                and panel.growth == yours.panels.target.growth, said .. 'and keeps your own size and fill.');
+            assert(candidate.rolls.x == 55 and candidate.rolls.y == 65 and candidate.rolls.width == yours.rolls.width,
+                said .. 'so does Phantom Roll: ' .. candidate.rolls.x .. ',' .. candidate.rolls.y);
+            assert(candidate.pet.x == 35 and candidate.pet.y == 45 and candidate.pet.width == yours.pet.width,
+                said .. 'and Pet: ' .. candidate.pet.x .. ',' .. candidate.pet.y);
+            assert(candidate.alerts.notice_x == 15 and candidate.alerts.notice_y == 25 and candidate.alerts.notice_width == yours.alerts.notice_width,
+                said .. 'and the alert notices: ' .. candidate.alerts.notice_x .. ',' .. candidate.alerts.notice_y);
+            local list = candidate.party_cooldowns.list;
+            assert(list.x == 75 and list.y == 85 and list.width == yours.party_cooldowns.list.width,
+                said .. 'and the party cooldown list: ' .. list.x .. ',' .. list.y);
+            local pulse = candidate.ready_pulse;
+            assert(pulse.spot == 'screen' and pulse.x == 95 and pulse.y == 105 and pulse.size == yours.ready_pulse.size,
+                said .. 'and the ready pulse: ' .. pulse.spot .. ' ' .. pulse.x .. ',' .. pulse.y);
+        end;
+    end;
+end; -- end of section
+
+do -- Section: the alert notices keep their anchor as notice_anchor, and it goes in whole too.
+    local function spot(anchor)
+        return table.concat({ anchor.to, anchor.point, anchor.dx, anchor.dy, anchor.side, anchor.align, anchor.gap, anchor.offset }, ' ');
+    end;
+    assert(spot(defaults.make().alerts.notice_anchor) == 'none top_left 0 0 below start 4 0', 'Fixture: the notices start with no anchor.');
+    local theirs = fresh();
+    local anchor = theirs.alerts.notice_anchor;
+    anchor.to, anchor.side, anchor.align, anchor.gap, anchor.offset = 'party', 'left', 'end', 12, 30;
+    -- Moves with: The chat log turns Side to Above. One who then set Side back to Below has only to changed.
+    for _, side in ipairs({ 'above', 'below' }) do
+        local yours = fresh();
+        yours.alerts.notice_anchor.to, yours.alerts.notice_anchor.side = 'chat', side;
+        for _, kind in ipairs({ 'element', 'profile', 'layout' }) do
+            local got = assert(share.candidate(yours, export(theirs, kind, kind == 'element' and 'notices' or nil), 'add')).alerts.notice_anchor;
+            assert(spot(got) == 'chat top_left 0 0 ' .. side .. ' start 4 0',
+                kind .. ': an anchor you changed for the notices stays whole, never mixed with theirs: ' .. spot(got));
+        end;
+    end;
+    for _, kind in ipairs({ 'element', 'profile', 'layout' }) do
+        local got = assert(share.candidate(fresh(), export(theirs, kind, kind == 'element' and 'notices' or nil), 'add')).alerts.notice_anchor;
+        assert(spot(got) == 'party top_left 0 0 left end 12 30', kind .. ': notices you never anchored take theirs whole: ' .. spot(got));
+    end;
+end; -- end of section

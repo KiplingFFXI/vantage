@@ -1,6 +1,6 @@
 -- A setting a newer Vantage saved survives a load here: every tidied table keeps the keys it doesn't know, including
 -- those whose tidy builds them anew (an anchor, When to show, the hide rules and each rule, a duration override, the
--- settings window's look and the party list buffs' look). So going back to an older Vantage and forward again keeps them.
+-- settings window's look and Party list's look). So going back to an older Vantage and forward again keeps them.
 -- What an older Vantage saved in those two looks, which nothing reads now, still goes.
 local defaults, store, json = require('ui.defaults'), require('core.store'), require('core.json');
 local settings = defaults.make();

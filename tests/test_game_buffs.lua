@@ -58,18 +58,17 @@ local SLOT, MANAGER, VTABLE = CODE + 0x9000, CODE + 0x9100, CODE + 0xA000;
 local container, menu, header = HEAP, HEAP + 0x1000, HEAP + 0x2000;
 local missing, calls;
 
--- What the + menu lists, as the client keeps it: how many, the cursor's place, each effect, and which can be cancelled.
-local function listed(effects, index, fixed)
+-- What the + menu lists, as the client keeps it: how many, the cursor's place and each effect.
+local function listed(effects, index)
     put(container + 0x40, le(#effects, 4));
     put(container + 0x30, le(index, 4));
     for place, effect in ipairs(effects) do
         put(container + 0x290 + (place - 1) * 2, le(effect, 2));
-        put(container + 0x2D0 + place - 1, fixed and fixed[effect] and '\0' or '\1');
     end
 end
 
 -- A whole client with the buff window at 1700, 20, three objects on its list (a frame, an icon and a cursor), and
--- Protect, Shell and Poison listed with the cursor on Protect. Poison can't be cancelled.
+-- Protect, Shell and Poison listed with the cursor on Protect.
 local function client()
     mem, missing, calls = {}, {}, { writes = {}, moves = {} };
     for name, body in pairs(game_buffs._bodies) do plant(where[name], body); end
@@ -105,7 +104,7 @@ local function client()
         put(object, le(kind, 2));
         node = node + 0x100;
     end
-    listed({ 40, 41, 3 }, 0, { [3] = true });
+    listed({ 40, 41, 3 }, 0);
 end
 
 local finds = 0;
@@ -181,12 +180,24 @@ assert(on() == nil and #calls.writes == 2 and #calls.moves == 1 and finds == 7, 
 -- With focus, it hands back what the menu's cursor is on, and follows it.
 focus(true);
 pick = on();
-assert(type(pick) == 'table' and pick.effect == 40 and pick.can_cancel == true and #calls.moves == 1, 'The cursor is on Protect.');
+assert(type(pick) == 'table' and pick.effect == 40 and #calls.moves == 1, 'The cursor is on Protect.');
 put(container + 0x30, le(2, 4));
 local again = on();
-assert(again == pick and pick.effect == 3 and pick.can_cancel == false, 'The cursor moved to Poison, which can\'t be cancelled, in the same table.');
+assert(again == pick and pick.effect == 3, 'The cursor moved to Poison, in the same table.');
 put(container + 0x30, le(1, 4));
 assert(on().effect == 41, 'The cursor moved to Shell.');
+assert(on().copy == 1, 'With one copy of each effect the cursor is on the first copy.');
+-- Two copies of one effect, as two Marches are: it says which one the cursor is on, counted down the game's list.
+local listed = snapshot();
+put(container + 0x40, le(4, 4));
+for place, effect in ipairs({ 214, 40, 214, 214 }) do put(container + 0x290 + (place - 1) * 2, le(effect, 2)); end
+for place, wanted in ipairs({ 1, 1, 2, 3 }) do
+    put(container + 0x30, le(place - 1, 4));
+    local found = on();
+    assert(found.effect == ({ 214, 40, 214, 214 })[place] and found.copy == wanted,
+        'Place ' .. place .. ' of the list is copy ' .. wanted .. ': ' .. tostring(found.copy));
+end
+mem = listed;
 -- A list it can't make sense of gives no cursor.
 for name, change in pairs({
     -- The client leaves what a longer list held past the end of a shorter one.
@@ -344,11 +355,11 @@ local function refused(name, change, wanted)
     assert(same_reason == reason and finds == looked, name .. ': asked for again, it gives the same answer without another search.');
     assert(game_buffs.release() == true and #calls.writes == 0, name .. ': an unload changes nothing either.');
 end
--- The mover's own pattern starts on its first bytes, which a hook from another addon or plugin writes a jump over.
+-- The mover's own pattern starts on its first bytes, which a hook writes a jump over.
 -- Its later bytes are then still there, 17 on from its start, and Vantage says what happened. It still changes
 -- nothing: the routine isn't the one it knows.
 where.menu_move_later = where.menu_move + 17;
-local CHANGED = 'Something else in the game, such as another addon or plugin, has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
+local CHANGED = 'Something else in the game has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
 local MISSING = 'This game client\'s menu mover is missing, so the game\'s buff icons stay as they are.';
 refused('a mover whose start something else changed', function() missing.menu_move = 'is missing'; end, CHANGED);
 assert(finds == 6, 'The later bytes are looked for once the mover isn\'t found, and nothing after it: ' .. finds);
@@ -415,4 +426,27 @@ put(ICON, '\233' .. le(0, 4));
 pick, notice = off();
 assert(notice == CANT_PUT_BACK and not game_buffs.status().on, 'A call that can\'t be put back: ' .. tostring(notice));
 assert(get(ICON, 5) == '\233' .. le(0, 4) and get(TIMER, 5) == call(TIMER, where.timer_draw), 'Only Vantage\'s own bytes are written over.');
+
+-- Each Present checks the buff window's container, its class's entry, its menu and its name once, whole, and reads
+-- inside them with no check of their own. A page check is a VirtualQuery in the game. The slot that holds the window
+-- and the focus manager are the client's own, and look() checked them.
+do
+    fresh();
+    local checks, check = 0, platform.valid;
+    platform.valid = function(...) checks = checks + 1; return check(...); end;
+    on(); on();
+    checks = 0;
+    for _ = 1, 100 do on(); end
+    local idle = checks / 100;
+    focus(true);
+    on();
+    checks = 0;
+    local cursor;
+    for _ = 1, 100 do cursor = on(); end
+    local with_focus = checks / 100;
+    platform.valid = check;
+    assert(idle == 4 and with_focus == 4,
+        ('Page checks a Present: %.1f without focus, %.1f with the + menu focused'):format(idle, with_focus));
+    assert(cursor and cursor.effect == 40 and sits(OFF, OFF) and #calls.moves == 1, 'The cursor is still read, and the menu stays off screen.');
+end
 return 'Replace the game\'s buff icons, the game side';

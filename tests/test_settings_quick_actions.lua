@@ -1,4 +1,4 @@
--- A reminder clicked again adds no copy, and a hide picker hides nothing until an effect is chosen.
+-- A preset clicked again adds no copy, and a hide picker hides nothing until an effect is chosen.
 local store=require('core.store');
 local SNAP={valid=true,id=1001,name='Tester',zone=102,job=3,self_known=true,self_effects={},party={},entities={}};
 package.loaded['core.client']={load=function()end,read=function()return store.copy(SNAP);end};
@@ -55,25 +55,25 @@ local function disabled(label)
     end;
 end;
 
--- Quick reminders on Alerts.
+-- Presets on Alerts.
 require('ui.panel_frame').open('notices','show');
 for _,tab in ipairs({'Display'})do
     local s=begin(tab);
     local rules=s.alerts.rules;
-    frame({click='Haste reminder##frame'});frame({click='Haste reminder##frame'});frame();
+    frame({click='Haste ending##frame'});frame({click='Haste ending##frame'});frame();
     assert(#rules==1 and rules[1].name=='Haste ending' and rules[1].effect==33,tab..': a second click adds no copy.');
-    assert(drawn('TextWrapped','Haste reminder is already on.'),tab..': the second click says the reminder is already on.');
+    assert(drawn('TextWrapped','Haste ending is already on.'),tab..': the second click says the preset is already on.');
     rules[1].enabled=false;
-    frame({click='Sleep reminder##frame'});frame({click='Haste reminder##frame'});frame();
-    assert(#rules==2 and rules[1].enabled,tab..': clicking it again turns the reminder back on.');
-    assert(drawn('TextWrapped','Haste reminder is on again.') and not drawn('TextWrapped','Haste reminder is already on.'),
-        tab..': the note says the click turned the reminder back on.');
-    -- A rule changed since is the player's own, so the reminder adds one beside it.
+    frame({click='Sleep ending##frame'});frame({click='Haste ending##frame'});frame();
+    assert(#rules==2 and rules[1].enabled,tab..': clicking it again turns the preset back on.');
+    assert(drawn('TextWrapped','Haste ending is on again.') and not drawn('TextWrapped','Haste ending is already on.'),
+        tab..': the note says the click turned the preset back on.');
+    -- A rule changed since is the player's own, so the preset adds one beside it.
     rules[1].thresholds={20};
-    frame({click='Haste reminder##frame'});
+    frame({click='Haste ending##frame'});
     assert(#rules==3 and rules[3].name=='Haste ending' and rules[3].thresholds[1]==30,tab..': a changed rule is left as it is.');
 end;
--- Alerts opens the reminder it turned on: its row says Done.
+-- Alerts opens the preset it turned on: its row says Done.
 local function open_alert()
     local name;
     for _,call in ipairs(MOCK.imgui_calls)do
@@ -82,26 +82,24 @@ local function open_alert()
     end;
 end;
 local s=begin('Display');
-frame({click='Haste reminder##frame'});frame({click='Sleep reminder##frame'});frame();
+frame({click='Haste ending##frame'});frame({click='Sleep ending##frame'});frame();
 assert(open_alert()=='Sleep ending','Fixture: the new Sleep rule is open.');
-frame({click='Haste reminder##frame'});frame();
-assert(#s.alerts.rules==2 and open_alert()=='Haste ending','The reminder that is already there opens.');
+frame({click='Haste ending##frame'});frame();
+assert(#s.alerts.rules==2 and open_alert()=='Haste ending','The preset that is already there opens.');
 
 local rules;
--- Hidden everywhere's picker.
+-- The Hide list's picker.
 require('ui.panel_frame').open('hidden','show');
 s=begin('Display');
 rules=s.effect_filters.rules;
-assert(drawn('BeginCombo','##frame_Effect','Choose an effect') and disabled('Hide it everywhere##frame'),
-    'The hide picker starts with nothing chosen.');
-frame({click='Hide it everywhere##frame'});
-assert(#rules==0,'Hide it everywhere with nothing chosen hides nothing.');
-frame({combo='##frame_Effect',click='Haste##33'});frame();
-assert(drawn('BeginCombo','##frame_Effect','Haste') and not disabled('Hide it everywhere##frame'));
+assert(drawn('BeginCombo','##Effect','Choose an effect') and not drawn('Button','Hide it everywhere##frame'),
+    'The hide picker starts with nothing chosen, and Hide it everywhere waits for a pick.');
+frame({combo='##Effect',click='Haste##effect_33'});frame();
+assert(drawn('BeginCombo','##Effect','Haste') and not disabled('Hide it everywhere##frame'));
 frame({click='Hide it everywhere##frame'});
 assert(#rules==1 and rules[1].effect==33 and rules[1].enabled,'The picked effect is hidden everywhere.');
 
--- Show on Party list buffs with no group ticked shows Your party, as the same switch on the main page does.
+-- Show on Party list with no group ticked shows Your party, as the same switch on the main page does.
 require('ui.panel_frame').open('party_ui','show');
 s=begin('Display',function(settings)
     settings.party_ui.enabled=false;

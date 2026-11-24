@@ -4,12 +4,7 @@
 -- text in quotes too, so text of spaces shows, and what it prints sets the setting back as it was.
 local store = require('core.store');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
-package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
-package.loaded['core.observer'] = { read = function() return {}; end };
-local hud = require('ui.hud');
-hud.draw, hud.draw_notices = function() end, function() end;
-require('ui.party_hud').draw = function() return 0, {}; end;
-require('ui.native_party_hud').draw = function() return 0, {}; end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui'] = { treasure_open = function() return false; end, update = function() end,
     status = function() return { active = false }; end, restore = function() return true; end, suspend = function() end };
 local customization = require('core.customization');
@@ -45,6 +40,16 @@ says('/vg set overhead.size.alpha 0.25', 'overhead.size.alpha is now 0.25.');
 says('/vg set overhead.enabled true', 'overhead.enabled is now true.');
 says('/vg set overhead.dispel_color [1,0,0,1]', 'overhead.dispel_color is now ' .. store.encode({ 1, 0, 0, 1 }) .. '.');
 assert(store.equal(app.state.settings.overhead.dispel_color, { 1, 0, 0, 1 }), 'The table is stored.');
+-- A space typed after the value is not part of it. A switch, a color, a choice and text in quotes read as they do
+-- without it.
+says('/vg set overhead.enabled false ', 'overhead.enabled is now false.');
+assert(app.state.settings.overhead.enabled == false, 'The switch is off.');
+local color = set('/vg set style.text_color FFFFFFCC ');
+assert(#color == 1 and color[1]:find('[Vantage] style.text_color is now ', 1, true), 'The color is set: ' .. table.concat(color, ' | '));
+assert(store.equal(app.state.settings.style.text_color, { 1, 1, 1, 204 / 255 }), 'and stored as typed.');
+says('/vg set overhead.camera.capture present ', 'overhead.camera.capture is now "present".');
+says('/vg set panels.target.title "My Target" ', 'panels.target.title is now "My Target".');
+assert(app.state.settings.panels.target.title == 'My Target', 'The quotes come off the text.');
 says('/vg set shared_layout true', 'shared_layout is now true.');
 assert(app.state.settings.shared_layout == true, 'The shared layout is on.');
 

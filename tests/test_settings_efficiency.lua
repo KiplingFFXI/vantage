@@ -59,7 +59,7 @@ local name, details = appearance.describe(a);
 assert(name == 'XI View' and #details == 0);
 local _, again = appearance.describe(a);
 assert(details == again, 'Unchanged appearance reuses its summary.');
-a.party_ui.style.icon_art = 'Client';
+a.party_ui.style.icon_art = 'Original FFXI';
 local changed, differences = appearance.describe(a);
 assert(changed == 'Mixed / customized' and differences ~= details and #differences == 1);
 assert(differences[1].label == 'Party buff icons');
@@ -84,13 +84,13 @@ theme.window = original_window;
 s.window.tab, s.party_ui.enabled, s.party_ui.preview = 'Party & alliance', false, true;
 MOCK.imgui_calls = {};
 window.draw(s, hud.sample(0), app.callbacks);
--- The header's switch says the party list buffs are off; no status line claims sample or live data.
+-- The header's switch says Party list is off; no status line claims sample or live data.
 local shown_off, stale_status = false, false;
 for _, call in ipairs(MOCK.imgui_calls) do
     if call[1] == 'Checkbox' and call[2] == 'On##frame_display' and call[3][1] == false then shown_off = true; end;
     if call[1] == 'TextWrapped' and (call[2]:find('Sample data', 1, true) or call[2]:find('Live data', 1, true)) then stale_status = true; end;
 end;
-assert(shown_off and not stale_status, 'The party list buffs off report hidden even if a sample preference remains enabled.');
+assert(shown_off and not stale_status, 'Party list off reports hidden even if a sample preference remains enabled.');
 s.party_ui.preview = false;
 local original_filter, filter_calls = hud.filter_rows, 0;
 hud.filter_rows = function(...) filter_calls = filter_calls + 1; return original_filter(...); end;
@@ -100,14 +100,13 @@ window.draw(s, hud.sample(0), app.callbacks);
 assert(require('ui.panel_frame').context():match('/filters$'), 'Fixture: the display\'s Filters tab is open.');
 assert(filter_calls == 0, 'Catalog browsing skips live-panel filtering.');
 hud.filter_rows = original_filter;
-local editor, entries, selection = require('ui.effect_settings'), {{id=33,name='Haste',kind='buff'}}, {query='Haste', effect=33};
+local editor, entries, selection = require('ui.effect_settings'), {{id=33,name='Haste',kind='buff'}}, {effect=33};
 assert(editor.selection(entries, selection) == 33);
 local labels = selection.labels;
 assert(editor.selection(entries, selection) == 33 and selection.labels == labels);
 entries[1].name = 'Slow';
-assert(editor.selection(entries, selection) == nil and selection.labels ~= labels, 'Same-table resource renames invalidate effect choices.');
-selection.query = 'Slow';
-assert(editor.selection(entries, selection) == 33);
+assert(editor.selection(entries, selection) == 33 and selection.labels ~= labels and selection.labels[33] == 'Slow',
+    'Same-table resource renames list the names again.');
 store.write = original_write;
 app.callbacks.changed = original_changed;
 imgui.SetNextItemOpen, imgui.CollapsingHeader = original_open, original_section;

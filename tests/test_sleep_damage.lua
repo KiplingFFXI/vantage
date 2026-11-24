@@ -17,26 +17,14 @@ local function snapshot(listed)
             [MOB] = { id = MOB, name = 'Goblin', kind = 'monster' }, [PET] = { id = PET, name = 'Carbuncle', kind = 'pet' } },
         target = { id = MOB, name = 'Goblin', kind = 'monster' } };
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One target row: { target, message, param, added, added_param, reaction, reaction_param }.
 local function action(actor, category, id, rows)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #rows); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, row in ipairs(rows) do
-        putbits(bytes, at, 32, row[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, row[3] or 0); putbits(bytes, at + 44, 10, row[2] or 0); at = at + 85;
-        putbits(bytes, at, 1, row[4] and 1 or 0); at = at + 1;
-        if row[4] then putbits(bytes, at + 10, 17, row[5] or 0); putbits(bytes, at + 27, 10, row[4]); at = at + 37; end
-        putbits(bytes, at, 1, row[6] and 1 or 0); at = at + 1;
-        if row[6] then putbits(bytes, at + 10, 14, row[7] or 0); putbits(bytes, at + 24, 10, row[6]); at = at + 34; end
+    local targets = {};
+    for i, row in ipairs(rows) do
+        targets[i] = { id = row[1], rows = { { message = row[2], param = row[3], added = row[4], added_param = row[5],
+            reaction = row[6], reaction_param = row[7] } } };
     end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, targets));
 end
 local function wearoff(actor, target, icon)
     local bytes = MOCK.bytes(28);
@@ -83,7 +71,7 @@ for _, target in ipairs({ SELF, ALLY }) do
     assert(hits(observer.read(action(MOB, 1, 0, { { target, 1, 40 } }), 1, snapshot())) == 0, 'A hit on ' .. target .. ' is not counted.');
 end;
 local bitten = observer.read(action(MOB, 1, 0, { { PET, 1, 40 } }), 1, snapshot());
-assert(hits(bitten) == 1 and bitten[1].entity_id == PET and bitten[1].scope == 'pet', 'A hit on a pet is counted.');
+assert(hits(bitten) == 1 and bitten[#bitten].kind == 'damage' and bitten[#bitten].entity_id == PET and bitten[#bitten].scope == 'pet', 'A hit on a pet is counted.');
 assert(hits(observer.read(action(MOB, 1, 0, { { PET, 1, 0 } }), 1, snapshot())) == 0, 'A hit on a pet for 0 is not.');
 -- A counter hits the mob that attacked (message 33 in the reaction slot, battle_entity.cpp :3781-3783), at more than
 -- 0. Spikes (44) deal their damage without waking or breaking Bind (CBattleEntity::takeDamage), so the mob's damage from a
@@ -132,11 +120,15 @@ rows = step(14, { action(SELF, 4, 258, { { MOB, 236, 11 } }) });
 assert(rows[11] and rows[11].deadline, 'Fixture: Bind again, with a time.');
 rows = step(15, { action(MOB, 1, 0, { { ALLY, 15, 0, nil, nil, 33, 20 } }) });
 assert(rows[11] and rows[11].deadline == nil, 'Bind loses its time at a counter.');
--- A new Sleep and Bind keep their time when the mob's only damage is from a party member's Blaze Spikes.
+-- A new Sleep and Bind, then the mob swings at a party member who has Blaze Spikes. The spikes' damage breaks
+-- nothing, so Bind keeps its time. The Sleep goes for another reason: a mob that swings isn't asleep
+-- (tests/test_acted_wakes.lua).
 rows = step(16, { action(SELF, 4, 253, { { MOB, 236, 2 } }), action(SELF, 4, 258, { { MOB, 236, 11 } }) });
 assert(rows[2] and rows[11] and rows[11].deadline, 'Fixture: Sleep and Bind again, with a time.');
 rows, events = step(17, { action(MOB, 1, 0, { { ALLY, 1, 30, nil, nil, 44, 20 } }) }, BLAZE);
-assert(rows[2] and rows[11] and rows[11].deadline and not removed(events, 2), 'Spikes leave both.');
+assert(rows[11] and rows[11].deadline, 'Spikes leave Bind its time.');
+local woke = removed(events, 2);
+assert(rows[2] == nil and woke and woke.reason == 'It acted, so the effect was over.', 'The mob swung, so it was awake, and not for the spikes.');
 -- A hit, then a new Sleep in the same row as an added effect: Phoenix deals the damage first, so the new Sleep stays.
 rows = step(20, { action(SELF, 4, 253, { { MOB, 236, 2 } }) });
 assert(rows[2], 'Fixture: Sleep again.');

@@ -42,7 +42,7 @@ after('Undo', function() assert(callbacks.undo()) end)
 after('Redo', function() assert(callbacks.redo()) end)
 after('/vg skin', function() command('/vg skin High contrast') end)
 -- The timer font, which the window writes in too.
-after('/vg font', function() command('/vg font Ashita') end, false)
+after('/vg font', function() command('/vg font Segoe UI') end, false)
 after('/vg set', function() command('/vg set window_style.font_size 21') end)
 after('A window style reset', function() assert(callbacks.reset('window_style')) end)
 after('A starter', function() assert(callbacks.starter('Support')) end, false)

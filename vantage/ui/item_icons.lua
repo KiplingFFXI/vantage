@@ -3,6 +3,7 @@ local capacity, retry_seconds = 64, 30
 local entries, count, sequence = {}, 0, 0
 -- Ashita's IItem bitmap owns 0x980 bytes.
 local client, test_loader = require('ui.client_bitmap').loader(0x980), nil
+local steady = require('core.steady')
 
 function icons.prepare()
     return client.prepare()
@@ -34,14 +35,17 @@ local function retain(item)
     return entry
 end
 
+-- The client's picture for item, made the first time it is drawn within this Present's budget of new icon textures
+-- (client_assets.spend_upload). While that is spent, nil and true: it is made in a later Present.
 function icons.texture(item)
     if type(item) ~= 'number' or item ~= item or item < 1 or item > 65534 or item ~= math.floor(item) then return nil end
     local entry = entries[item] or retain(item)
     sequence = sequence + 1
     entry.touched = sequence
     if entry.texture then return entry.texture end
-    local now = os.clock()
+    local now = steady()
     if not entry.retry_at or now >= entry.retry_at then
+        if not require('ui.client_assets').spend_upload() then return nil, true end
         local ok, value, release = pcall(load, item)
         local valid = ok and type(value) == 'number' and value > 0 and value ~= math.huge and value == math.floor(value)
         entry.texture, entry.retry_at = valid and value or nil, not valid and now + retry_seconds or nil

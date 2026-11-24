@@ -22,7 +22,7 @@ local function frame(page, click)
 end;
 -- The reset at the foot of a display's tabs, which asks first.
 local function reset(id)
-    frame('Display', 'Reset this display##frame');
+    frame('Display', 'Reset all of this display##frame');
     frame('Display', 'Reset##look_frame_reset_' .. id);
     assert(reset_scope == id, 'Reset goes to ' .. id .. ': ' .. tostring(reset_scope));
 end;
@@ -42,13 +42,14 @@ frame('Display');
 assert(called('Checkbox', SHOW) and not called('Checkbox', 'Show timers and recasts'));
 local count = transactions;
 frame('Display', SAMPLES);
-assert(not s.preview and not s.enabled and not s.panels.self_buffs.enabled and transactions == count, 'Samples turn nothing on.');
+assert(not s.panels.self_buffs.preview and not s.enabled and not s.panels.self_buffs.enabled and transactions == count, 'Samples turn nothing on.');
 s.enabled, s.panels.self_buffs.enabled = true, true;
 frame('Display', SAMPLES);
-assert(s.preview and transactions == count + 1, 'Samples are one Undo transaction.');
+assert(s.panels.self_buffs.preview and not s.preview and not s.panels.target.preview and transactions == count + 1,
+    'Samples on this panel only, as one Undo transaction.');
 all_locked();
 frame('Display', SAMPLES);
-assert(not s.preview and s.enabled and s.panels.self_buffs.enabled, 'Ending samples keeps the display available for live data.');
+assert(not s.panels.self_buffs.preview and s.enabled and s.panels.self_buffs.enabled, 'Ending samples keeps the display available for live data.');
 frame('Display', LOCK);
 assert(not s.panels.self_buffs.locked and s.party_ui.locked);
 frame('Display', LOCK); all_locked();
@@ -64,7 +65,7 @@ panels.open('recasts', 'show');
 frame('Display', SHOW);
 assert(s.enabled and s.panels.recasts.enabled);
 frame('Display', SAMPLES);
-assert(s.preview);
+assert(s.panels.recasts.preview);
 all_locked();
 frame('Display', SAMPLES);
 reset('recasts');
@@ -78,9 +79,9 @@ s.recast_display, s.enabled = 'separate', false;
 panels.open('item_recasts', 'show');
 frame('Display', SHOW); assert(s.enabled and s.panels.item_recasts.enabled);
 frame('Display', SAMPLES);
-assert(s.preview);
+assert(s.panels.item_recasts.preview);
 frame('Display', SAMPLES);
-assert(not s.preview);
+assert(not s.panels.item_recasts.preview);
 all_locked();
 
 panels.open('self_debuffs', 'show');
@@ -91,7 +92,7 @@ s.recast_display = 'combined'; reset('recasts');
 s.recast_display = 'separate'; reset('item_recasts');
 all_locked();
 
--- Show on Party list buffs shows the groups switched on, or Your party when none is, and samples then show on them.
+-- Show on Party list shows the groups switched on, or Your party when none is, and samples then show on them.
 panels.open('party_ui', 'show');
 for _, strips in ipairs({ { party = false, alliance1 = false, alliance2 = false }, { party = false, alliance1 = true, alliance2 = true } }) do
     s.party_ui.enabled, s.party_ui.preview, s.party_ui.strips = false, false, strips;

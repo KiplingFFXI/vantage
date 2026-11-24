@@ -2,7 +2,7 @@
 
 Reads Git objects, never the mutable source checkouts. The duration tables are
 the author's own committed work and record the same Phoenix revision. Updating either
-pin requires a new source review; this tool will not follow a moving branch.
+pin requires a new source review. This tool will not follow a moving branch.
 """
 import argparse
 import hashlib
@@ -11,8 +11,8 @@ from pathlib import Path
 import re
 import subprocess
 
-PHOENIX = 'ed41f351f63b24e015059c5a58f1c29eb3f198ac'
-DURATION_REV = 'be61bc997d8c29f17532c223e1f8c63ae8d6f937'
+PHOENIX = '978502097031e587dbc618392cc8b868e3cbe3ab'
+DURATION_REV = '2c23661d5b8c87130a0b4d5b9e2e09d0fcf09938'
 ROOT = Path(__file__).resolve().parents[1]
 # The effects that can't exist on Phoenix, by why, from an audit of all 668 judged at phoenix/live ed41f351f6 with its
 # era settings (docs/VALIDATION.md). The pin above doesn't move this list: recheck it when Phoenix opens WotG content
@@ -43,7 +43,34 @@ AUDITED_OUT = {
     'shop_only': '277-282, 404, 581',
     # The client has no name or icon for them, so nothing can show them: applied with icon 0, only ever on a mob, or
     # part of a quest from after this era.
-    'never_shown': '791-795, 797, 799-806',
+    'never_shown': '791-795, 797, 799-803, 806',
+}
+# Two effects the client has no name or icon for sit only on a monster, each put there by a player's item: Hysteria by
+# a Bottle of Hysteroanima and Tomahawk by a Throwing Tomahawk (scripts/items/bottle_of_hysteroanima.lua,
+# scripts/globals/job_utils/warrior.lua useTomahawk). The game says nothing of either, so each shows as a possible
+# effect, under the name Phoenix gives it and with its item's picture. By effect: the item's name in
+# scripts/enum/item.lua and its id.
+ITEM_ART = {804: ('BOTTLE_OF_HYSTEROANIMA', 5262), 805: ('THROWING_TOMAHAWK', 18258)}
+# The game has no description of either, so the catalog gives what Phoenix does. Hysteria cuts off each of a monster's
+# TP moves as it would go off (src/map/ai/states/mobskill_state.cpp :199-205), and the TP spent at its start isn't given
+# back, as it is only for an effect that stops the monster acting (:177-181, :340). Spells don't check it. Tomahawk
+# takes a quarter off each physical and elemental damage taken mod (scripts/effects/tomahawk.lua), and those count
+# from 0, so it weakens a weakness as well as a resistance (src/map/utils/battleutils.cpp :2062-2072,
+# scripts/combat/basic/damage_multipliers.lua :28-38).
+# Two more get Phoenix's words because the game's say something else. The game's Fast Cast speeds casting up, but
+# Phoenix has no Rune Fencer, so its only Fast Cast is a Nyzul Isle affliction at -30 (scripts/globals/nyzul/pathos.lua
+# :29, scripts/effects/fast_cast.lua), and Nyzul Isle is closed for now (modules/phoenix/lua/zones/npc_visibility.lua
+# :21). The -30 sums with any Fast Cast you have, so a spell's cast time grows by 30% of its base and its recast by half
+# that (src/map/utils/battleutils.cpp :5652-5662, :5790-5793). The game's Sange is about Daken, but the era module puts
+# the older one back: the next ranged attack throws one more for each Utsusemi shadow until one misses, and the shadows
+# go (modules/era/lua/globals/job_utils/ninja.lua :32-37, src/map/entities/battle_entity.cpp :3215, :3222-3233,
+# :3243-3244, :3286-3290, :3480-3483).
+DESCRIPTIONS = {
+    352: ('Your next ranged attack throws an extra shuriken for each Utsusemi shadow you have, until one misses, and the '
+          'shadows are lost.'),
+    574: 'Spells take longer to cast and recast, by 30% of their base cast time and 15% of their base recast.',
+    804: "The monster's TP moves are cut off before they go off, and the TP is lost anyway. Its spells aren't stopped.",
+    805: "The monster's resistances and weaknesses to physical and elemental damage are a quarter weaker.",
 }
 # What players can have: spells and abilities of these content tags (NULL is the base game), on a job up to 18 at level
 # 75 or under. Phoenix's era SQL moves nothing across 75 (Reraise I to III, Banishga and Sekkanoki only). Group 8 is the
@@ -79,9 +106,17 @@ def id_list(text):
 def phoenix_statuses(rows):
     out = set().union(*(id_list(text) for text in AUDITED_OUT.values()))
     result = {ident: row for ident, row in rows.items() if ident not in out}
-    if len(result) != 271:
+    if len(result) != 273:
         raise RuntimeError('Audited status catalog changed unexpectedly.')
     return result
+
+
+def item_art(rows, item_text):
+    # Each of the two takes its item's id, which must be the one Phoenix has under that name.
+    for ident, (name, item) in ITEM_ART.items():
+        if not re.search(r'^\s*%s\s*=\s*%d,' % (name, item), item_text, re.M):
+            raise RuntimeError('Item %s is no longer %d.' % (name, item))
+        rows[ident]['item'] = item
 
 
 def player_actions(spell_text, ability_text):
@@ -110,9 +145,9 @@ def statuses(text):
             continue
         ident = int(ident[1])
         flags = re.findall(r'^      - (\w+)', body, re.M)
-        harmful = (1 <= ident <= 31 or 128 <= ident <= 135 or 146 <= ident <= 156
+        harmful = (1 <= ident <= 31 or 128 <= ident <= 135 or 146 <= ident <= 149 or 155 <= ident <= 156
                    or ident in {143, 157, 159, 167, 168, 174, 175, 186, 192, 193, 194, 217, 223, 264, 299, 309, 404, 463, 464, 465, 466, 473, 540, 565, 566, 567, 597, 630, 631, 793})
-        harmful = harmful or 'erasable' in flags or 'waltzable' in flags
+        harmful = harmful or 'erasable' in flags or 'waltzable' in flags or ident in ITEM_ART
         harmful = harmful or any(s in key for s in ('_down', '_daze', 'encumbrance', 'obliviscence', 'impairment', 'omerta', 'debilitation'))
         helpful = ('dispelable' in flags or 'song' in flags or 'roll' in flags
                    or 32 <= ident <= 126 or 161 <= ident <= 166 or 169 <= ident <= 172
@@ -120,7 +155,7 @@ def statuses(text):
                    or 340 <= ident <= 377 or 379 <= ident <= 385 or 401 <= ident <= 403
                    or 405 <= ident <= 417 or 419 <= ident <= 423 or 461 <= ident <= 473
                    or 424 <= ident <= 447 or 453 <= ident <= 460
-                   or ident in {176, 187, 188, 249, 251, 253, 254, 256, 268, 270, 271, 272, 273, 275, 283, 287, 289, 290, 469})
+                   or ident in {176, 187, 188, 249, 251, 253, 254, 256, 268, 270, 271, 272, 273, 275, 283, 287, 289, 290, 469, 623})
         kind = 'debuff' if harmful else 'buff' if helpful else 'other'
         group = ('Songs' if 'song' in flags or 192 <= ident <= 222 else
                  'Rolls' if 'roll' in flags or ident in {308, 309} else
@@ -205,13 +240,21 @@ SOURCE = ['built', 'content', 'effects', 'spells', 'abilities', 'weaponskills', 
           'charmed_skills', 'items', 'reactive', 'spikes', 'procs', 'proc_effects', 'proc_usual', 'gear', 'merits',
           'pictured', 'troubadour']
 ACTIONS = ('spells', 'abilities', 'skills', 'pacts')
-KEPT = ('effects',) + ACTIONS + ('procs', 'proc_effects', 'gear', 'merits', 'troubadour')
+# The tables that hold only possible effects: what a player's weapon skill, an automaton's, a jug pet's or a charmed
+# monster's move and a used item may put on a monster, by what the action's result says (infer).
+GUESSED = ('weaponskills', 'automatons', 'pet_moves', 'charmed_skills', 'items')
+KEPT = ('effects', 'spells', 'abilities', 'weaponskills', 'skills', 'automatons', 'pacts', 'pet_moves', 'charmed_skills', 'items',
+        'reactive', 'spikes', 'procs', 'proc_effects', 'gear', 'merits', 'troubadour')
+# What marks a row as a possible effect, and what it needs before it counts.
+GUESS = ('infer', 'success_messages', 'requires_effect', 'requires_merit', 'requires_owner_effect')
 # What each kept section's rows may have that the addon reads, and what it never reads.
-READ = {'effects': {'drops'}, 'actions': {'effect', 'seconds', 'top', 'tier', 'merit', 'song', 'gear', 'deep', 'by_effect'},
+READ = {'effects': {'drops'},
+        'actions': {'effect', 'seconds', 'top', 'tier', 'merit', 'song', 'gear', 'deep', 'by_effect'} | set(GUESS),
+        'reactive': {'effect', 'seconds', 'arm_seconds', 'arm_ability', 'arm_messages', 'infer', 'consume'},
+        'spikes': {'effect', 'seconds', 'infer'},
         'procs': set(), 'proc_effects': set(), 'gear': set(), 'merits': {'id', 'base', 'per_rank', 'most'}}
 UNREAD = {'effects': ('debuff', 'usual', 'name', 'description', 'icon'),
-          'actions': ('infer', 'success_messages', 'condition', 'requires_effect', 'requires_merit',
-                      'requires_owner_effect', 'default_tp'),
+          'actions': ('condition', 'default_tp'), 'reactive': ('condition',), 'spikes': ('condition',),
           'procs': (), 'proc_effects': (), 'gear': (), 'merits': ('job', 'level')}
 
 
@@ -222,12 +265,14 @@ def what_is_read(effects):
     infer = '-- infer marks a possible effect, not a confirmed application. default_tp is an assumed TP value.\n'
     if head.count(infer) != 1:
         changed('the header')
+    # default_tp isn't kept: the packet carries no TP, so a weapon skill's time is its row's seconds.
+    head = head.replace(infer, '-- infer marks a possible effect, not a confirmed application.\n')
     top = entries(rest[:-3].split('\n'), ' ' * 4)
     if list(top) != SOURCE:
         changed('sections ' + ', '.join(top))
     rows = {name: section(top[name]) for name in KEPT[:-1]}
     for name, table in rows.items():
-        kind = 'actions' if name in ACTIONS else name
+        kind = 'actions' if name in ACTIONS + GUESSED else name
         for key, lines in table.items():
             table[key] = strip(lines, UNREAD[kind])
             if not keys(table[key]) <= READ[kind]:
@@ -241,7 +286,8 @@ def what_is_read(effects):
     # with an effect is the same as the monsters', but Frenzied Rage, which no monster uses as a jug pet does.
     added = 0
     for key, lines in section(top['pet_moves']).items():
-        lines = strip(lines, UNREAD['actions'])
+        # Among the monsters' own, a pet's move is a row like theirs, with nothing that marks it as possible.
+        lines = strip(lines, UNREAD['actions'] + GUESS)
         if 'effect' not in keys(lines):
             continue
         if key not in rows['skills']:
@@ -250,17 +296,24 @@ def what_is_read(effects):
             changed('pet move %d' % key)
     if added != 1:
         changed('pet moves')
-    # The client names no effect at 640 or over and core/tracker.lua gives one no row, so a move that gives one shows nothing.
+    # The client names no effect at 640 or over and core/tracker.lua gives one no row, so a move that gives one shows
+    # nothing. The two the catalog names itself (ITEM_ART) stay.
     dropped = 0
-    for name in ACTIONS:
+    for name in ACTIONS + GUESSED:
         table = rows[name]
+        if name in GUESSED:
+            # A row that names no effect has nothing to show.
+            for key in [key for key, lines in table.items() if 'effect' not in keys(lines)]:
+                del table[key]
         for key in [key for key, lines in table.items() if int(re.search(r'\beffect = (\d+)', ' '.join(lines))[1]) >= 640]:
+            if int(re.search(r'\beffect = (\d+)', ' '.join(table[key]))[1]) in ITEM_ART:
+                continue
             del table[key]
             dropped += 1
         rows[name] = dict(sorted(table.items()))
-    if dropped != 37:
-        changed('effects with no name')
-    out = [head.replace(infer, '') + 'return {']
+    if dropped != 36:
+        changed('effects with no name: %d' % dropped)
+    out = [head + 'return {']
     for name in KEPT:
         lines = top[name]
         if name == 'effects':
@@ -316,6 +369,9 @@ def main():
                   if re.search(r'^    id:\s*(\d+)', m[2], re.M)}
     corsair = blob(args.phoenix, PHOENIX, 'scripts/globals/job_utils/corsair.lua').decode()
     result = phoenix_statuses(statuses(status_text))
+    item_art(result, read(args.phoenix, PHOENIX, 'scripts/enum/item.lua'))
+    for ident, text in DESCRIPTIONS.items():
+        result[ident]['description'] = text
     rolls = {abilities[name]: effect_ids[effect.lower()]
              for name, effect in re.findall(r'\[xi.jobAbility.(\w+_ROLL)\]\s*=\s*\{\s*effect\s*=\s*xi.effect.(\w+)', corsair)
              if name in abilities and effect.lower() in effect_ids and effect_ids[effect.lower()] in result}

@@ -33,7 +33,7 @@ assert(box('Effect') == '', 'The same list opened again starts with the box empt
 typed['##effect_search_Effect'] = 'haste';
 h.draw();
 shut();
-h.on('recasts', 'show');
+h.on('pulse', 'show');
 open('Never pulse for');
 assert(box('Never pulse for') == '', 'Another list starts with the box empty.');
 shut();

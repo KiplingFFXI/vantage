@@ -1,4 +1,4 @@
-"""Measure mocked core CPU time and SDK reads; this is not a live FPS benchmark."""
+"""Measure mocked core time and SDK reads. This is not a live FPS benchmark."""
 import argparse
 import json
 from pathlib import Path
@@ -121,20 +121,31 @@ BENCH.clear=function()
     for key in pairs(reads) do reads[key]=nil; end;
     for key in pairs(stage) do stage[key]=nil; end;
 end;
+-- Your 0x037 with your status icons' low bytes at 0x04, long enough for the client to read them. The second one has
+-- the last effect gone.
+local listed={};
+for slot=0,31 do listed[#listed+1]=string.char(buffs[slot]); end;
+local status,bursts={'\0\0\0\0'..table.concat(listed)..string.rep('\0',0x3C),
+    '\0\0\0\0'..table.concat(listed,'',1,31)..'\255'..string.rep('\0',0x3C)},0;
+-- The clock goes on from where the last run left it, so a measured run starts where the warm-up stopped.
 BENCH.run=function(count,mode)
-    local first=10;
+    local first=BENCH.clock or 10;
     for i=1,count do
         local t=first+i/60;
         MOCK.now=t;
         if mode=='refresh' then app.refresh(t);
         else
             if mode=='bursts' and i%6==0 then
-                for n=1,8 do MOCK.fire('packet_in',{id=0x037,data=string.rep('\0',8),size=8}); end;
+                -- The first of each burst changes your status icons, which wakes a refresh. The other seven repeat it.
+                bursts=bursts+1;
+                local data=status[bursts%2+1];
+                for n=1,8 do MOCK.fire('packet_in',{id=0x037,data=data,size=#data}); end;
             end;
             MOCK.fire('d3d_present');
         end;
         MOCK.imgui_calls={};
     end;
+    BENCH.clock=first+count/60;
 end;
 '''
 
@@ -156,9 +167,9 @@ def benchmark(count, repeats):
                 bench.configure(scenario)
                 bench.run(120, mode)
                 bench.clear()
-                start = time.process_time_ns()
+                start = time.perf_counter_ns()
                 bench.run(count, mode)
-                timings.append((time.process_time_ns() - start) / count / 1000)
+                timings.append((time.perf_counter_ns() - start) / count / 1000)
                 row = {'scenario': scenario, 'mode': mode, 'iterations': count, 'rows': bench.rows,
                        'stage_calls': dict(bench.stage), 'sdk_calls': dict(bench.reads)}
                 assert bench.rows == EXPECTED_ROWS[scenario], f'{scenario}: {bench.rows} effect rows, expected {EXPECTED_ROWS[scenario]}'
@@ -166,13 +177,13 @@ def benchmark(count, repeats):
         row['cpu_us_samples'] = [round(value, 3) for value in timings]
         row['sdk_calls_total'] = sum(row['sdk_calls'].values())
         results.append(row)
-    return {'limits': 'Mocked SDK calls and no GPU/UI rendering. CPU timings are host measurements, not FPS or live client costs.',
+    return {'limits': 'Mocked SDK calls and no GPU/UI rendering. Timings are elapsed host time, not FPS or live client costs.',
             'source': str(run.ADDON), 'results': results}
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--count', type=int, default=1800)
+    parser.add_argument('--count', type=int, default=3600)
     parser.add_argument('--repeats', type=int, default=3)
     parser.add_argument('--out', type=Path)
     parser.add_argument('--source', '--addon', dest='source', type=Path)

@@ -32,7 +32,8 @@ local function frame(snap, now, observations)
     local view, events = tracker:view(now, {}, snap), tracker:drain_events();
     alerts:update(view, events, rules, now, {});
     notices = notices + #alerts:drain(now);
-    return view, events;
+    -- The drained list is emptied at the next drain, so a copy is kept to look at later.
+    return view, { unpack(events) };
 end;
 local view = frame(snapshot(1, 1, three), 1000);
 local row = view.rows[1];
@@ -48,7 +49,7 @@ end;
 assert(gone and gone.effect == 66 and gone.icon == 445, 'Its removal reads as Copy Image at its icon.');
 assert(notices == 1, 'An alert on Copy Image going fires at any count: ' .. notices);
 
--- A Hidden everywhere rule on Copy Image hides it at every count, and nothing else.
+-- A Hide list rule on Copy Image hides it at every count, and nothing else.
 local rule = filters.rule();
 rule.effect = 66;
 local hidden = { enabled = true, rules = { rule } };

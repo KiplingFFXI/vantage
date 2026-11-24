@@ -14,6 +14,7 @@
 local game_buffs = {};
 local memory = require('core.memory');
 local finder = require('core.patterns');
+local code_patch = require('core.code_patch');
 local address = memory.address;
 
 -- Where each piece starts: the first bytes of six routines and the menu registry's labels around "menu    buff    ".
@@ -38,7 +39,7 @@ local bodies = {
     menu_move = '83EC0C668B44241453558B6C2418568BF15733FF8D5E1466896E528BCB66894654897C2414897C2418E8????????3BC7894424100F848B0000008D4C2410518BCBE8????????8BF8668B076685C07523668B5724668B4722668B4E546A006A006A0152668B56525051528BCEE8????????EB34663D010075248A86990000008B4C24245051558BCFE8????????668B573A663B564C7510897C2414EB0A663D02007504897C24188B44241085C0758B8B44241485C0740E8B4C241885C9740650E8????????8B460C85C0740CC64010018B4E0C8B01FF50145F5E5D5B83C40CC20800',
     rebuild = '83EC1856576A028BF1E8????????8A4E6583C40484C00F94C03AC8740A8BCE884665E8????????53E8????????8B4E0833DB85C9895C240C7403885969B9????????552BC88BF88D6840894C2414C744241020000000668B14396681FAFFFF743A6685D274358BCB81E1FFFF000085C06689944E900200007411663917750C8B550089948EF0020000EB0BC7848EF0020000FFFFFF7F8B4C2414438B54241083C50483C7024A8954241075AAB898FDFFFF8D4E682BC6895C24108DAE68020000894C241489442418807D00007434E8????????8BFB33D281E7FFFF00007E1B8D9E9002000033C9668B0B3BC174084283C3023BD77CEF8B5C24103BD77504C64500008B4C24148B54241883C1104503D5894C241483FA207CAF8BC36A0025FFFF00008BCE50E8????????663B9E740300005D74078BCEE8????????66899E740300006685DB5B75298B4E0851B9????????E8????????3C010F85320100008B0D????????E8????????5F5E83C418C204008B5608B9????????52E8????????84C00F84AC0000008B464085C00F8EA10000008A867603000084C00F85930000008B46306681BC4690020000FFFF0F848000000033C9668B8C4690020000518BCEE8????????8BF885FF7C688D4C2414E8????????C1E7046A028D4C3768E8????????8B0D????????50E8????????8B563033C08D4C2414668B84569002000050518B0D????????E8????????6A028D4C2418E8????????8B0D????????50E8????????8D4C2414C6867603000001E8????????D9868C020000D81D????????DFE02500410000750ED905????????D8A68C020000EB06D9868C020000D80D????????D99E88020000E8????????D8AE8C020000D9968C020000D81D????????DFE0F6C4057A0AC7868C020000000020425F5E83C418C20400',
 };
--- A routine another addon or plugin hooks has a jump written over its first bytes. Its pattern starts on those
+-- A routine something else in the game hooks has a jump written over its first bytes. Its pattern starts on those
 -- bytes, so it then finds nothing, though the rest of the routine is still there. So the mover has a second pattern:
 -- the 48 bytes of it from 17 on, past anything a hook writes. That one is looked for only when the mover's own
 -- pattern finds nothing, and only to say why.
@@ -76,8 +77,8 @@ local on, stopped, held = false, nil, nil;
 local moved, returned = 0, 0;
 local pick = {};
 
--- The real client: page checks from core/memory.lua, the finder, and kernel32 for writing code. The tests set their
--- own, so no test ever writes or calls anything in the process it runs in.
+-- The real client: page checks from core/memory.lua, the finder, and core/code_patch.lua for writing code.
+-- The tests set their own, so no test ever writes or calls anything in the process it runs in.
 local function load_platform()
     if platform_tried then return platform; end
     platform_tried = true;
@@ -85,26 +86,14 @@ local function load_platform()
     local ok, made = pcall(function()
         local ffi = require('ffi');
         if ffi.os ~= 'Windows' or not ffi.abi('32bit') or not ashita or not ashita.memory then return nil; end
-        pcall(ffi.cdef, 'int __stdcall VirtualProtect(void*, size_t, unsigned long, unsigned long*);');
-        pcall(ffi.cdef, 'int __stdcall FlushInstructionCache(void*, const void*, size_t);');
-        pcall(ffi.cdef, 'void* __stdcall GetCurrentProcess(void);');
+        local write_code = code_patch.writer(ffi);
         local pages = memory.pages();
-        local old, ignored = ffi.new('unsigned long[1]'), ffi.new('unsigned long[1]');
         return {
             valid = pages.valid, readable = pages.readable,
             find = function(name) return finder.find('game_buffs', name, patterns[name], RULE); end,
             bytes = function(at, size) return ffi.string(ffi.cast('const char*', at), size); end,
             read8 = ashita.memory.read_uint8, read16 = ashita.memory.read_uint16, read32 = ashita.memory.read_uint32,
-            -- Makes the bytes writable, writes them, puts the protection back and tells the processor the code changed.
-            -- True only when the bytes read back as written.
-            write_code = function(at, bytes)
-                local where = ffi.cast('void*', at);
-                if ffi.C.VirtualProtect(where, #bytes, 0x40, old) == 0 then return false; end
-                ffi.copy(where, bytes, #bytes);
-                local restored = ffi.C.VirtualProtect(where, #bytes, old[0], ignored) ~= 0;
-                local flushed = ffi.C.FlushInstructionCache(ffi.C.GetCurrentProcess(), where, #bytes) ~= 0;
-                return restored and flushed and ffi.string(ffi.cast('const char*', at), #bytes) == bytes;
-            end,
+            write_code = write_code,
             -- The client's menu mover: this in ecx, then x and y, cleared by the mover itself.
             move = function(routine, menu, x, y)
                 ffi.cast('void (__thiscall *)(void*, int, int)', routine)(ffi.cast('void*', menu), x, y);
@@ -115,51 +104,53 @@ local function load_platform()
     return platform;
 end
 
--- Every read checks its pages first, so memory the client freed reads as nothing.
+-- One pattern's search: { at } where it is found, or { why } where it isn't. When the mover's own pattern is missing,
+-- later is where its later bytes are, when they are there.
+local function search(name)
+    local at, why = platform.find(name);
+    if at then return { at = at }; end
+    why = why or 'is missing';
+    return { why = why, later = LATER[name] and why == 'is missing' and platform.find(LATER[name]) or nil };
+end
+
+-- look()'s searches as warmup steps after a load (core/warmup.lua), one pattern a step. A search can pass over the
+-- whole client, so seven in the frame that first replaces the icons would stall it. Each step keeps what it found, or
+-- why it found nothing, and look() takes that in place of a search, so a pattern that isn't there is never searched
+-- for again inside a draw. It is kept for this load only, so once whatever changed the mover lets go of it, a
+-- reload finds it again. A step does nothing where the client can't be reached.
+local searched, results = {}, {};
+function game_buffs.warmup_steps()
+    local list = {};
+    for index, name in ipairs(ORDER) do
+        list[index] = finder.step('game_buffs.' .. name, searched, function()
+            if load_platform() then results[name] = search(name); end
+        end);
+    end
+    return list;
+end
+
+-- Every read checks its pages first, so memory the client freed reads as nothing. A read inside memory already
+-- checked this Present, as the buff window's container and menu are (window()), is a peek with no check of its own.
 local function valid(at, size, writable)
     if not address(at) then return false; end
     local ok, good = pcall(platform.valid, at, size, writable == true);
     return ok and good == true;
 end
-local function read(kind, at, size)
-    if not valid(at, size) then return nil; end
+local function peek(kind, at)
     local ok, value = pcall(platform[kind], at);
     if ok and type(value) == 'number' then return value; end
 end
+local function read(kind, at, size)
+    if not valid(at, size) then return nil; end
+    return peek(kind, at);
+end
 local function read8(at) return read('read8', at, 1); end
 local function read32(at) return read('read32', at, 4); end
--- A 16 bit value as the signed number a menu's place is.
+-- A 16 bit value as the signed number a menu's place is, in a menu checked this Present.
 local function place(at)
-    local value = read('read16', at, 2);
+    local value = peek('read16', at);
     if value == nil then return nil; end
     return value >= 32768 and value - 65536 or value;
-end
-local function code(at, size)
-    if not address(at) then return nil; end
-    local ok, good = pcall(platform.readable, at, size);
-    if not ok or good ~= true then return nil; end
-    local read_ok, text = pcall(platform.bytes, at, size);
-    if read_ok and type(text) == 'string' and #text == size then return text; end
-end
-
--- Whether the bytes at an address are a body's, ?? aside.
-local function matches(at, body)
-    local size = #body / 2;
-    local text = code(at, size);
-    if not text then return false; end
-    for index = 1, size do
-        local pair = body:sub(index * 2 - 1, index * 2);
-        if pair ~= '??' and tonumber(pair, 16) ~= text:byte(index) then return false; end
-    end
-    return true;
-end
-
--- The five bytes of a call from at to a routine.
-local function call(at, to)
-    local value = (to - at - 5) % 4294967296;
-    local bytes = { 0xE8 };
-    for index = 2, 5 do bytes[index] = value % 256; value = math.floor(value / 256); end
-    return string.char(unpack(bytes));
 end
 
 -- Finds everything once. found.sites are the two calls with the bytes each holds unchanged and skipped.
@@ -173,18 +164,18 @@ local function look()
     local ok, result, why = pcall(function()
         local at = {};
         for _, name in ipairs(ORDER) do
-            local where, reason = platform.find(name);
-            if not where then
-                reason = reason or 'is missing';
-                if LATER[name] and reason == 'is missing' and platform.find(LATER[name]) then
-                    return nil, ('Something else in the game, such as another addon or plugin, has changed this game client\'s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name]);
+            -- What its step kept, or a search here when no step has kept anything for it.
+            local where = results[name] or search(name);
+            if not where.at then
+                if where.later then
+                    return nil, ('Something else in the game has changed this game client\'s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name]);
                 end
-                return nil, ('This game client\'s %s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name], reason);
+                return nil, ('This game client\'s %s %s, so the game\'s buff icons stay as they are.'):format(LABELS[name], where.why);
             end
-            at[name] = where;
+            at[name] = where.at;
         end
         for _, name in ipairs(ORDER) do
-            if bodies[name] and not matches(at[name], bodies[name]) then
+            if bodies[name] and not code_patch.matches(platform, at[name], bodies[name]) then
                 return nil, ('This game client\'s %s is not the code Vantage knows, so the game\'s buff icons stay as they are.'):format(LABELS[name]);
             end
         end
@@ -194,11 +185,11 @@ local function look()
             return nil, 'This game client\'s buff window was not found where Vantage looks, so the game\'s buff icons stay as they are.';
         end
         local sites = {
-            { at = at.icon_paint + ICON_CALL, original = call(at.icon_paint + ICON_CALL, at.icon_draw), skip = ICON_SKIP },
-            { at = at.timer_paint + TIMER_CALL, original = call(at.timer_paint + TIMER_CALL, at.timer_draw), skip = TIMER_SKIP },
+            { at = at.icon_paint + ICON_CALL, original = code_patch.call(at.icon_paint + ICON_CALL, at.icon_draw), skip = ICON_SKIP },
+            { at = at.timer_paint + TIMER_CALL, original = code_patch.call(at.timer_paint + TIMER_CALL, at.timer_draw), skip = TIMER_SKIP },
         };
         for _, site in ipairs(sites) do
-            local now = code(site.at, 5);
+            local now = code_patch.code(platform, site.at, 5);
             if now ~= site.original and now ~= site.skip then
                 return nil, 'Something else already changed the game\'s buff drawing, so Vantage leaves it alone.';
             end
@@ -211,26 +202,29 @@ local function look()
 end
 
 -- The game's buff window as the client holds it now: its container and its menu, or nothing while there is none
--- (the title screen, a zone change) or while it isn't the one this was written for.
+-- (the title screen, a zone change) or while it isn't the one this was written for. The slot is the client's own,
+-- and look() checked it. The container, its class's entry, the menu and the name are each checked once, whole, so
+-- what this Present reads of them after is a peek.
 local function window()
-    local container = read32(found.slot);
-    if not address(container) then return nil; end
-    local vtable = read32(container);
+    local container = peek('read32', found.slot);
+    if not address(container) or not valid(container, 0x378) then return nil; end
+    local vtable = peek('read32', container);
     if not address(vtable) or read32(vtable + VTABLE_REBUILD) ~= found.rebuild then return nil; end
-    local menu = read32(container + 8);
-    if not address(menu) or read32(menu + 0x0C) ~= container then return nil; end
-    local header = read32(menu + 4);
-    if not address(header) then return nil; end
+    local menu = peek('read32', container + 8);
+    if not address(menu) or not valid(menu, 0x9C) or peek('read32', menu + 0x0C) ~= container then return nil; end
+    local header = peek('read32', menu + 4);
+    if not address(header) or not valid(header + 0x46, 16) then return nil; end
     for index = 1, 4 do
-        if read32(header + 0x46 + (index - 1) * 4) ~= NAME[index] then return nil; end
+        if peek('read32', header + 0x46 + (index - 1) * 4) ~= NAME[index] then return nil; end
     end
     return container, menu;
 end
 
--- Whether the menu has the client's main focus and is neither closing (state 14) nor deleted.
+-- Whether the menu has the client's main focus and is neither closing (state 14) nor deleted. The focus manager is
+-- the client's own, and look() checked it.
 local function focused(menu)
-    local state = read32(menu + 0x10);
-    return read8(menu + 0x6A) == 1 and read32(found.manager + 0x54) == menu and read8(menu + 0x70) == 0
+    local state = peek('read32', menu + 0x10);
+    return peek('read8', menu + 0x6A) == 1 and peek('read32', found.manager + 0x54) == menu and peek('read8', menu + 0x70) == 0
         and state ~= nil and state ~= 14;
 end
 
@@ -278,7 +272,7 @@ local function put_back()
         held = nil;
     end
     for _, site in ipairs(found.sites) do
-        local now = code(site.at, 5);
+        local now = code_patch.code(platform, site.at, 5);
         if now == site.skip then
             local ok, written = pcall(platform.write_code, site.at, site.original);
             if not ok or written ~= true then clean = false; end
@@ -293,7 +287,7 @@ local PUT_BACK_FAILED = 'Vantage could not put the game\'s buff drawing back. Re
 local function start()
     if not look() then return false, refusal; end
     for _, site in ipairs(found.sites) do
-        local now = code(site.at, 5);
+        local now = code_patch.code(platform, site.at, 5);
         local ok, written = true, true;
         if now == site.original then ok, written = pcall(platform.write_code, site.at, site.skip);
         elseif now ~= site.skip then ok = false; end
@@ -306,21 +300,25 @@ local function start()
 end
 
 -- What the + menu's cursor is on while the menu has focus, as the client lists it: how many effects it lists at
--- 0x40, the cursor's place among them at 0x30, each one's effect from 0x290, and from 0x2D0 whether the client lets
--- it be cancelled. The same table each time.
+-- 0x40, the cursor's place among them at 0x30 and each one's effect from 0x290. copy is which of that effect's copies
+-- it is on, counted down the list from 1, for an effect you have more than once. The same table each time.
 local function picked(container, menu)
     if not focused(menu) then return nil; end
-    local count, index = read32(container + 0x40), read32(container + 0x30);
+    local count, index = peek('read32', container + 0x40), peek('read32', container + 0x30);
     if not count or not index or count < 1 or count > 32 or index >= count then return nil; end
-    local effect = read('read16', container + 0x290 + index * 2, 2);
+    local effect = peek('read16', container + 0x290 + index * 2);
     if not effect or effect < 1 or effect > 1023 then return nil; end
-    pick.effect, pick.can_cancel = effect, read8(container + 0x2D0 + index) == 1;
+    local copy = 1;
+    for before = 0, index - 1 do
+        if peek('read16', container + 0x290 + before * 2) == effect then copy = copy + 1; end
+    end
+    pick.effect, pick.copy = effect, copy;
     return pick;
 end
 
 -- Each Present. want is whether the settings ask for the game's buff icons to be replaced now. While they are, the
 -- game's buff menu is kept off screen. Returns what the + menu's cursor is on while the menu has focus, as
--- { effect, can_cancel }, and a line to say when the replacement could not start, had to stop or could not be put
+-- { effect, copy }, and a line to say when the replacement could not start, had to stop or could not be put
 -- back. After it could not start or had to stop, it stays off until want has been false once.
 function game_buffs.update(want)
     if not want then
@@ -379,6 +377,8 @@ if VANTAGE_TEST_MODE then
     function game_buffs._set_platform(value)
         platform, platform_tried = value, true;
         found, refusal, problem, on, stopped, held, moved, returned = nil, nil, nil, false, nil, nil, 0, 0;
+        for name in pairs(searched) do searched[name] = nil; end
+        for name in pairs(results) do results[name] = nil; end
     end
     game_buffs._patterns, game_buffs._bodies = patterns, bodies;
     game_buffs._ICON_SKIP, game_buffs._TIMER_SKIP, game_buffs._OFF = ICON_SKIP, TIMER_SKIP, OFF;

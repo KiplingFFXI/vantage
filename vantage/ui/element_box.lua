@@ -1,4 +1,4 @@
--- The box the Phantom Roll and pet displays draw in, placed and moved like the party cooldown list: at its saved spot or
+-- The box the party cooldown list, Phantom Roll and pet displays draw in: at its saved spot or
 -- where its anchor puts it, kept on the screen, and moved or resized only when it is unlocked and Shift is held, by a
 -- drag inside or on an edge that is one Undo step. Otherwise its window takes no input, so the mouse goes to the game.
 -- Each display makes one with box.new and keeps it; every table a frame uses is kept and refilled.
@@ -8,7 +8,8 @@ local resize = require('ui.resize');
 local skin = require('ui.client_skin');
 local elements = require('ui.elements');
 local snap = require('ui.snap');
-local bit = require('bit');
+local layout = require('ui.layout');
+local policy = require('ui.frame_policy');
 local floor = math.floor;
 local ZERO, ONE = { 0, 0 }, { 1, 1 };
 
@@ -69,7 +70,7 @@ function methods:place(options, settings, callbacks, moving, wanted, shown, min_
                 -- A Shift drag detaches an anchored display.
                 if options.anchor then options.anchor.to = 'none'; end
                 g.dirty = true;
-                if callbacks.changed then callbacks.changed('after'); end
+                if callbacks.changed then callbacks.changed('after', nil, 'place'); end
             end
         end
         width = math.min(options.width, screen_width);
@@ -80,6 +81,8 @@ function methods:place(options, settings, callbacks, moving, wanted, shown, min_
     if self.element then elements.place(settings, self.element, rect, screen_width, screen_height); end
     rect.x = math.max(0, math.min(rect.x, screen_width - width));
     rect.y = math.max(0, math.min(rect.y, screen_height - height));
+    -- On a side of the chat log with no room, it is at its own spot.
+    if self.element then layout.off_chat(settings, self.element, rect, options.x, options.y, elements.chat, screen_width, screen_height); end
     if g then snap.show(settings, self.element, screen_width, screen_height, rect); end
     resize.occupy(self.label, rect);
     if self.element then elements.record(self.element, rect); end
@@ -96,12 +99,7 @@ function methods:open(rect, movable, s, sample)
     imgui.PushStyleVar(ImGuiStyleVar_WindowMinSize, ONE);
     imgui.SetNextWindowPos(self.at, ImGuiCond_Always);
     imgui.SetNextWindowSize(self.extent, ImGuiCond_Always);
-    local flags = bit.bor(ImGuiWindowFlags_NoTitleBar or 0, ImGuiWindowFlags_NoResize or 0, ImGuiWindowFlags_NoMove or 0,
-        ImGuiWindowFlags_NoCollapse or 0, ImGuiWindowFlags_NoScrollbar or 0, ImGuiWindowFlags_NoScrollWithMouse or 0,
-        ImGuiWindowFlags_NoSavedSettings or 0, ImGuiWindowFlags_NoBackground or 0, ImGuiWindowFlags_NoFocusOnAppearing or 0,
-        ImGuiWindowFlags_NoNav or 0, ImGuiWindowFlags_NoDocking or 0);
-    if not movable then flags = bit.bor(flags, ImGuiWindowFlags_NoInputs or 0); end
-    self.opened = imgui.Begin(self.id, true, flags);
+    self.opened = imgui.Begin(self.id, true, policy.flags(policy.BOX, movable));
     if not self.opened then return nil; end
     if self.element then elements.opened(self.element, imgui.GetWindowDrawList()); end
     local moving, list = self.moving, nil;
@@ -144,6 +142,8 @@ function methods:close(list, rect, movable, s, sample, options)
     end
     imgui.End();
     imgui.PopStyleVar(2);
+    -- Held for this frame only, so a box that stops drawing keeps no old settings alive.
+    self.settings, self.callbacks = nil, nil;
 end
 
 -- Whether the mouse is over a part of the box, for a tooltip: never while it can be moved.
@@ -165,21 +165,8 @@ function box.text(list, look, value, x, y, size, ink, width)
     list:PopClipRect();
 end
 
--- A countdown's text, made once for each value it shows (whole seconds under a minute, then minutes, then hours), so a
--- ticking timer makes nothing. A time that isn't a finite number shows nothing, as countdown_text.time says, and isn't
--- kept, since NaN can't be a key.
-local texts, text_count = {}, 0;
-local finite = require('ui.numbers').finite;
-function box.time(left)
-    if not finite(left) then return ''; end
-    local key = left >= 3600 and 20000 + math.floor(left / 3600) or left >= 60 and 10000 + math.floor(left / 60) or math.ceil(left);
-    local text = texts[key];
-    if not text then
-        text = require('ui.countdown_text').time(left);
-        if text_count < 16384 then texts[key], text_count = text, text_count + 1; end
-    end
-    return text;
-end
+-- A countdown's text, from countdown_text.time's own cache, so a ticking timer makes nothing.
+box.time = require('ui.countdown_text').time;
 box.point = point;
 
 return box;

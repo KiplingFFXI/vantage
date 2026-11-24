@@ -12,11 +12,13 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'tests'))
 import client_check
+import client_image
 
 CLIENTS = ROOT / 'tests/fixtures/clients'
 SOURCES = ('core/chat.lua', 'core/client.lua', 'core/native_party_ui.lua', 'core/clock.lua', 'core/name_anchor.lua',
-           'core/game_buffs.lua')
+           'core/game_buffs.lua', 'core/game_pet_bar.lua')
 LIBRARY = {
     'ffxi/itemdata.lua': "local time = require 'ffxi.time';\n"
                          "itemdata.ptrs.parse_augments = ashita.memory.find(0, 0, '8B5424040F', 0, 0);\n",
@@ -27,10 +29,14 @@ LIBRARY = {
 
 def image(patterns, twice=()):
     """A decoded-image-shaped PE: one section holding each pattern once, wildcards as zero, twice two times. A pattern
-    that starts a longer one is planted with it: core/game_buffs.lua's starts are the first bytes of its routines."""
+    that is part of a longer one is planted with it: core/game_buffs.lua's starts are the first bytes of its routines,
+    and core/game_pet_bar.lua's two are found inside theirs."""
+    def inside(part, whole):
+        return any(whole[at:at + len(part)] == part for at in range(0, len(whole) - len(part) + 1, 2))
+
     body = bytearray(0x40)
     for pattern in patterns:
-        if any(other != pattern and other.startswith(pattern) for other in patterns):
+        if any(other != pattern and inside(pattern, other) for other in patterns):
             continue
         planted = bytes.fromhex(pattern.replace('??', '00')) + bytes(0x40)
         body += planted * (2 if pattern in twice else 1)
@@ -90,13 +96,21 @@ class ClientCheckTests(unittest.TestCase):
             + [('core/game_buffs.lua', 'game buffs ' + name) for name in (
                 'icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild', 'registry')]
             + [('core/game_buffs.lua', 'game buffs whole ' + name) for name in (
-                'icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild')])
+                'icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild')]
+            + [('core/game_pet_bar.lua', 'game pet bar ' + name) for name in ('pet line', 'layout')]
+            + [('core/game_pet_bar.lua', 'game pet bar whole ' + name) for name in ('pet line', 'layout')])
         # Each routine's start is the first 32 bytes of the routine whole.
         by_name = dict(((where, name), pattern) for where, name, pattern in found)
         for name in ('icon paint', 'timer paint', 'icon draw', 'timer draw', 'menu move', 'rebuild'):
             start = by_name['core/game_buffs.lua', 'game buffs ' + name]
             self.assertEqual(len(start), 64)
             self.assertTrue(by_name['core/game_buffs.lua', 'game buffs whole ' + name].startswith(start), name)
+        # The pet line's pattern is 0x3D into its routine, past the bytes the fellow's line shares, and the layout's is
+        # 0x12 into the stretch that is checked whole.
+        for name, offset in (('pet line', 0x3D), ('layout', 0x12)):
+            start = by_name['core/game_pet_bar.lua', 'game pet bar ' + name]
+            whole = by_name['core/game_pet_bar.lua', 'game pet bar whole ' + name]
+            self.assertEqual(whole[offset * 2:offset * 2 + len(start)], start, name)
         treasure = dict(((where, name), pattern) for where, name, pattern in found)['core/native_party_ui.lua', 'treasure pool']
         # Three menu names, 16 bytes each, with 28 bytes of window pointers between them.
         self.assertEqual(len(treasure), 2 * (16 * 3 + 28 * 2))
@@ -115,7 +129,7 @@ class ClientCheckTests(unittest.TestCase):
     def test_every_pattern_once_passes(self):
         code, out = self.run_check(image(self.patterns()))
         self.assertEqual(code, 0, out)
-        self.assertIn('All 47 patterns found exactly once.', out)
+        self.assertIn('All 51 patterns found exactly once.', out)
         self.assertRegex(out, r'core/clock\.lua\s+game time\s+once at 0x1000')
         self.assertRegex(out, r'libs/ffxi/time\.lua\s+local time\s+once at 0x1000')
 
@@ -124,7 +138,7 @@ class ClientCheckTests(unittest.TestCase):
         code, out = self.run_check(image(patterns, twice={patterns[0]}))
         self.assertEqual(code, 1, out)
         self.assertRegex(out, r'core/chat\.lua\s+chat windows\s+FOUND 2 TIMES')
-        self.assertIn('1 of 47 patterns are not found exactly once.', out)
+        self.assertIn('1 of 51 patterns are not found exactly once.', out)
 
     def test_a_missing_pattern_fails(self):
         clock = [p for where, _, p in client_check.addon_patterns(self.addon) if where == 'core/clock.lua']
@@ -137,7 +151,7 @@ class ClientCheckTests(unittest.TestCase):
         shutil.rmtree(self.libs)
         code, out = self.run_check(image(self.patterns_without_libs()))
         self.assertEqual(code, 0, out)
-        self.assertIn('All 45 patterns found exactly once.', out)
+        self.assertIn('All 49 patterns found exactly once.', out)
         self.assertNotIn('libs/', out)
 
     def patterns_without_libs(self):
@@ -174,6 +188,33 @@ class ClientCheckTests(unittest.TestCase):
                 self.assertEqual(code, 2, out.getvalue())
                 self.assertIn('pass --libs', out.getvalue())
 
+    def test_the_decoder_is_in_research_or_where_vantage_research_says(self):
+        for module in (client_check, client_image):
+            with self.subTest(module=module.__name__):
+                with mock.patch.dict(os.environ, {'VANTAGE_RESEARCH': str(self.root)}):
+                    self.assertEqual(module.research_folder(), self.root)
+                    os.environ.pop('VANTAGE_RESEARCH')
+                    self.assertEqual(module.research_folder(), ROOT / 'research/native-solo-research')
+
+    def test_a_dll_with_no_decoder_says_where_it_goes(self):
+        # An FFXiMain.dll laid out by file offset: its POL1 section's address is past the end of the file.
+        data = bytearray(0x400)
+        data[:2] = b'MZ'
+        struct.pack_into('<I', data, 0x3C, 0x80)
+        data[0x80:0x84] = b'PE\0\0'
+        struct.pack_into('<HH', data, 0x84, 0x14C, 2)
+        struct.pack_into('<H', data, 0x94, 0xE0)
+        for at, name, rva, offset in ((0x178, b'.text', 0x1000, 0x200), (0x1A0, b'POL1', 0x200000, 0x300)):
+            data[at:at + len(name)] = name
+            struct.pack_into('<IIII', data, at + 8, 0x10, rva, 0x10, offset)
+        empty = self.root / 'no decoder'
+        empty.mkdir()
+        with mock.patch.dict(os.environ, {'VANTAGE_RESEARCH': str(empty)}):
+            code, out = self.run_check(bytes(data))
+        self.assertEqual(code, 2, out)
+        self.assertIn("the research decoder isn't in %s" % empty, out)
+        self.assertIn('VANTAGE_RESEARCH', out)
+
     @unittest.skipUnless(os.environ.get('ASHITA_LIBS') and (CLIENTS / 'client-image-04288488.bin').is_file(),
                          'needs ASHITA_LIBS and the decoded client images')
     def test_known_clients(self):
@@ -182,7 +223,7 @@ class ClientCheckTests(unittest.TestCase):
             with redirect_stdout(out):
                 code = client_check.main([str(CLIENTS / name), '--libs', os.environ['ASHITA_LIBS']])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn('All 60 patterns found exactly once.', out.getvalue())
+            self.assertIn('All 64 patterns found exactly once.', out.getvalue())
 
 
 if __name__ == '__main__':

@@ -29,20 +29,8 @@ for _,event in ipairs({'gain','removed','missing'}) do
     rules[#rules+1]={id=event,enabled=true,event=event,effect=0,scope='party',cooldown=0,duration=30,visual=true};
 end;
 rules[#rules+1]={id='missing_reraise',enabled=true,event='missing',effect=RERAISE,scope='party',cooldown=0,duration=30,visual=true};
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function action(category, id, target, message, param, actor)
-    local bytes, at = MOCK.bytes(512), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, 1);
-    putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    putbits(bytes, at, 32, target); putbits(bytes, at + 32, 4, 1); at = at + 36;
-    putbits(bytes, at + 27, 17, param); putbits(bytes, at + 44, 10, message); at = at + 87;
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, { { id = target, rows = { { message = message, param = param } } } }));
 end
 -- 0x076 listing Bob (row 0) and Dave (row 1).
 local function group(bob, dave)

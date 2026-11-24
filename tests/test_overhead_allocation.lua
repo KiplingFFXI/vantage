@@ -47,12 +47,17 @@ local function frames(count)
         if leak and i % 6 == 0 then made = {}; end
     end
 end
+-- Calls n deep, so the Lua stack is grown back past what the deepest frame needs.
+local function regrow(n) if n > 0 then return 1 + regrow(n - 1); end return 0; end
 -- KB a frame over count frames.
 local function measure(count)
     jit.off(); jit.flush();
     frames(60);
     collectgarbage('collect'); collectgarbage('collect');
     collectgarbage('stop');
+    -- The collection shrinks the Lua stack, and the next call deep enough grows it back once, which is LuaJIT's and not
+    -- a frame's. So it grows back first.
+    regrow(300);
     local before = collectgarbage('count');
     frames(count);
     local each = (collectgarbage('count') - before) / count;

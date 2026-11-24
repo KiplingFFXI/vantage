@@ -1,14 +1,8 @@
--- /vg reset navigation and Reset all settings say Undo recovers them. Both are
--- Undo steps for the settings window too: Undo puts back Hold Shift to see through this window, and for Reset all the
--- window's place and size, and Redo resets them again. Moving between pages and sections still makes no Undo step.
-local store = require('core.store');
+-- Reset all settings says Undo recovers it. It is an Undo step for the settings window too: Undo puts back Hold Shift
+-- to see through this window and the window's place and size. Moving between pages and sections makes no Undo step.
+-- /vg reset navigation is gone: it is refused like any other word and changes nothing.
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
-package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
-package.loaded['core.observer'] = { read = function() return {}; end };
-local hud = require('ui.hud');
-hud.draw, hud.draw_notices = function() end, function() end;
-require('ui.party_hud').draw = function() return 0, {}; end;
-require('ui.native_party_hud').draw = function() return 0, {}; end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui'] = { treasure_open = function() return false; end, update = function() end,
     status = function() return { active = false }; end, restore = function() return true; end, suspend = function() end };
 local app = dofile(ADDON_DIR .. '/vantage.lua');
@@ -23,15 +17,9 @@ window().peek = false;
 window().tab = 'Profiles';
 app.callbacks.editor_changed(true);
 assert(#app.state.history == 1, 'Fixture: moving between pages and turning off peek made no Undo step.');
-assert(app.callbacks.reset('navigation'), 'Fixture: the reset ran.');
-assert(window().peek == true, 'Fixture: the navigation is reset.');
-assert(#app.state.history == 2 and app.state.history[2].label == 'Reset navigation', 'The navigation reset is an Undo step.');
-assert(app.callbacks.undo(), 'Fixture: Undo ran.');
-assert(window().peek == false, 'Undo puts the navigation back.');
-assert(s().style.font_size == 20, 'Undo takes back the reset, not the earlier font change.');
-assert(store.read(app.state.path).window.peek == false, 'The navigation Undo put back is saved.');
-assert(app.callbacks.redo() and window().peek == true, 'Redo resets it again.');
-assert(app.callbacks.undo() and window().peek == false, 'Fixture: back to the player\'s navigation.');
+local refused, why = app.callbacks.reset('navigation');
+assert(refused == false and tostring(why):find('^That reset scope was not found%.'), 'Reset navigation is refused: ' .. tostring(why));
+assert(window().peek == false and #app.state.history == 1, 'And it changes nothing and makes no Undo step.');
 
 -- Reset all settings, with the window moved and sized.
 window().x, window().width = 640, 1200;

@@ -32,7 +32,7 @@ for _,row in ipairs(view.rows) do row.scope,row.kind='self','buff';end;
 for key in pairs(defaults.recast_panels) do assert(settings.panels[key].sort=='remaining','Cooldown ordering is unchanged.');end;
 
 local strip=party.make().effects;
-expect(layout.effects(subject,strip),expected,'The party list buffs share the duration order.');
+expect(layout.effects(subject,strip),expected,'Party list shares the duration order.');
 strip.sort='oldest';
 expect(layout.effects(subject,strip),{signet,short,medium},'Chronological oldest-first remains an independent choice.');
 strip.sort='remaining';

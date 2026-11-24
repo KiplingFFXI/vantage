@@ -11,7 +11,7 @@ pulse.spots = { 'row', 'screen' };
 local MOST, KEPT = 8, 256;
 
 function pulse.make()
-    return { enabled = false, min_seconds = 60, early = 0, ignore = {}, size = 64, color = { 1, 0.86, 0.45, 1 }, length = 1,
+    return { enabled = false, min_seconds = 60, early = 0, ignore = {}, size = 64, color = { 0.45, 1, 0.55, 1 }, length = 1,
         spot = 'row', x = -1, y = 260, locked = true };
 end
 
@@ -34,9 +34,7 @@ function pulse.tidy(value)
     value.y = number(value.y, 0, 16000, fresh.y, true);
     local spot = value.spot;
     value.spot = (spot == 'row' or spot == 'screen') and spot or 'row';
-    local color, base = {}, type(value.color) == 'table' and value.color or {};
-    for index = 1, 4 do color[index] = number(base[index], 0, 1, fresh.color[index]); end
-    value.color = color;
+    value.color = numbers.rgba(value.color, fresh.color);
     local ignore = {};
     for key, on in pairs(type(value.ignore) == 'table' and value.ignore or {}) do
         local id = tonumber(key);

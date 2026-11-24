@@ -1,7 +1,6 @@
 local labels = {};
 local wrap = require('ui.text_wrap');
-local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG',
-    'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local jobs = require('data.shared_ids').jobs;
 
 function labels.job_name(job)
     if type(job) ~= 'number' or job ~= math.floor(job) then return nil; end;

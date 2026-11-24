@@ -62,21 +62,9 @@ local function run(kind, count)
         assert(skin.menu(gui, look, kind) and images == drawn[kind][1] and triangles == drawn[kind][2] and depth == 0, kind)
     end
 end
-local function measure(kind, count)
-    jit.off(); jit.flush()
-    run(kind, 60)
-    collectgarbage('collect'); collectgarbage('collect')
-    collectgarbage('stop')
-    run(kind, 6)
-    local before = collectgarbage('count')
-    run(kind, count)
-    local each = (collectgarbage('count') - before) / count
-    collectgarbage('restart')
-    jit.on()
-    return each
-end
+local alloc = require('alloc_fixture')
 for _, kind in ipairs({ 'window', 'popup', 'tooltip' }) do
-    local each = measure(kind, 2000)
+    local each = alloc.measure(function(count) run(kind, count) end, 2000)
     assert(each < 0.0005, ('Painting a %s makes %.4f KB each time; nothing expected'):format(kind, each))
 end
 return 'The settings window paints its skin without making tables'

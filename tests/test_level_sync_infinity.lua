@@ -43,8 +43,9 @@ fonts.measure_countdown=function(_,text,size)
     assert(not text:find(infinity,1,true),'Bitmap atlas never receives an unsupported infinity codepoint');
     return #text*size*.5,size;
 end;
-fonts.countdown_renderer=function(face)return function(_,text,x,y,size,color)
-    assert(not text:find(infinity,1,true));calls[#calls+1]={kind='text',x=x,y=y,width=#text*size*.5,height=size,color=color};
+fonts.countdown_renderer=function(face)return function(_,text,x,y,size,_,count,dxs,dys,inks)
+    assert(not text:find(infinity,1,true));
+    for pass=1,count do calls[#calls+1]={kind='text',x=x+dxs[pass],y=y+dys[pass],width=#text*size*.5,height=size,color=inks[pass]};end;
 end;end;
 fonts.face=function(face)return face;end;
 fonts.failed=function()return false;end;

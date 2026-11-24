@@ -7,7 +7,7 @@ assert(common.names[1] == original and party_theme.names[1] == 'Temporary test p
 party_theme.names[1] = original;
 for _, name in ipairs(party_theme.names) do assert(name ~= 'XI View', 'XI View artwork does not invent a second Original FFXI palette.'); end;
 
--- The party list buffs wear the timer panels' look, so neither the party nor a group has a palette of its own to pick,
+-- Party list wears the timer panels' look, so neither the party nor a group has a palette of its own to pick,
 -- on any tab of their page with every section open, and search names none.
 local app, window, imgui = dofile(ADDON_DIR .. '/vantage.lua'), require('ui.settings_window'), require('imgui');
 local s = defaults.make();
@@ -26,10 +26,10 @@ for _, tab in ipairs(panels.tabs) do
     assert(#MOCK.font_stack == 0);
 end;
 assert(begun['##frame_Party buff icons'], 'Fixture: the page draws its choices.');
-assert(not begun['##frame_Party skin'] and not begun['##frame_Group skin'], 'The party list buffs have no palette of their own to pick.');
+assert(not begun['##frame_Party skin'] and not begun['##frame_Group skin'], 'Party list has no palette of its own to pick.');
 local explained = {};
 for _, result in ipairs(window.search('palette artwork')) do explained[result.label] = true; end;
 assert(not explained['Party skin'] and not explained['Group skin'] and not explained['Spell information skin'],
     'Search names no party or group palette.');
 assert(#MOCK.commands == 0);
-return 'Shared palette catalogs stay one, and the party list buffs have no palette of their own.';
+return 'Shared palette catalogs stay one, and Party list has no palette of its own.';

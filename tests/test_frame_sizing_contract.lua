@@ -85,7 +85,7 @@ for _, size in ipairs(expected) do
             and s.party_ui.effects.icon_scale == nil and s.party_ui.style.font_size == nil,
             'A Size button writes no setting that nothing reads.');
         assert(equal(s.job_profiles, original.job_profiles) and s.active_profile == original.active_profile);
-        -- The party list buffs wear the timer panels' look; their opacity is their own.
+        -- Party list wears the timer panels' look; its opacity is its own.
         action('Display', 'look', nil, nil, { ['##frame_Opacity']=0.5 });
         s = app.state.settings;
         assert(s.party_ui.style.opacity == 0.5 and s.style.scale == size[3], 'A manual strip opacity after a Size button keeps the size.');

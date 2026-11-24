@@ -171,7 +171,7 @@ local function frame(click, opened)
 end;
 local chequer = defaults.tidy(chequered(true));
 chequer.window.open, chequer.window.tab = true, 'Home';
-chequer.window.sections['Home/More look'] = true;
+for _, fold in ipairs({ 'Artwork', 'Sizes', 'Boxes', 'Text effects', 'Colors' }) do chequer.window.sections['Home/' .. fold] = true; end;
 app.state.settings = chequer;
 local before = locks(chequer);
 frame();

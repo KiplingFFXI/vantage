@@ -19,26 +19,14 @@ local function refresh(count)
         if leak and i % 10 == 0 then made = {}; end
     end
 end
-local function measure(count)
-    jit.off(); jit.flush();
-    refresh(60);
-    collectgarbage('collect'); collectgarbage('collect');
-    collectgarbage('stop');
-    refresh(6);
-    local before = collectgarbage('count');
-    refresh(count);
-    local each = (collectgarbage('count') - before) / count;
-    collectgarbage('restart');
-    jit.on();
-    return each;
-end
+local alloc = require('alloc_fixture');
 refresh(200);
 assert(#member.entries == 12 and #you.entries == 16, 'Fixture: a row for each listed effect.');
 t:drain_events();
-local each = measure(2000);
+local each = alloc.measure(refresh, 2000);
 assert(each < 0.002, ('A refresh of the same listings makes %.4f KB; nothing expected'):format(each));
 assert(#t:drain_events() == 0 and #member.entries == 12 and #you.entries == 16, 'Fixture: the same listings change nothing.');
 leak = true;
-each = measure(2000);
+each = alloc.measure(refresh, 2000);
 leak = false;
 assert(each >= 0.002 and made, ('A table made every tenth refresh shows as %.4f KB'):format(each));

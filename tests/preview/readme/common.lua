@@ -134,7 +134,7 @@ function M.caption(id, x, y, text)
     imgui.End();
 end
 
--- A copy of the game's own party list, so the party list buffs have a list to sit beside. It's drawn with the client's
+-- A copy of the game's own party list, so Party list has a list to sit beside. It's drawn with the client's
 -- window, gauge and font art, laid out the way the game lays it out: Party at the top, then two lines for each member.
 -- The name and HP sit over the HP gauge. Under them, TP is on the left and MP sits over the MP gauge. The party leader
 -- has a yellow dot. The places were measured on the game's list at 1920 x 1080 and are drawn 1.25 times as big, which

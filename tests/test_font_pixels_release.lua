@@ -1,18 +1,8 @@
 -- XI View art waits for its first use, and uploaded pixels are let go: a face keeps what it needs, a late
 -- upload of another kind leaves a face alone, and a device change reads the files again. A face lets its glyph rows go
 -- once its countdown atlas is made, and the atlas's bytes go once that is uploaded.
-local function u16(value) return string.char(value % 256, math.floor(value / 256) % 256) end
-local function u32(value) return u16(value % 65536) .. u16(math.floor(value / 65536)) end
-local function chunk(kind, payload)
-    local length = math.ceil((16 + #payload) / 16) * 16
-    return 'TEST' .. u32(length / 16 * 128 + kind) .. string.rep('\0', 8) .. payload .. string.rep('\0', length - 16 - #payload)
-end
-local function texture(name, width, height)
-    local block = string.rep('\255', 8) .. '\255\255\0\0\0\0\0\0'
-    local data = string.rep(block, math.ceil(width / 4) * math.ceil(height / 4))
-    return chunk(0x20, string.char(0xA1) .. name .. u32(40) .. u32(width) .. u32(height)
-        .. string.rep('\0', 28) .. '3TXD' .. u32(#data) .. u32(0) .. data)
-end
+local dat = require('dat_fixture')
+local u16, chunk, texture, upvalue = dat.u16, dat.chunk, dat.texture, dat.upvalue
 local parts = {}
 for code = 32, 126 do
     local width = code == 32 and 4 or 9
@@ -49,13 +39,6 @@ assets._set_platform_for_tests({
         return { id = 500 + uploads, release = function() end }
     end,
 })
-local function upvalue(fn, wanted)
-    for index = 1, 200 do
-        local name, value = debug.getupvalue(fn, index)
-        if name == wanted then return value end
-        if not name then break end
-    end
-end
 local state = function() return upvalue(assets.clear, 'state') end
 local function pixels(kind, name) return state()[kind].data.textures[name] end
 local bitmap = require('ui.client_fonts')

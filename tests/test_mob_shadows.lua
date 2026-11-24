@@ -2,7 +2,8 @@
 -- Shikaree X, then one less for each shadow seen taking a hit, and none once a hit gets through. A Sneak or Trick Attack's
 -- hits say nothing until its user's next melee round. You and your party are read from your listings, and the alliance
 -- has test_alliance_shadows.lua. At every count the row is Copy Image (66) with the count's icon, so it lights for Dispel.
--- Real 0x028s through observer.read.
+-- A mob's Blink gives 2, which go the same way, and keeps its own icon. A hit gets past it a fifth of the time, so one that
+-- lands leaves it. Real 0x028s through observer.read.
 local observer = require('core.observer');
 local dispel = require('core.dispel');
 local SELF, ALLY, MOB, ARK, SHIKAREE = 1001, 1002, 0x1000123, 0x1000125, 0x1000126;
@@ -14,26 +15,14 @@ local function snapshot()
             [ARK] = { id = ARK, name = 'Ark Angel HM', kind = 'monster' }, [SHIKAREE] = { id = SHIKAREE, name = 'Shikaree X', kind = 'monster' } },
         target = { id = MOB, name = 'Yagudo Conquistador', kind = 'monster' } };
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One target row: { target, message, param, added, added_param, reaction, reaction_param }.
 local function action(actor, category, id, rows)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #rows); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, row in ipairs(rows) do
-        putbits(bytes, at, 32, row[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, row[3] or 0); putbits(bytes, at + 44, 10, row[2] or 0); at = at + 85;
-        putbits(bytes, at, 1, row[4] and 1 or 0); at = at + 1;
-        if row[4] then putbits(bytes, at + 10, 17, row[5] or 0); putbits(bytes, at + 27, 10, row[4]); at = at + 37; end
-        putbits(bytes, at, 1, row[6] and 1 or 0); at = at + 1;
-        if row[6] then putbits(bytes, at + 10, 14, row[7] or 0); putbits(bytes, at + 24, 10, row[6]); at = at + 34; end
+    local targets = {};
+    for i, row in ipairs(rows) do
+        targets[i] = { id = row[1], rows = { { message = row[2], param = row[3], added = row[4], added_param = row[5],
+            reaction = row[6], reaction_param = row[7] } } };
     end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, targets));
 end
 -- Utsusemi lands with 230 and names Copy Image (enhancing_ninjutsu.lua :118-123); a lower tier over a higher has no effect, 75.
 local function utsusemi(who, spell, message) return action(who, 4, spell, { { who, message or 230, 66 } }); end
@@ -158,3 +147,17 @@ row = step(401, { action(ALLY, 2, 0, { { MOB, 31, 3 } }) });
 assert(row.effect == 66 and icon(row) == 66 and row.shadows == 1, 'One shadow left.');
 row, count = step(402, { action(MOB, 4, 53, { { MOB, 230, 36 } }) });
 assert(count == 1 and row.effect == 36, 'Blink took Copy Image off at its last shadow.');
+
+-- Blink gives 2 shadows (globals/spells/enhancing_spell.lua :70), and each one soaks a hit with message 31, as
+-- Utsusemi's do, so it goes with its second (battleutils.cpp IsAbsorbByShadow :3101-3145). It keeps its own icon. A
+-- fifth of hits get past it, so a hit that lands leaves it.
+assert(row.shadows == 2 and row.name == 'Blink' and icon(row) == 36, 'Blink starts two, as Blink: ' .. tostring(row.shadows));
+row = step(403, { action(ALLY, 1, 0, { { MOB, 1, 40 } }) });
+assert(row and row.effect == 36 and row.shadows == 2, 'A hit that got past Blink leaves it.');
+row = step(404, { action(ALLY, 1, 0, { { MOB, 31, 1 } }) });
+assert(row and row.effect == 36 and icon(row) == 36 and row.name == 'Blink' and row.shadows == 1, 'One left, still Blink.');
+row = step(405, { action(MOB, 4, 53, { { MOB, 230, 36 } }) });
+assert(row and row.effect == 36 and row.shadows == 2, 'A recast starts two again.');
+row, count, events = step(406, { action(ALLY, 2, 0, { { MOB, 31, 2 } }) });
+gone = removed(events);
+assert(count == 0 and gone and gone.effect == 36 and gone.reason == 'Its last shadow took a hit.', 'Its last shadow took Blink with it.');

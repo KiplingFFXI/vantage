@@ -1,11 +1,17 @@
--- The pet display (settings.pet): your pet's name and, for a pet you charmed, the charm's estimated time left, or for a
--- jug the time until it leaves; its HP, MP once the client has given some, and TP as bars, with an automaton's HP as a
--- number when Show automaton HP as a number is on; the buffs and debuffs Vantage
--- saw on it, through the display's own filters and the shared hide rules, with their countdowns, as icons that wrap and
--- blink near their end or as a list with names; for a PUP your maneuvers and overload risk; and the recasts of your pet
--- commands, soonest first. It uses the timer panels' look, and its countdown text follows More look on the main page. What doesn't fit, or is
--- past a limit, is left out with nothing in its place. It moves and resizes like the party cooldown list
--- (ui/element_box.lua) and takes no clicks otherwise.
+-- The pet display (settings.pet). It shows your pet's name and, for a pet you charmed, the charm's estimated time left,
+-- or for a jug the time until it leaves. Under that are its HP, MP once the client has given some, and TP as bars. An
+-- automaton's HP and MP show as numbers when Show automaton HP as a number and Show automaton MP as a number are on, and
+-- for a BST, main or support, with a jug pet or a charmed mob out, Mark where Sic is ready puts a mark on the TP bar at
+-- 1000 TP. Then come the buffs and
+-- debuffs Vantage saw on it, through the display's own filters and the shared hide rules, with their countdowns, as
+-- icons that wrap and blink near their end or as a list with names. For a PUP your maneuvers and overload risk come
+-- next. Then come the lines the Show tab's other ticks add (core/pet_lines.lua): what your pet is fighting, the spell
+-- it is casting, the move it is readying or the last one it used, its distance, how long it has been out, an
+-- automaton's attachment timers, own cooldowns and build, what your avatar costs, when Healing Breath would fire and
+-- what Reward would heal. Last are the recasts of your pet commands, soonest first. It uses the timer panels' look,
+-- and its countdown text follows Text effects on the main page. What doesn't fit, or is past a limit, is left out with
+-- nothing in its place. It moves and resizes like the party cooldown list (ui/element_box.lua) and takes no clicks
+-- otherwise.
 local display = {};
 local theme = require('ui.theme');
 local fonts = require('ui.fonts');
@@ -83,9 +89,7 @@ end
 
 -- An effect's countdown, or nothing to show.
 local function time_text(effect, config)
-    local left = effect.count_up == true and effect.elapsed or effect.remaining;
-    return config.show_countdowns and type(left) == 'number' and left == left and left >= 0 and left < huge
-        and effect.effect ~= 269 and box.time(left) or '';
+    return config.show_countdowns and countdown.effect_text(effect) or '';
 end
 
 -- Each icon's countdown and width, each as wide as its icon or its countdown, and how many rows they wrap to in width.
@@ -140,6 +144,15 @@ local function hp_text(hp, most)
     return text;
 end
 
+local mp_texts, mp_most = {}, nil;
+-- 'MP 312/420', the same way.
+local function mp_text(mp, most)
+    if most ~= mp_most then mp_texts, mp_most = {}, most; end
+    local text = mp_texts[mp];
+    if not text then text = 'MP ' .. tostring(mp) .. '/' .. tostring(most); mp_texts[mp] = text; end
+    return text;
+end
+
 local percents = {};
 -- '23%', made once for each value.
 local function percent_text(value)
@@ -148,14 +161,16 @@ local function percent_text(value)
     return text;
 end
 
--- Draws the display and returns what is under the mouse, for its tooltip: { kind = 'hp', 'effect', 'charm', 'jug',
--- 'maneuver' or 'recast', item }, or nil. moving holds what hud.draw worked out; callbacks.effect_filters is the frame's shared hide rules.
+-- Draws the display and returns what is under the mouse, for its tooltip: { kind = 'hp', 'mp', 'sic', 'effect',
+-- 'charm', 'jug', 'maneuver', 'line' or 'recast', item }, or nil. moving holds what hud.draw worked out, and
+-- callbacks.effect_filters is the frame's shared hide rules.
 function display.draw(view, settings, now, callbacks, moving)
     local config = settings.pet;
     if type(config) ~= 'table' or not config.enabled then frame:cancel(); return nil; end
     -- Its show conditions hide it, unless samples or edit mode show it.
     if not config.preview and not moving.editing and not conditions.shown('pet') then frame:cancel(); return nil; end
-    local shown = config.preview and pet.samples(now, view and view.context and view.context.job) or view and view.pet;
+    local context = view and view.context;
+    local shown = config.preview and pet.samples(now, context and context.job, config, context and context.sub_job) or view and view.pet;
     local has = shown ~= nil and shown.valid == true;
     local s = settings.style;
     local scale = s.scale;
@@ -169,13 +184,15 @@ function display.draw(view, settings, now, callbacks, moving)
     local recasts = has and config.show_recasts and min(shown.recast_count or 0, config.max_recasts) or 0;
     local vitals = has and config.show_vitals and (shown.has_mp and 3 or 2) or 0;
     local lines = has and config.show_maneuvers and shown.maneuver_count or 0;
+    -- The lines the Show tab's other ticks add (core/pet_lines.lua), each a name with a value or a countdown.
+    local extra = has and shown.line_count or 0;
     local as_list, gap = config.effects_as == 'list', max(2, floor(icon * 0.12 + 0.5));
     -- Icons wrap to the width inside the box; a row is an icon and its countdown.
     local icon_row = icon + (config.show_countdowns and timer_size + 2 * scale or 0) + 4 * scale;
     local effects_height = as_list and found * (line + 2 * scale)
         or found > 0 and icon_row * lay_out(found, config, min(config.width, moving.screen_width) - 12 * scale, icon, gap, timer_size) or 0;
-    local wanted = 4 * scale + title + 8 * scale + vitals * (line + 2 * scale) + effects_height + (lines + recasts) * (line + 2 * scale) + 4 * scale;
-    local rect, movable = frame:place(config, settings, callbacks, moving, wanted, has, 160);
+    local wanted = 4 * scale + title + 8 * scale + vitals * (line + 2 * scale) + effects_height + (lines + extra + recasts) * (line + 2 * scale) + 4 * scale;
+    local rect, movable = frame:place(config, settings, callbacks, moving, wanted, has, pet.MIN_WIDTH);
     if not rect then return nil; end
     fonts.push(look.font, font_size);
     hovered.kind, hovered.item = nil, nil;
@@ -218,11 +235,32 @@ function display.draw(view, settings, now, callbacks, moving)
                 top = top + line + 2 * scale;
             end
             if shown.has_mp and top + line <= bottom then
-                bar(list, left, top, bar_width, line, (shown.mpp or 0) / 100, config.mp_color, s, shown.mpp and vital('mp', shown.mpp) or 'MP', text_ink);
+                local number = config.exact_mp and shown.mp;
+                bar(list, left, top, bar_width, line, (shown.mpp or 0) / 100, config.mp_color, s,
+                    number and mp_text(shown.mp, shown.max_mp) or shown.mpp and vital('mp', shown.mpp) or 'MP', text_ink);
+                if number and box.over(moving, movable, left, top, bar_width, line) then hovered.kind, hovered.item = 'mp', shown; end
                 top = top + line + 2 * scale;
             end
             if top + line <= bottom then
-                bar(list, left, top, bar_width, line, (shown.tp or 0) / 3000, config.tp_color, s, shown.tp and vital('tp', shown.tp) or 'TP', text_ink);
+                local tp_text = shown.tp and vital('tp', shown.tp) or 'TP';
+                bar(list, left, top, bar_width, line, (shown.tp or 0) / 3000, config.tp_color, s, tp_text, text_ink);
+                -- Where Sic is ready: a line a third of the way along, at 1000 TP. Where the TP number reaches that
+                -- far, it is a notch above the number and one below, so the number stays whole.
+                if shown.sic_mark then
+                    local at = left + floor(bar_width / 3 + 0.5);
+                    local thick = max(1, floor(scale + 0.5));
+                    if at < left + 4 + metrics.width(look.font, tp_text, look.size, look.size) + 2 * scale then
+                        local notch = max(2, floor(line / 6));
+                        corner[1], corner[2], far[1], far[2] = at, top, at + thick, top + notch;
+                        list:AddRectFilled(corner, far, text_ink, 0);
+                        corner[2], far[2] = top + line - notch, top + line;
+                        list:AddRectFilled(corner, far, text_ink, 0);
+                    else
+                        corner[1], corner[2], far[1], far[2] = at, top, at + thick, top + line;
+                        list:AddRectFilled(corner, far, text_ink, 0);
+                    end
+                    if box.over(moving, movable, left, top, bar_width, line) then hovered.kind, hovered.item = 'sic', shown; end
+                end
                 top = top + line + 2 * scale;
             end
         end
@@ -290,6 +328,32 @@ function display.draw(view, settings, now, callbacks, moving)
             if box.over(moving, movable, left, top, right - left, line) then hovered.kind, hovered.item = 'maneuver', entry; end
             top = top + line + 2 * scale;
         end
+        -- Each extra line: its name, then its value or the time until its deadline, over a fill of how much is left. One
+        -- that wants attention is in the warning color.
+        for index = 1, extra do
+            if top + line > bottom then break; end
+            local entry = shown.lines[index];
+            local left_time = entry.deadline and entry.deadline - now or nil;
+            if left_time and left_time > 0 and entry.total and entry.total > 0 then
+                corner[1], corner[2], far[1], far[2] = left, top, left + (right - left) * min(1, left_time / entry.total), top + line;
+                list:AddRectFilled(corner, far, accent, 2);
+            end
+            local clock_text = left_time and left_time > 0 and box.time(left_time) or '';
+            local value = clock_text == '' and entry.value or '';
+            local width_of = clock_text ~= '' and countdown.measure(look.font, clock_text, font_size, config)
+                or value ~= '' and metrics.width(look.font, value, font_size, font_size) or 0;
+            local text_y = top + max(0, (line - font_size) / 2);
+            local ink = entry.warn and theme.u32(s.warning_color) or value_ink;
+            -- The value ends at the right, and the name has what is left of it, when that holds more than a letter or
+            -- two. A value too wide for the row starts at the row's left, and is cut at its right.
+            local value_x = max(left, right - width_of);
+            local room = value_x - left - 8 * scale;
+            if room >= font_size * 2.5 then box.text(list, look, entry.name, left, text_y, font_size, text_ink, room); end
+            if clock_text ~= '' then countdown.draw(list, look.font, clock_text, value_x, text_y, font_size, ink, config, false, box.point);
+            elseif value ~= '' then box.text(list, look, value, value_x, text_y, font_size, ink, right - value_x + 2); end
+            if entry.details and box.over(moving, movable, left, top, right - left, line) then hovered.kind, hovered.item = 'line', entry; end
+            top = top + line + 2 * scale;
+        end
         if recasts > 0 then
             -- Each recast: its icon, its name and its time left, over a fill of how much is left.
             local art, status_art = s.recast_icon_art, recast_icons.status_art(s);
@@ -324,6 +388,9 @@ end
 local SPAN = { horizon = 300 };
 function display.details(found, now)
     if found.kind == 'hp' then return pet.hp_details(); end
+    if found.kind == 'mp' then return pet.mp_details(); end
+    if found.kind == 'sic' then return pet.sic_details(); end
+    if found.kind == 'line' then return found.item.details; end
     if found.kind == 'charm' then return pet.charm_details(found.item, now); end
     if found.kind == 'jug' then return pet.jug_details(found.item); end
     if found.kind == 'maneuver' then return pet.maneuver_details(found.item, now); end

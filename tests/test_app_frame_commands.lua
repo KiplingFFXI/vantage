@@ -35,7 +35,7 @@ for _,action in ipairs({'show','preview','live','lock','unlock','hide'}) do
     local order=table.concat(events,', ');
     assert(order=='save','party '..action..' saves once, not '..order);
 end;
--- Showing the party list buffs with every strip off shows the Party strip, as Home does.
+-- Showing Party list with every strip off shows the Party strip, as Home does.
 for _,action in ipairs({'show','live','preview'}) do
     local p=app.state.settings.party_ui;
     p.enabled,p.strips.party,p.strips.alliance1,p.strips.alliance2=false,false,false,false;

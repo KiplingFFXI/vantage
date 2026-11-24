@@ -22,7 +22,7 @@ elements.list = {
     box('cooldown_list', 'Party cooldowns list'),
     { id = 'pulse', label = 'Ready pulse', x = 'x', y = 'y', lock = 'locked', anchor = 'anchor', conditions = 'conditions' },
     box('rolls', 'Phantom Roll'), box('pet', 'Pet'),
-    { id = 'party_ui', label = 'Party list buffs', lock = 'locked', conditions = 'conditions', strips = true },
+    { id = 'party_ui', label = 'Party list', lock = 'locked', conditions = 'conditions', strips = true },
     { id = 'overhead', label = 'Overhead icons', conditions = 'conditions', world = true },
 };
 -- What edit mode moves: every display drawn on the screen, the strips one by one.
@@ -61,7 +61,7 @@ function elements.config(settings, id)
     return settings[id];
 end
 
--- The table that holds an element's lock: a strip's is the party list buffs' own.
+-- The table that holds an element's lock: a strip's is Party list's own.
 function elements.lock_holder(settings, id)
     local element = elements.by_id[id];
     if element and element.strip then return settings.party_ui; end
@@ -177,7 +177,8 @@ function elements.spot(settings, id, width, height, screen_width, screen_height,
 end
 
 -- Puts rect where id's anchor puts it, beside a target drawn this Present or the one before. Returns true when the
--- anchor placed it; otherwise rect keeps its fallback spot. The caller keeps it on the screen.
+-- anchor placed it; otherwise rect keeps its fallback spot. The caller keeps it on the screen, then off the chat log
+-- with layout.off_chat.
 function elements.place(settings, id, rect, screen_width, screen_height, target)
     local x, y = elements.spot(settings, id, rect.width, rect.height, screen_width, screen_height, target);
     if not x then return false; end

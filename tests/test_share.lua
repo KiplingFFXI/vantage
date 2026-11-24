@@ -75,6 +75,25 @@ end;
 local kept = json.decode(share.export(private, 'filters', nil, NAME):match('^VG:1:%x+:(.+)$')).data.effect_filters.rules;
 assert(#kept == 1 and kept[1].effect == 253, 'The hide rules that named you and another character are left out whole, never widened.');
 assert(select(2, share.export(private, 'filters', nil, NAME)) == '2 rules that name one character were left out.', 'The page says how many.');
+-- Text that only looks like a path, such as a title with a backslash, is left empty too, and the page says how many.
+do
+    local slashed = fresh();
+    slashed.panels.self_buffs.title, slashed.panels.self_buffs.field_dividers.name = 'HP' .. back .. 'MP', ' ' .. back .. ' ';
+    slashed = defaults.tidy(slashed);
+    assert(slashed.panels.self_buffs.title == 'HP' .. back .. 'MP' and slashed.panels.self_buffs.field_dividers.name == ' ' .. back .. ' ',
+        'Fixture: tidy keeps the title and the divider.');
+    local exported, why = share.export(slashed, 'element', 'self_buffs', NAME);
+    local data = json.decode(exported:match('^VG:1:%x+:(.+)$')).data;
+    assert(data.title == '' and data.field_dividers.name == '', 'Text with a backslash is left empty.');
+    assert(why == '2 settings that look like file paths were left empty.', 'The page says how many: ' .. tostring(why));
+    slashed.panels.self_buffs.field_dividers.name = '';
+    why = select(2, share.export(slashed, 'element', 'self_buffs', NAME));
+    assert(why == '1 setting that looks like a file path was left empty.', 'and one in plain words: ' .. tostring(why));
+    assert(select(2, share.export(fresh(), 'profile', nil, NAME)) == nil, 'A fresh profile has nothing to say.');
+    -- The font file and the panel title with a path in them, after the rules left out.
+    why = select(2, share.export(private, 'profile', nil, NAME));
+    assert(why and why:find(' were left out. 2 settings that look like file paths were left empty.', 1, true), 'The page says both: ' .. tostring(why));
+end;
 local alerts = json.decode(share.export(private, 'alerts', nil, NAME):match('^VG:1:%x+:(.+)$')).data.rules;
 assert(#alerts == 1 and alerts[1].id == 'rule_2' and alerts[1].name == '', 'The rule for one member by id is left out, and a name that holds yours is blanked.');
 -- A duration override only on one of your characters is left out whole too, as a blank name would put it on everyone.
@@ -83,7 +102,7 @@ local overrides = json.decode(share.export(private, 'profile', nil, NAME):match(
 assert(#overrides == 2 and overrides[1].name == 'Crab' and overrides[2].name == '' and overrides[2].id == 43,
     'A duration override only on you is left out, never widened to everyone: ' .. #overrides);
 -- Your name is looked for in text you typed, never in the settings' own keys or a choice from a list: a character
--- named Party keeps the party list buffs and party cooldowns in a whole profile, one named Style the looks, and one
+-- named Party keeps Party list and party cooldowns in a whole profile, one named Style the looks, and one
 -- named Mint the Mint theme. A title that holds the name is still blanked.
 local named = fresh();
 named.style.theme, named.panels.self_buffs.title = 'Mint', 'Party buffs';
@@ -326,7 +345,7 @@ local function draw(click)
 end;
 -- The page starts on a whole profile, and One display on Self buffs.
 app.state.settings.panels.self_buffs.width = 444;
-rawset(imgui, 'BeginCombo', function(label) return label == '##Export'; end);
+rawset(imgui, 'BeginCombo', function(label) return label == '##What to export'; end);
 rawset(imgui, 'EndCombo', function() end);
 draw(); draw('One display##element');
 rawset(imgui, 'BeginCombo', nil);

@@ -25,15 +25,7 @@ local RANGED, AMMO, INVENTORY = 2, 3, 0;
 -- src/map/utils/blueutils.cpp:71). Phoenix sends it at every zone-in and when the set changes.
 local set_spells, set_seen = {}, false;
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-local function call(object, method, a, b)
-    if not object then return nil; end
-    local ok, fn = pcall(index_of, object, method);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local done, value = pcall(fn, object, a, b);
-    if done then return value; end
-end
+local call = require('core.guard').call;
 local function number(value) return type(value) == 'number' and value == value and value or 0; end
 local function truth(value) return value == true or value == 1; end
 

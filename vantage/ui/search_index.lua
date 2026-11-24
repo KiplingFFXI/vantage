@@ -12,19 +12,27 @@ local more_words = {
         ['No boxes or headings']='Frameless timer panels',
         ['How it looks']='Look and size Customize appearance Colors, themes, fonts and sizing',
         ['What to show']='Customize displays Choose visible displays',
-        ['Party list buffs']='Party and alliance Show party list buffs Party list buff settings Customize party',
+        ['Party list']='Party and alliance Show party list buffs Party list buffs Party list buff settings Customize party',
+        ['Party buffs']='Party members buffs Party effects', ['Party buffs over heads']='Overhead party icons',
+        ['Show the distance to each member']='Party distance How far away Range', ['Glow around lit icons']='Glow around them',
         ['Font']='change font Panel font Settings font menu font Fonts typeface Overhead font Phantom Roll font Pet display font',
-        ['More look']='More customization Settings menus',
+        ['Artwork']='More look More customization', ['Sizes']='More look', ['Boxes']='More look', ['Text effects']='More look Countdown text',
+        ['This window']='Settings menus', ['While playing']='Behavior',
+        ['Replace the game\'s pet bar']='Hide game pet bar native pet HP',
         ['Edit Self buffs']='Customize timers',
-        ['Edit Recasts']='Customize recasts', ['Edit Hidden everywhere']='All hide rules Open filters',
-        ['Starter profile']='Starter layouts role melee tank healer support crowd control pet preset presets',
+        ['Edit Recasts']='Customize recasts',
+        ['Quick setup for a role']='Starter profile Starter layouts role melee tank healer support crowd control pet preset presets',
         ['Skin']='Frameless skin theme look ' .. table.concat(theme.names, ' ') .. ' XI View',
         ['Text size']='Effect text size Panel font size', ['Size']='Timer scale Overall scale 1x 1.5x 2x',
         ['Icon size']='Timer icon size Status and recast icon size', ['Settings text size']='Menu text size',
         ['Heading size']='Panel title size', ['Opacity']='Background opacity', ['Background']='Panel backgrounds', ['Border']='Panel borders',
         ['Hold Shift to see through this window']='peek',
+        ['Chat line colors']='Chat colors Chat message colors chatsample', ['Print a sample line']='Chat sample chatsample',
+        ['Reload icons']='import icon sets custom icons own icons',
+        ['Open icons folder']='Icons folder import icons custom icons own icons File Explorer',
         ['Window frame']='Window style Timer window style Menu window style Original FFXI XI View',
         ['Show details when I point at a timer']='Hover details',
+        ['Follow the cursor while I am choosing a target']='Follow target-selection cursor subtarget Target timers Show',
         ['Hide Vantage in cutscenes, on the map and when the game hides its menus']='Hide during events Hide on the map Hide with the game interface',
         ['Hide timer panels while I type']='Hide while typing',
         ['Bold countdowns']='Bold effect countdowns',
@@ -35,21 +43,24 @@ local more_words = {
         ['Gauges']='Timer gauge artwork', ['Icons']='Timer buff icons', ['Alerts']='Alerts on Enable alert rules',
         ['Recast icons']='Recast icon artwork XI View Original FFXI', ['Moving']='Move and lock Move displays layout placement shift drag move resize wrap unlock lock',
         ['Unlock all']='displays move resize shift drag placement', ['Lock all']='displays protect position size layout placement',
-        ['Grid and snapping']='Tick the displays that snap snap to grid',
-        ['Grid mode']='snap to grid snapping',
+        ['Snap while moving']='Grid mode snapping Grid size Show the grid Snap distance Line up with Snap to the grid Snap to the screen center and edges '
+            .. 'Snap to other displays Snap to the game\'s party list Snap to the chat log',
         ['Show samples']='Sample displays', ['End samples']='End sample displays',
-        ['Edit mode']='Start edit mode',
+        ['Arrange on screen']='Edit mode Start edit mode',
         ['Spell recasts']='Include spell recasts Show spell recasts', ['Ability recasts']='Include ability recasts Show ability recasts',
         ['Item recasts']='Include item recasts Show item recasts', ['Recasts']='Show combined recasts',
     },
     Profiles = {
         ['Import from clipboard']='Read the clipboard Import a profile Import a profile from the clipboard Paste a share string', ['Import from a file']='Open a file Open a profile file',
         ['Save it as']='Name for the imported profile', ['Clear the import']='Clear the share string Cancel the import',
-        ['Export a saved profile']='Export to clipboard Share a saved profile', ['Export a saved profile to a file']='Save a saved profile to a file',
+        ['Profile to export']='Export a saved profile Share a saved profile', ['Save the export to a file']='Export to a file Export a saved profile to a file Save a saved profile to a file',
         ['Load this profile when I change to']='Use a profile for a job Choose current job',
         ['Share settings across my characters']='Share selected settings across characters other character another character',
         ['Put every display back where it started']='Reset Reset panel layouts', ['Unlink all jobs']='Reset job profile links',
-        ['Export']='What to export Copy', ['Copy the export']='Copy a share string',
+        ['Reset how everything looks']='Reset appearance Reset style Reset the look', ['Reset When to show on every display']='Reset conditions',
+        ['Reset the effect lists of every timer panel']='Reset effects Reset effect filters', ['Reset Moves with on every display']='Reset anchors',
+        ['Reset every timer panel\'s size and place']='Reset panels Reset panel sizes', ['Reset chat line colors']='Reset chat colors',
+        ['What to export']='Export current settings Export Copy', ['Copy the export']='Copy a share string Export to clipboard',
         ['Import and add']='Add from an export Add from a share string', ['Import and replace']='Replace from an export Replace from a share string',
         ['Confirm ']='Confirm overwrite Confirm delete',
     },
@@ -66,26 +77,10 @@ local more_words = {
 -- change, and one marked live each time, as it reads more than the settings: what a page keeps for itself, the view,
 -- the callbacks or what was drawn.
 local only_while = {
-    -- Grid mode shows the main page's fold with the grid's controls. A display's name finds that display's own controls,
-    -- not Grid mode.
-    { on = function(s) return s.edit_mode.grid_mode == true end, shown_by = { 'Grid mode' },
-        hides = { Home = { 'Grid and snapping', 'Grid size', 'Show the grid', 'Snap to the grid',
-            'Snap to the screen center and edges', 'Snap to other displays', "Snap to the game's party list",
-            'Snap to the chat log', 'Snap distance' } } },
     -- Blink's seconds show while any display blinks.
     { on = function(s) return require('ui.shared_look').blink(s) ~= false end, shown_by = { 'Blink before an effect ends' },
         hides = { Home = { 'Blink seconds left' } } },
 }
--- The main page lists a display's tick while Grid mode is on and the display is on. A party list strip is on once it
--- was drawn, so its tick's state is live.
-do
-    local elements = require('ui.elements')
-    for _, element in ipairs(elements.movable) do
-        local id = element.id
-        only_while[#only_while + 1] = { shown_by = {}, hides = { Home = { element.label .. ' for Grid mode' } },
-            on = function(s) return s.edit_mode.grid_mode == true and elements.on(s, id) end, live = element.strip ~= nil }
-    end
-end
 local shown_words = {}
 -- The names a control on a page is found by, past its own, with the states in on.
 function index.hidden_words(label, page, on)
@@ -99,9 +94,9 @@ end
 
 -- Every label of a page before it is opened. Drawing a page adds what its controls' help says.
 local static_labels = {
-    Profiles = [[Profiles|Saved profiles|Load profile|Overwrite profile|Rename profile|Delete profile|Confirm |Cancel profile change|Export a saved profile|Export a saved profile to a file|Profile name|Save as new|Load this profile when I change to|Link this job|Unlink this job|Unlink all jobs|Undo the last profile change|Across characters|Share settings across my characters|What to share across characters|Import and export|Export|Display to export|Copy the export|Import from clipboard|Import from a file|File to open|Import and add|Import and replace|Clear the import|Keep my own display positions|Save it as|Save as a new profile|Start over|Put every display back where it started|Reset all settings]],
-    Help = [[Getting started|Reading a timer|What can be tracked|Alerts|Move and customize|Files and behavior|Record recent events|Export report|Copy shown timers|Copy timer details]],
-    Durations = [[Duration overrides|Override applies to|Find what to override|What to override|Add duration override|Override to edit|Override enabled|Change the time to|Fixed time|Seconds to add or take away|Percent of the estimate|Only on a mob or player named|Use my target's name|Remove selected override|Clear duration overrides|Learned durations|Learn from my casts|Casts before a learned time is used|Clear learned durations|Reset this page]],
+    Profiles = [[Profiles|Saved profiles|Load profile|Overwrite profile|Rename profile|Delete profile|Confirm |Cancel profile change|Profile name|Save as new|Load this profile when I change to|Link this job|Unlink this job|Unlink all jobs|Undo the last profile change|Across characters|Share settings across my characters|What to share across characters|Import and export|What to export|Display to export|Profile to export|Copy the export|Save the export to a file|Import from clipboard|Import from a file|File to open|Import and add|Import and replace|Clear the import|Keep my own display positions|Save it as|Save as a new profile|Start over|Put every display back where it started|Reset all settings|Reset one part|Reset how everything looks|Reset When to show on every display|Reset the effect lists of every timer panel|Reset Moves with on every display|Reset every timer panel's size and place|Reset chat line colors]],
+    Help = [[Getting started|Reading a timer|What can be tracked|Alerts|Move and customize|Files and behavior|Troubleshoot|Record recent events|Export report]],
+    Durations = [[Duration overrides|Override applies to|What to override|Add duration override|Override to edit|Override enabled|Change the time to|Fixed time|Seconds to add or take away|Percent of the estimate|Only on a mob or player named|Use my target's name|Remove selected override|Clear duration overrides|Learned durations|Learn from my casts|Casts before a learned time is used|Clear learned durations|Reset this page]],
 }
 local controls = index.controls
 for page, labels in pairs(static_labels) do
@@ -129,20 +124,22 @@ end
 index.entries = {
     { 'Home', 'Skin, size, displays and moving', 'home setup start starter getting started overview enable disable show hide customize skin size extended minimal current mixed customized' },
     { 'Home', 'Skin and size', 'presets preset setup skin skins theme themes match matching fonts artwork client window skin apply theme everywhere one look extended minimal minimal1.5x 1.5x minimal2x 2x double small client party alliance buffs icons original ffxi xi view apply skin, size and customization', 'How it looks' },
+    { 'Home', 'Your own icon sets', 'import icons icon sets own icons custom icons replace icons pictures png dds bmp tga jpg icons folder reload icons', 'Artwork' },
     { 'Display', 'Shared buff and debuff visibility rules', 'global shared buff debuff hide filter filters Signet Level Sync recipient affected player name main job party alliance everywhere conditional rules', 'show', 'hidden' },
     { 'Display', 'Spell, ability, and item cooldowns', 'recast recasts spells abilities enchanted equipped items cooldown timers ready started wrap move resize customization fonts skins bars icons labels filters groups pinned alerts profiles combined separate together one panel', 'show', 'recasts' },
-    { 'Display', 'Recast alerts', 'recast recasts spell ability cooldown started ready remaining alert notices chat sound flash emphasis domain', 'show', 'notices' },
-    { 'Display', 'Party buff icons and opacity', 'party alliance original ffxi xi view xiview client buff icons icon pack artwork opacity', 'look', 'party_ui' },
-    { 'Display', 'Buffs beside the game party list', 'Party & alliance roster members native game windows strips strip detached preview shift drag lock resize original ffxi xi view include exclude pin order effects icons icon pack left right beside side placement grow width', 'show', 'party_ui' },
+    { 'Display', 'Alerts: recasts, rules, sounds and notices', 'recast recasts spell ability cooldown started ready remaining alert notices chat sound flash emphasis domain create edit gain missing removed worn off expiry threshold percent seconds reminder silence haste sleep wav mp3 volume play test visual emphasize repeat mute scope conditions self party target watch all job combat estimates inherit', 'show', 'notices' },
+    { 'Display', 'Party buff icons and opacity', 'party alliance original ffxi xi view xiview buff icons icon pack artwork opacity', 'look', 'party_ui' },
+    { 'Display', 'Buffs beside the game party list', 'Party & alliance roster members native game windows strips strip detached preview shift drag lock resize original ffxi xi view include exclude pin order my order same order every member effects icons icon pack left right beside side placement grow width distance yalms range reach how far', 'show', 'party_ui' },
     { 'Display', 'Buffs and debuffs above heads', 'overhead head heads above world mobs enemies monsters players nameplate floating target subtarget claimed watched debuffed party alliance pet single bar two lines split limit truncate dispel dispellable lit light glow crowd control distance cap fade towns size emphasis offset calibrate preview sample', 'show', 'overhead' },
-    { 'Display', 'Party cooldowns: two-hours and key abilities', 'party alliance member members cooldown cooldowns two-hour two-hours 2-hour 2hr sp special ability abilities recast recasts estimated estimate watch list strips overhead heads Benediction Chainspell Manafont Invincible Soul Voice Convert Provoke Wild Card', 'show', 'cooldown_list' },
+    { 'Display', 'Party cooldowns: two-hours, key abilities and Utsusemi', 'party alliance member members cooldown cooldowns two-hour two-hours 2-hour 2hr sp special ability abilities spell spells recast recasts estimated estimate watch list strips overhead heads Benediction Chainspell Manafont Invincible Soul Voice Convert Provoke Wild Card Sneak Attack Trick Attack SATA Utsusemi Ichi Ni shadows', 'filters', 'cooldown_list' },
     { 'Display', 'Phantom Roll: totals, lucky numbers and bust chance', 'phantom roll rolls corsair cor double-up double up bust busted lucky unlucky total dice die snake eye chance odds window members party who got it effect gives bonus job luzaf', 'show', 'rolls' },
     { 'Display', 'Pet: HP, TP, effects, recasts and charm time', 'pet pets beastmaster bst summoner smn avatar dragoon drg wyvern puppetmaster pup automaton jug charm charmed familiar hp mp tp buffs debuffs effects recasts sic reward call beast blood pact rage ward call wyvern spirit link repair activate maneuver deploy estimate check', 'show', 'pet' },
-    { 'Display', 'Recast marks and the ready pulse', 'tint tints MP mana cost afford silence silenced mute muted amnesia omerta impairment salvage lock locked grey gray pulse ready long recast early warning ignore screen spot test flash', 'Ready pulse', 'recasts' },
+    { 'Display', 'Recast tints', 'tint tints mark marks MP mana cost afford silence silenced mute muted amnesia omerta impairment salvage lock locked grey gray', "Tint recasts I can't use right now", 'recasts' },
+    { 'Display', 'Ready pulse', 'pulse ready long recast recasts early warning ignore screen spot test flash', 'Pulse when a long recast is ready', 'pulse' },
     { 'Durations', 'Duration overrides and learned durations', 'duration durations override overrides fixed time seconds add take away percent count up elapsed since landed learn learned learning casts samples mob name unit spell ability effect estimate estimated clear' },
-    { 'Home', 'Edit mode: grid, snapping and nudging', 'edit mode layout move place drag shift arrow keys nudge pixel grid snap snapping snap to grid resize edge center edges line up coordinates x y lock unlock select pick outline', 'Moving' },
+    { 'Home', 'Arrange on screen: snapping and nudging', 'arrange edit mode layout move place drag shift arrow keys nudge pixel grid snap snapping snap to grid resize edge center edges line up coordinates x y lock unlock select pick outline', 'Moving' },
     { 'Display', 'What a display moves with', 'anchor anchors anchored attach follow corner edge screen party list chat log display fallback spot gap offset side align', 'Moves with' },
-    { 'Display', 'When each display shows', 'show conditions when load hide job main sub level range level sync zone town field dungeon battlefield dynamis limbus assault salvage nyzul ashu talif mog house solo party alliance engaged combat pet', 'when' },
+    { 'Display', 'When each display shows', 'show conditions when load hide job main sub level range level sync zone town field dungeon battlefield dynamis limbus assault salvage nyzul ashu talif mog house solo party alliance engaged combat pet clear these reset always', 'when' },
     { 'Profiles', 'Import and export settings', 'share string strings export import copy paste clipboard friend layout profile alert rules hide rules filters display add replace', 'Import and export' },
     { 'Display', 'Panel placement, locking and size', 'move drag shift left mouse unlock free resize edges corners width height position automatic fixed fit', 'place', nil, true },
     { 'Display', 'What each row shows and panel layout', 'icons only horizontal vertical stack direction wrapping bar width compact expanded name caster duration elapsed total countdown target source label wording divider separator format minutes seconds new line wrap alignment priority', 'show', nil, true },
@@ -156,17 +153,13 @@ index.entries = {
     { 'Display', 'Debuffs you can remove', 'self party debuffs white mage whm cleanse erase lit light up glow color Poisona Paralyna Blindna Silena Cursna Viruna Stona', 'show', 'self_debuffs' },
     { 'Display', 'Effect filters, labels and pinned order', 'include exclude hide filter search custom customize label priority pin order category shown first last fill color', 'Filters', nil, true },
     { 'Display', 'Which kinds of effects a panel shows', 'group groups membership category', 'Show only some kinds of effects', nil, 'status' },
-    { 'Display', 'Create and edit alert rules', 'gain missing removed worn off expiry threshold percent seconds reminder silence haste sleep', 'show', 'notices' },
-    { 'Display', 'Alert sounds and notices', 'sound wav mp3 volume play test visual chat emphasize cooldown repeat mute', 'show', 'notices' },
     { 'Display', 'Notice position and resizing', 'notice visual lock unlock move resize shift left mouse drag edges corners automatic fixed width height maximum placement and size', 'place', 'notices' },
-    { 'Display', 'Rule scope and conditions', 'self party target watch all job combat estimates', 'show', 'notices' },
     { 'Home', 'Colors, themes, fonts and sizing', 'minimal frameless timers skin font text size scale opacity background border rounding colors theme colorblind window palette outline shadow accent label value detail' },
     { 'Home', 'Settings menus', 'settings menus menu font text size window style theme colors reset window appearance', 'How it looks' },
     { 'Home', 'Settings window size and see-through', 'settings menus move resize shift left mouse drag inside center title header edges corners width height peek' },
     { 'Home', 'Hiding displays at game moments', 'cutscene events map game ui hide typing chat' },
     { 'Profiles', 'Save profiles and choose job profiles', 'save new overwrite rename recover modified source load delete profile job missing share character scope presentation layout undo reset' },
     { 'Help', 'Local diagnostic report', 'copy export report diagnostics record events recent bounded' },
-    { 'Display', 'Flash and sound volume', 'flash volume inherit', 'show', 'notices' },
     { 'Help', 'Understand timing evidence and limits', 'server estimated untimed original duration packets read only passive help' },
 }
 
@@ -199,7 +192,8 @@ do
 
     -- Timer durations: an override, then what its mode shows.
     local function override(s) return require('ui.duration_settings').override(s) end
-    live('Durations', 'Add duration override', "Override to edit|Override enabled|Change the time to|Fixed time|Seconds to add or take away"
+    live('Durations', 'What to override', 'Add duration override', function() return require('ui.duration_settings').picked() end)
+    live('Durations', 'Add duration override|What to override', "Override to edit|Override enabled|Change the time to|Fixed time|Seconds to add or take away"
         .. "|Percent of the estimate|Only on a mob or player named|Use my target's name|Remove selected override|Clear duration overrides", override)
     for mode, label in pairs({ fixed = 'Fixed time', add = 'Seconds to add or take away', percent = 'Percent of the estimate' }) do
         live('Durations', 'Change the time to', label, function(s)
@@ -217,10 +211,6 @@ do
     only('Home', 'No boxes or headings', 'Background|Border', function(s) return not s.style.minimal end)
     live('Home', 'Font', 'Other text shadow', function(s) return not main.baked_shadow(s.style) end)
     only('Home', 'Countdown outline', 'Countdown outline color', function(s) return require('ui.shared_look').outline(s) ~= 'none' end)
-    only('Home', 'Show the grid|Snap to the grid', 'Grid size', function(s)
-        local e = s.edit_mode
-        return e.grid_mode == true and (e.show_grid or e.snap_grid)
-    end)
     -- One button for each pair, whichever of the two it is now.
     only('Home', 'Show samples', 'End samples', defaults.samples_showing)
     only('Home', 'End samples', 'Show samples', function(s) return not defaults.samples_showing(s) end)
@@ -234,11 +224,12 @@ do
     only('Home', '', 'Use it again', function(s) return not s.effect_filters.enabled end)
     only('Home', '', 'Use a spot of its own', defaults.pulse_has_no_row)
     only('Home', '', 'Show them in a list', function(s) return s.party_cooldowns.enabled and not require('core.party_cooldowns').shown(s) end)
-    live('Home', 'Edit mode', 'End edit mode', function() return require('ui.edit_mode').active() end)
+    live('Home', 'Arrange on screen', 'Done arranging', function() return require('ui.edit_mode').active() end)
     live('Home', '', 'Show', function(_, _, callbacks) return callbacks and callbacks.displays_hidden and callbacks.displays_hidden() end)
 
     -- Profiles and sharing.
     local function profiles() return require('ui.profiles_page') end
+    live('Profiles', 'Save as new', 'Saved profiles|Load profile|Overwrite profile|Rename profile|Delete profile', function() return profiles().any_saved() end)
     live('Profiles', 'Overwrite profile|Delete profile', 'Confirm |Cancel profile change', function() return profiles().confirming() end)
     live('Profiles', '', 'Undo the last profile change', function() return profiles().seen.recover_available end)
     live('Profiles', 'Load this profile when I change to', 'Unlink this job', function(s, view) return profiles().job_linked(s, view) end)
@@ -248,7 +239,8 @@ do
     live('Profiles', 'Import from clipboard|Import from a file', 'Save it as|Save as a new profile', function() return profiles().reading_profile() end)
     live('Profiles', 'Save it as', 'Keep my own display positions', function() return profiles().other_screen() end)
     live('Profiles', 'Import from a file', 'File to open', function() return profiles().listing() end)
-    live('Profiles', 'Export', 'Display to export', function() return profiles().copying_display() end)
+    live('Profiles', 'What to export', 'Display to export', function() return profiles().copying_display() end)
+    live('Profiles', 'What to export', 'Profile to export', function() return profiles().copying_saved() end)
 end
 -- The state of each hidden control, by page, and for each control that shows them, that state and the names and more
 -- words it is found by while they are hidden.

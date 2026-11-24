@@ -148,10 +148,35 @@ row = fx.row(avatar, 94);
 assert(close(row.remaining, 74) and not row.follow, 'Rolling Thunder keeps to the formula: 60 + 2 x 7.');
 clear();
 
--- Lunar Cry says nothing of what landed, so it makes nothing.
+-- Lunar Cry says nothing of what landed, so both of its effects are taken as put on (tests/test_guessed_debuffs.lua).
 fx.action(avatar, 13, LUNAR_CRY, { { mob, 144, 0 } });
 fx.step();
-assert(#fx.rows(mob) == 0, 'Lunar Cry makes nothing.');
+assert(#fx.rows(mob) == 2 and fx.row(mob, 146) and fx.row(mob, 148), 'Lunar Cry is taken to lower accuracy and evasion.');
+clear();
+-- Both last as Slowga does: 180 s plus your skill over 300, up to 200 more. They stay guesses, as a resist looks the
+-- same, and go when that time is up, whatever the stale limit.
+fx.settings.tracking.stale_seconds = 1800;
+for skill, seconds in pairs({ [276] = 180, [300] = 180, [350] = 230, [600] = 380 }) do
+    game.skill = skill;
+    fx.action(avatar, 13, LUNAR_CRY, { { mob, 144, 146 } });
+    fx.step();
+    for _, effect in ipairs({ 146, 148 }) do
+        row = fx.row(mob, effect);
+        assert(row and row.by_pet and close(row.remaining, seconds) and not row.exact, 'Lunar Cry at ' .. skill .. ' skill.');
+        assert(fx.details(row):find('The game sends no word of this effect, so a resist looks the same.', 1, true), fx.details(row));
+    end
+    fx.step(seconds + 0.5);
+    assert(not fx.row(mob, 146) and not fx.row(mob, 148), 'Lunar Cry\'s go when their time is up, at ' .. skill .. ' skill.');
+end
+-- Another Summoner's Fenrir: the base time, as your skill says nothing of theirs.
+game.skill = 600;
+fx.action(0x1000B05, 13, LUNAR_CRY, { { mob, 144, 146 } });
+fx.step();
+row = fx.row(mob, 146);
+assert(row and not row.by_pet and close(row.remaining, 180) and close(fx.row(mob, 148).remaining, 180), 'Someone else\'s Lunar Cry: 180 s.');
+fx.settings.tracking.stale_seconds = 180;
+game.skill = 276;
+clear();
 
 -- Slowga: 180 s plus your skill over 300, up to 200 more, as your pet's, and only an estimate of how long a mob keeps it.
 for skill, seconds in pairs({ [276] = 180, [300] = 180, [350] = 230, [600] = 380 }) do

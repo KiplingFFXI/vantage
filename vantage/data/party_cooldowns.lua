@@ -1,16 +1,20 @@
 -- The abilities the party cooldown watch knows (core/party_cooldowns.lua): the two-hour abilities of the jobs in era
--- and a few key job abilities, with their Phoenix recasts at revision 730ac619c0 after the era SQL (modules/init.txt
--- :42-46). Each line gives the ability id, its job and its recast in seconds, and where the recast comes from:
--- sql/abilities.sql, then modules/era/sql/abyssea/revert_two_hours.sql :7-30 (every two-hour to 7200) and
--- modules/era/sql/abyssea/job_adjustments.sql. Two-hours share recast id 0 and take no merits. Trance and Tabula Rasa
--- are WotG jobs and are left out.
+-- and a few key job abilities, with their Phoenix recasts at revision 9785020970 after the SQL modules
+-- (modules/init.txt :49-53). Each line gives the ability id, its job and its recast in seconds, and where the recast
+-- comes from: sql/abilities.sql, then modules/era/sql/abyssea/revert_two_hours.sql :7-30 (every two-hour to 7200),
+-- modules/era/sql/abyssea/job_adjustments.sql and modules/era/sql/rov/job_adjustments.sql. Two-hours share recast id 0
+-- and take no merits. Trance and Tabula Rasa are WotG jobs and are left out.
 -- merits marks the ones merits can shorten: those with a meritModID that aren't merit abilities themselves
--- (src/map/entities/char_entity.cpp :1888), and Martyr, Devotion, Fealty and Chivalry, which the era Lua shortens
+-- (src/map/entities/char_entity.cpp :1866), and Martyr, Devotion, Fealty and Chivalry, which the era Lua shortens
 -- by their merits when RESTRICT_CONTENT is on (modules/era/lua/globals/job_utils/white_mage.lua :10-12, :28-30,
 -- paladin.lua :92, :110). No gear in sql/item_mods.sql shortens any of them.
 -- Eagle Eye Shot finishes as a weapon skill would (actionType 3, abilities.sql :46), so it is told from the weapon
 -- skill with its id, Mercy Stroke, by its messages: 110 when it hits and 324 when it misses (era job_utils/ranger.lua
 -- :40-44; scripts/enum/msg.lua :133, :244).
+-- Utsusemi: Ichi and Ni are spells, which finish as category 4 with the spell's id. A spell's id here is 2048 plus its
+-- own, so it never meets an ability's, and spell is its own id. Its recast is the base one (sql/spell_list.sql
+-- :507-508), which the editor names. The watch counts the one the game sends with each cast instead.
+local SPELL = 2048;
 return {
     { id = 16, name = 'Mighty Strikes', job = 1, recast = 7200, special = true },   -- abilities.sql :36
     { id = 17, name = 'Hundred Fists', job = 2, recast = 7200, special = true },    -- :37
@@ -39,14 +43,18 @@ return {
     { id = 154, name = 'Devotion', job = 3, recast = 1200, merits = true },         -- abyssea job_adjustments.sql :23
     { id = 75, name = 'Elemental Seal', job = 4, recast = 600, merits = true },     -- abilities.sql :95
     { id = 83, name = 'Convert', job = 5, recast = 600, merits = true },            -- :103
+    { id = 44, name = 'Sneak Attack', job = 6, recast = 60, merits = true },        -- :64
+    { id = 76, name = 'Trick Attack', job = 6, recast = 60, merits = true },        -- :96
     { id = 48, name = 'Sentinel', job = 7, recast = 300, merits = true },           -- :68
-    { id = 92, name = 'Rampart', job = 7, recast = 300, merits = true },            -- :112
+    { id = 92, name = 'Rampart', job = 7, recast = 300, merits = true },            -- rov job_adjustments.sql :34
     { id = 157, name = 'Fealty', job = 7, recast = 1200, merits = true },           -- abyssea job_adjustments.sql :65
     { id = 158, name = 'Chivalry', job = 7, recast = 1200, merits = true },         -- abyssea job_adjustments.sql :62
     { id = 85, name = 'Call Beast', job = 9, recast = 300, merits = true },         -- abilities.sql :105
     { id = 163, name = 'Nightingale', job = 10, recast = 600 },                     -- :182
     { id = 164, name = 'Troubadour', job = 10, recast = 600 },                      -- :183
     { id = 63, name = 'Meditate', job = 12, recast = 180, merits = true },          -- :83
+    { id = SPELL + 338, spell = 338, name = 'Utsusemi: Ichi', job = 13, recast = 30 }, -- spell_list.sql :507
+    { id = SPELL + 339, spell = 339, name = 'Utsusemi: Ni', job = 13, recast = 45 },   -- :508
     { id = 61, name = 'Call Wyvern', job = 14, recast = 1200 },                     -- :81
     { id = 133, name = 'Random Deal', job = 17, recast = 1200, merits = true },     -- :153
     { id = 136, name = 'Activate', job = 18, recast = 1200, merits = true },        -- :155

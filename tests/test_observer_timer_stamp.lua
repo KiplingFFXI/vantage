@@ -6,22 +6,10 @@ local self_id, mob, ally = 1001, 0x1000010, 1002;
 local snapshot = { valid = true, id = self_id, zone = 102, name = 'Tester', level = 75,
     self_effects = {}, party = { { id = ally, name = 'Ally' } }, entities = {
         [self_id] = { name = 'Tester' }, [mob] = { name = 'Crab' }, [ally] = { name = 'Ally' } } };
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function action(id, targets, actor)
-    local bytes, at = MOCK.bytes(512), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets);
-    putbits(bytes, 82, 4, 4); putbits(bytes, 86, 32, id);
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target.id); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, target.param); putbits(bytes, at + 44, 10, target.message or 230); at = at + 87;
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    local rows = {};
+    for i, target in ipairs(targets) do rows[i] = { id = target.id, rows = { { message = target.message or 230, param = target.param } } }; end
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, 4, id, rows));
 end
 local function timer_update()
     local bytes = MOCK.bytes(200); MOCK.put(bytes, 4, 2, 9);

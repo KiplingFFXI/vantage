@@ -78,12 +78,16 @@ end
 assert(uploads == 2 and reads == 3, 'Steady rendering uses one GPU handle per pack and index, with no new reads.')
 assert(icons.status(1, 'XI View') == 103 and icons.artwork_status('XI View', 1).using == 'Original FFXI')
 assert(icons.reason('XI View', 1):find('Unsupported', 1, true), 'A corrupt replacement has an explicit per-image fallback reason.')
-assert(icons.status(639, 'XI View') == 9639 and icons.artwork_status('XI View', 639).using == 'Client')
+assert(icons.status(639, 'XI View') == 9639 and icons.artwork_status('XI View', 639).using == "Ashita's")
 assert(icons.status(1023, 'Original FFXI') == 10023, 'Wire indices outside a pack retain the client-image fallback.')
 local before_calls = client_calls
 for _, invalid in ipairs({ -1, 1024, 1.5, math.huge, 0 / 0, '33' }) do assert(not icons.status(invalid, 'XI View')) end
 assert(client_calls == before_calls and uploads == 3 and reads == 3)
-assert(icons.status(0) == 9000 and icons.status(0, 'unknown') == 9000, 'The default and invalid selections preserve Client artwork.')
+assert(icons.status(0) == original and icons.status(0, 'bad/name') == original and icons.status(0, 7) == original
+    and icons.status(0, 'Client') == original, 'The default, a name no choice can have and a saved Client draw as Original FFXI.')
+-- Any other name is an icon set of your own (ui/icon_packs.lua), and one that isn't there draws as Original FFXI.
+assert(icons.status(0, 'unknown') == original and icons.artwork_status('unknown').reason:find('isn\'t in the icons folder', 1, true),
+    'A set that isn\'t there draws as Original FFXI and says why.')
 
 fail_upload = true
 assert(icons.status(2, 'Original FFXI') == 9002 and uploads == 4 and releases == 1)
@@ -122,10 +126,10 @@ uploads, client_calls = 0, 0
 for id = 0, 7 do assert(icons.status(id, 'Original FFXI')) end
 assert(icons.status(8, 'Original FFXI') == nil and icons.status(9, 'XI View') == nil and uploads == 8 and client_calls == 0,
     'The ninth new texture waits, with nothing drawn in its place.')
-assert(icons.status(10) == nil and client_calls == 0, 'Client art waits for the same budget.')
+assert(icons.status(20, 'Original FFXI') == nil and client_calls == 0, "Ashita's picture an icon falls back on waits for the same budget.")
 assert(icons.status(3, 'Original FFXI') and icons.artwork_status('Original FFXI', 8).available, 'Made icons draw, and a waiting one is not missing.')
 assets.icon_frame()
-assert(icons.status(8, 'Original FFXI') and icons.status(9, 'XI View') and icons.status(10) == 9010 and uploads == 10 and client_calls == 1,
+assert(icons.status(8, 'Original FFXI') and icons.status(9, 'XI View') and icons.status(20, 'Original FFXI') == 9020 and uploads == 10 and client_calls == 1,
     'They are made in the next Present.')
 icons.clear()
 os.clock = previous_clock

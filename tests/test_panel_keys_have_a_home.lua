@@ -1,5 +1,5 @@
 -- Every key of a timer or recast panel, of the recast tints, the ready pulse, When to show and Moves with, of Party
--- list buffs, Overhead icons, Party cooldowns, Phantom Roll, Pet, Alerts and its rules and Hidden everywhere and its
+-- list buffs, Overhead icons, Party cooldowns, Phantom Roll, Pet, Alerts and its rules and the Hide list and its
 -- rules is written by a row of a panel, by a named control, or is on a kept list with its reason. So is every other key
 -- of a save, on the main page, Timer durations, Profiles and sharing or Help. A key that loses its control fails here,
 -- and so does a new key with no line.
@@ -26,22 +26,28 @@ end;
 -- Keys a row writes through a table or by hand, by the row's search name.
 local by_row = {
     enabled = 'Show this display', x = 'Across', y = 'Down', stack_direction = 'Fills', growth = 'Fills', anchor = 'Moves with',
+    auto_width = 'Width', dock_match_width = 'Width', auto_height = 'Height',
+    main_except = 'Main job: only these or all but these', sub_except = 'Support job: only these or all but these',
+    zones_except = 'Where: only these or all but these',
     conditions = 'Main job', colors = 'Background color', effect_colors = 'Effect color', labels = 'Rename it', order = 'Add to My order',
     include = 'Show this effect only', exclude = 'Hide here', pinned = 'Pin first', groups = 'Kinds of effects', members = 'Members',
+    -- An alert's and a hide rule's, each picked from a list of effects.
+    effect = 'Effect or recast',
     field_order = 'Parts of a row', field_labels = 'Part label',
     field_colors = 'Part color', field_alignments = 'Part line up', field_dividers = 'Divider before it', field_newlines = 'Start a new line',
     field_priority = 'Priority when space is short', ignore = 'Never pulse for', locked = 'Locked',
     -- A condition's parts, and Moves with's.
     main_jobs = 'Main job', sub_jobs = 'Support job', zones = 'Where', group = 'Party', to = 'Moves with', element = 'Moves with',
-    -- Party list buffs, Overhead icons and Party cooldowns.
-    effects = 'Countdowns', native = 'Longest row', style = 'Party buff icons', include_self = 'Your own row', show_solo = 'Your own row',
+    -- Party list, Overhead icons and Party cooldowns.
+    effects = 'Countdowns', native = 'Longest row', style = 'Party buff icons', include_self = 'Include me', show_solo = 'Include me',
     fit_all = 'Most per member', head = 'Head height offset', offsets = 'Add head offset',
-    types = 'Change the settings for', mob = 'Change the settings for', units = 'Your target', list = 'In a list', jobs = 'WHM', abilities = 'Clear list filters',
+    types = 'Change the settings for', mob = 'Change the settings for', units = 'Your target', list = 'In a list', jobs = 'WHM',
     native_x = 'Put moved groups back', native_y = 'Put moved groups back', native_side = 'Put moved groups back',
     native_detached = 'Your party in a panel of its own', alliance1 = 'Alliance 1', alliance2 = 'Alliance 2',
-    -- Pet, Alerts and Hidden everywhere.
+    -- Pet, Alerts and the Hide list.
     show_effects = 'Effects', kinds = 'Effects', notice_x = 'Across', notice_y = 'Down', notice_locked = 'Locked', notice_anchor = 'Moves with',
     notice_conditions = 'Main job', rules = 'Your alerts', thresholds = 'Thresholds, separated by commas',
+    notice_colors = 'Notice text color',
 };
 -- Keys one control on the main page writes on every display.
 local on_main_page = {
@@ -52,6 +58,10 @@ local on_main_page = {
 -- Keys with no control, and why they stay.
 local kept = {
     horizon = 'How much a bar spans when the full length was not seen.',
+};
+-- One key by its whole path, kept with no control.
+local kept_at = {
+    ['party_cooldowns.list.abilities'] = 'The list kept abilities of its own once. It stays empty so older share strings still read.',
 };
 -- The same for the four displays below, whose keys sit in tables of their own.
 local kept_inside = { camera = 'How the camera is read.',
@@ -66,7 +76,7 @@ local kept_inside = { camera = 'How the camera is read.',
 };
 
 local function home(key, where)
-    if written[key] then return; end;
+    if written[key] or kept_at[where .. key] then return; end;
     if by_row[key] then
         assert(require('ui.search_index').controls.Display[by_row[key]], where .. key .. ' has a row: ' .. by_row[key]);
         return;
@@ -97,26 +107,24 @@ for _, id in ipairs({ 'party_ui', 'overhead', 'party_cooldowns', 'rolls', 'pet',
 every(defaults.tidy(defaults.make()).alerts, 'alerts.');
 every(defaults.rule('alert_1'), 'An alert rule: ');
 every(require('core.effect_filters').rule(), 'A hide rule: ');
-assert(require('ui.search_index').controls.Display['Hidden everywhere'], 'effect_filters.rules has its list.');
+assert(require('ui.search_index').controls.Display['Hide list'], 'effect_filters.rules has its list.');
 
 -- The rest of a save: where a player sets each key, as a page and the control's name in the search.
 local HIDE_WITH_GAME = 'Home/Hide Vantage in cutscenes, on the map and when the game hides its menus';
 local homes = {
     enabled = 'Home/Resume', preview = 'Home/Show samples', replace_game_buffs = 'Home/Replace the game\'s buff icons',
+    replace_game_pet_bar = 'Home/Replace the game\'s pet bar',
     active_profile = 'Profiles/Load profile', job_profiles = 'Profiles/Load this profile when I change to',
     shared_layout = 'Profiles/Share settings across my characters', shared_scope = 'Profiles/What to share across characters',
     watch_ids = 'Display/Watching', recast_display = 'Display/Show as',
-    ['tracking.follow_subtarget'] = 'Display/Follow the cursor while I am choosing a target',
+    ['tracking.follow_subtarget'] = 'Home/Follow the cursor while I am choosing a target',
     ['diagnostics.record'] = 'Help/Record recent events',
     ['durations.overrides'] = 'Durations/Add duration override', ['durations.learn'] = 'Durations/Learn from my casts',
     ['durations.learn_samples'] = 'Durations/Casts before a learned time is used', ['durations.learned'] = 'Durations/Clear learned durations',
     ['visibility.hide_events'] = HIDE_WITH_GAME, ['visibility.hide_map'] = HIDE_WITH_GAME, ['visibility.hide_ui'] = HIDE_WITH_GAME,
     ['visibility.hide_typing'] = 'Home/Hide timer panels while I type',
     ['window.peek'] = 'Home/Hold Shift to see through this window', ['window_style.font_size'] = 'Home/Settings text size',
-    ['edit_mode.grid_mode'] = 'Home/Grid mode', ['edit_mode.grid_displays'] = 'Home/Self buffs for Grid mode', ['edit_mode.grid'] = 'Home/Grid size',
-    ['edit_mode.show_grid'] = 'Home/Show the grid', ['edit_mode.snap_grid'] = 'Home/Snap to the grid', ['edit_mode.snap_screen'] = 'Home/Snap to the screen center and edges',
-    ['edit_mode.snap_elements'] = 'Home/Snap to other displays', ['edit_mode.snap_party'] = "Home/Snap to the game's party list",
-    ['edit_mode.snap_chat'] = 'Home/Snap to the chat log', ['edit_mode.snap_distance'] = 'Home/Snap distance',
+    ['edit_mode.grid_mode'] = 'Home/Snap while moving',
     ['style.theme'] = 'Home/Skin', ['style.font'] = 'Home/Font', ['style.font_size'] = 'Home/Text size', ['style.scale'] = 'Home/Size',
     ['style.icon_art'] = 'Home/Icons', ['style.recast_icon_art'] = 'Home/Recast icons', ['style.gauge_art'] = 'Home/Gauges', ['style.window_type'] = 'Home/Window frame',
     ['style.recast_icon_source'] = 'Display/Icons show',
@@ -139,6 +147,10 @@ local kept_keys = {
     ['tracking.stale_seconds'] = 'How long an unseen subject stays.', ['tracking.max_entities'] = 'As stale_seconds.',
     ['diagnostics.max_entries'] = 'How much the record keeps.',
 };
+-- What snapping does is set under Snapping, in Arrange on screen's bar, which Snap while moving on the main page leads to.
+for _, key in ipairs({ 'grid_displays', 'grid', 'show_grid', 'snap_grid', 'snap_screen', 'snap_elements', 'snap_party', 'snap_chat', 'snap_distance' }) do
+    kept_keys['edit_mode.' .. key] = 'Snapping, in Arrange on screen\'s bar.';
+end;
 local on_the_displays = { panels = true, ready_pulse = true, recast_tints = true, party_ui = true, overhead = true, party_cooldowns = true, rolls = true, pet = true,
     alerts = true, effect_filters = true };
 local index = require('ui.search_index');
@@ -161,8 +173,8 @@ for key, value in pairs(fresh) do
     end;
 end;
 assert(written.recast_display, 'Show as writes recast_display.');
-for _, key in ipairs({ 'dispel_light', 'dispel_color', 'dispel_glow', 'follow_subtarget', 'preview', 'list_debuffed',
-    'dock_match_width', 'warning_enabled', 'warning_seconds', 'warning_mark', 'item_width', 'fill_direction', 'row_height', 'show_text' }) do
+for _, key in ipairs({ 'dispel_light', 'dispel_color', 'dispel_glow', 'preview', 'list_debuffed',
+    'warning_enabled', 'warning_seconds', 'warning_mark', 'item_width', 'fill_direction', 'row_height', 'show_text' }) do
     assert(written[key], key .. ' has its row.');
 end;
 

@@ -27,12 +27,6 @@ for _,effect in ipairs({RERAISE,REFRESH,HASTE,MAGIC_SHIELD,INVISIBLE,REGEN,PROTE
     end;
 end;
 local tracker,alerts,snap,queue;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function feed(packet,t) for _,o in ipairs(observer.read(packet,t,snap)) do queue[#queue+1]=o; end; end;
 local function status_packets(t) feed(MOCK.packet(0x037,MOCK.bytes(0x50)),t); local b=MOCK.bytes(200); MOCK.put(b,4,2,9); feed(MOCK.packet(0x063,b),t); end;
 local function message(id,effect,t)
@@ -43,13 +37,7 @@ end;
 -- The 0x028 of an action on the player, by themselves unless another actor is given: an item (category 5, no
 -- message) or a spell.
 local function action(category,id,message_id,param,t,actor)
-    local bytes, at = MOCK.bytes(512), 150;
-    putbits(bytes, 40, 32, actor or SELF); putbits(bytes, 72, 6, 1);
-    putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    putbits(bytes, at, 32, SELF); putbits(bytes, at + 32, 4, 1); at = at + 36;
-    putbits(bytes, at + 27, 17, param); putbits(bytes, at + 44, 10, message_id); at = at + 87;
-    bytes.n = math.ceil(at / 8);
-    feed(MOCK.packet(0x028, bytes),t);
+    feed(MOCK.packet(0x028, MOCK.action_bytes(actor or SELF, category, id, { { id = SELF, rows = { { message = message_id, param = param } } } })),t);
 end;
 local function raw(seconds) return raw_time*60+seconds*60; end;
 -- One refresh of the addon: the queue, the listing, the alerts. Returns the rows of the effect by slot, the

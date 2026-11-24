@@ -10,7 +10,7 @@
   },
   {
     "frame": 7,
-    "lua": "assert(settings.window.tab=='Home'); settings.window.sections['Home/More look']=true"
+    "lua": "assert(settings.window.tab=='Home'); settings.window.sections['Home/Artwork']=true"
   },
   {
     "frame": 8,

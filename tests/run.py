@@ -17,14 +17,16 @@ JSON = ADDON / 'core/json.lua'
 NO_IMAGE = 'no client image'
 
 
-def runtime(install):
-    install = Path(install).resolve()
+def runtime(install, addon=None):
+    """A test runtime. addon is the folder holding vantage.lua, core and ui, ADDON when not given. ADDON is read at each
+    call, as the benchmarks set it for --source."""
+    install, addon = Path(install).resolve(), Path(addon or ADDON).resolve()
     lua = luajit21.LuaRuntime(unpack_returned_tuples=True)
     lua.execute('package.path = ... .. package.path', ';'.join((
-        ADDON.as_posix() + '/?.lua', HERE.as_posix() + '/?.lua', ASHITA_LIBS.as_posix() + '/?.lua', '')))
+        addon.as_posix() + '/?.lua', HERE.as_posix() + '/?.lua', ASHITA_LIBS.as_posix() + '/?.lua', '')))
     lua.execute('local path = ...; package.preload.json = function() return dofile(path) end', JSON.as_posix())
     lua.globals().MOCK_INSTALL_PATH = install.as_posix()
-    lua.globals().ADDON_DIR = ADDON.as_posix()
+    lua.globals().ADDON_DIR = addon.as_posix()
     lua.globals().ASHITA_LIBS = ASHITA_LIBS.as_posix()
     lua.globals().VANTAGE_TEST_MODE = True
 

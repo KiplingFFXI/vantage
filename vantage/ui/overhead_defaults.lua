@@ -36,7 +36,7 @@ overhead.switches = {
         help = 'Signet, Sanction, Level Sync, Level Restriction, Reraise, Mounted and Battlefield.',
         ids = { 253, 256, 269, 143, 113, 252, 254 }, usual = true },
 };
--- Effects with a tick of their own under Always show, here and on Party list buffs. Ticked beats Show and who cast it,
+-- Effects with a tick of their own under Always show, here and on Party list. Ticked beats Show and who cast it,
 -- as players cast these on themselves. Only your party's buffs reach the client, and Vantage counts a mob's or an
 -- alliance member's shadows and follows their Third Eye itself (core/observer.lua). A stranger's would never change, so
 -- other players have no tick, nor do pets, and treat these effects like any other.
@@ -104,7 +104,7 @@ function overhead.make()
         countdown_bold = false, countdown_shadow = true, countdown_outline = false,
         countdown_outline_color = { 0, 0, 0, 1 }, small_icon_inside_px = 18,
         countdown_color = { 1, 1, 1, 1 }, blink_icons = true, blink_seconds = 15,
-        dispel_light = true, dispel_glow = true, dispel_color = { 1, 0.82, 0.25, 1 },
+        dispel_light = true, dispel_glow = true, dispel_color = { unpack(require('ui.defaults').dispel_color) },
     };
 end
 
@@ -112,41 +112,14 @@ local function number(value, low, high, fallback, integer)
     return (integer and numbers.clamp_round or numbers.clamp)(value, low, high, fallback);
 end
 
-local function choice(value, choices, fallback)
-    for _, item in ipairs(choices) do if value == item then return value; end end
-    return fallback;
-end
-
-local function table_of(value) return type(value) == 'table' and value or {}; end
+local choice, table_of = numbers.choice, numbers.table_of;
 
 -- Copy Image (66) shows its shadows as icons 444, 445 and 446, and every copy leaves the tracker as 66, so an id one of
 -- them names reads as 66 too, or it would never match.
-local copy_image = { [444] = 66, [445] = 66, [446] = 66 };
+local copy_image = require('data.shared_ids').copy_image;
 
--- Effect ids 1 to 1023 as a sorted list without repeats, from a list or from a set as the panels keep theirs, with
--- Copy Image's icons read as 66. At most 256 are kept.
-local function effect_list(value)
-    local seen, result = {}, {};
-    value = table_of(value);
-    local function add(id)
-        id = tonumber(id);
-        if numbers.finite(id) and id >= 1 and id <= 1023 and id == math.floor(id) then
-            id = copy_image[id] or id;
-            if not seen[id] then seen[id], result[#result + 1] = true, id; end
-        end
-    end
-    for key, on in pairs(value) do if on == true then add(key); end end
-    for _, id in ipairs(value) do add(id); end
-    table.sort(result);
-    for index = #result, 257, -1 do result[index] = nil; end
-    return result;
-end
-
-local function rgba(value, fallback)
-    local color, saved = {}, table_of(value);
-    for i = 1, 4 do color[i] = number(saved[i] or saved[tostring(i)], 0, 1, fallback[i]); end
-    return color;
-end
+-- Effect lists are kept as the panels keep theirs, with Copy Image's icons read as 66.
+local effect_list, rgba = numbers.effect_list, numbers.rgba;
 
 -- A map from an exact unit name to a number. A name is 1 to 40 characters with no control characters; at most
 -- 256 names are kept, the first in name order.
@@ -187,7 +160,7 @@ function overhead.tidy(value)
             if base[key] == nil then t[key] = nil; elseif type(t[key]) ~= 'boolean' then t[key] = base[key]; end
         end
         t.kinds = choice(t.kinds, overhead.kinds, base.kinds);
-        t.include, t.exclude = effect_list(t.include), effect_list(t.exclude);
+        t.include, t.exclude = effect_list(t.include, copy_image), effect_list(t.exclude, copy_image);
         t.world_offset = number(t.world_offset, -3, 5, 0);
         t.name_lift = number(t.name_lift, -2, 3, base.name_lift);
         t.screen_x, t.screen_y = number(t.screen_x, -200, 200, 0, true), number(t.screen_y, -200, 200, 0, true);
@@ -242,15 +215,26 @@ function overhead.tidy(value)
     for _, key in ipairs({ 'countdown_bold', 'countdown_shadow', 'countdown_outline' }) do
         if type(value[key]) ~= 'boolean' then value[key] = fresh[key]; end
     end
-    value.countdown_outline_color = rgba(value.countdown_outline_color, fresh.countdown_outline_color);
+    value.countdown_outline_color = rgba(value.countdown_outline_color, fresh.countdown_outline_color, nil, true);
     value.small_icon_inside_px = number(value.small_icon_inside_px, 0, 64, 18, true);
-    value.countdown_color = rgba(value.countdown_color, fresh.countdown_color);
-    value.dispel_color = rgba(value.dispel_color, fresh.dispel_color);
+    value.countdown_color = rgba(value.countdown_color, fresh.countdown_color, nil, true);
+    value.dispel_color = rgba(value.dispel_color, fresh.dispel_color, nil, true);
     for _, key in ipairs({ 'blink_icons', 'dispel_light', 'dispel_glow' }) do
         if type(value[key]) ~= 'boolean' then value[key] = fresh[key]; end
     end
     value.blink_seconds = number(value.blink_seconds, 1, 300, 15, true);
     return value;
+end
+
+-- Shows your party and alliance over heads, or stops. Turned on while Overhead icons is off, they show there alone, and
+-- with no one left to show Overhead icons goes off.
+function overhead.show_party(value, on)
+    local units = value.units;
+    if on and not value.enabled then for _, id in ipairs(overhead.units) do units[id] = false; end end
+    units.party, units.alliance = on, on;
+    if on then value.enabled = true; return; end
+    for _, id in ipairs(overhead.units) do if units[id] then return; end end
+    value.enabled, value.preview = false, false;
 end
 
 return overhead;

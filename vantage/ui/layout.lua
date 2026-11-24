@@ -63,6 +63,20 @@ local function on_windows(rect, chat)
     return false
 end
 
+-- A display beside the chat log never covers it: pushed onto it at the screen's edge, or onto another of its windows,
+-- it is at its own spot, x and y, kept on the width x height screen, and its anchor doesn't count as placing it. Only a
+-- gap below 0 asks for that. Every display calls this once its anchor has placed rect and rect is kept on the screen.
+-- chat is the chat log as layout.chat gives it, or nil.
+function layout.off_chat(settings, id, rect, x, y, chat, width, height)
+    local elements = require('ui.elements')
+    local anchor = elements.anchor(settings, id)
+    if not (chat and anchor and elements.anchored(id) and anchor.to == 'chat' and anchor.gap >= 0) then return end
+    if overlaps(rect, chat) or on_windows(rect, chat) then
+        rect.x, rect.y = math.max(0, math.min(x, width - rect.width)), math.max(0, math.min(y, height - rect.height))
+        elements.unplace(id)
+    end
+end
+
 -- What one resolve works with, set as it starts. The panels placed so far, and those being placed, which stops a loop of
 -- anchors, are kept and cleared, so a frame makes no table or function for them.
 local done, active = {}, {}
@@ -79,15 +93,9 @@ local function place(key)
         local target = anchor.to == 'element' and rectangles_now[anchor.element] and place(anchor.element) or nil
         if anchor.to ~= 'element' or target or not rectangles_now[anchor.element] then
             local elements, spot_x, spot_y = require('ui.elements'), rect.x, rect.y
-            if elements.place(settings_now, key, rect, width_now, height_now, target) and anchor.to == 'chat'
-                and anchor.gap >= 0 and chat_now then
-                -- A panel beside the chat log never covers it: pushed onto it at the screen's edge, or onto
-                -- another of its windows, it is at its own spot. Only a gap below 0 asks for that.
+            if elements.place(settings_now, key, rect, width_now, height_now, target) then
                 layout.clamp(rect, width_now, height_now)
-                if overlaps(rect, chat_now) or on_windows(rect, chat_now) then
-                    rect.x, rect.y = spot_x, spot_y
-                    elements.unplace(key)
-                end
+                layout.off_chat(settings_now, key, rect, spot_x, spot_y, chat_now, width_now, height_now)
             end
         end
     end

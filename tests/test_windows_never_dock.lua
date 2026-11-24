@@ -53,7 +53,7 @@ MOCK.imgui_calls = {};
 hud.draw(live, gate, 500.2, {});
 collect();
 
--- 3. The party list buffs: groups 1 and 3 beside the game's party list, group 2 in a panel of its own.
+-- 3. Party list: groups 1 and 3 beside the game's party list, group 2 in a panel of its own.
 local overlay, party_defaults, party_hud = require('ui.native_party_hud'), require('ui.party_defaults'), require('ui.party_hud');
 local p = party_defaults.make();
 p.enabled = true;
@@ -75,7 +75,7 @@ MOCK.imgui_calls = {};
 overlay.draw(roster, subjects, p, 100, { native_geometry = geometry });
 collect();
 
-for _, name in ipairs({ 'Vantage##settings', 'Vantage edit mode##vantage_edit_bar', '##vantage_edit_rolls', '##vantage_rolls',
+for _, name in ipairs({ 'Vantage##settings', 'Arrange on screen##vantage_edit_bar', '##vantage_edit_rolls', '##vantage_rolls',
     '##vantage_pet', '##vantage_self_buffs', '##vantage_cooldowns', '##vantage_pulse', '##vantage_notices',
     '##vantage_native_1', '##vantage_native_2', '##vantage_native_3' }) do
     assert(seen[name], 'Fixture: this window was drawn: ' .. name);

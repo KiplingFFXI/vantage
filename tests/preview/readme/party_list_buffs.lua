@@ -1,4 +1,4 @@
--- Party list buffs beside a copy of the game's party list, with each icon's time left, and the party's long
+-- Party list beside a copy of the game's party list, with each icon's time left, and the party's long
 -- cooldowns nearest the list.
 local C = require('preview.readme.common');
 local overlay = require('ui.native_party_hud');

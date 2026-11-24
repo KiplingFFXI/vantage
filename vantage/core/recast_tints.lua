@@ -44,14 +44,7 @@ function tints.make()
         ability_lock = false, ability_lock_color = { 0.62, 0.62, 0.62, 0.6 } };
 end
 
-local function rgba(value, fallback)
-    local result = {};
-    for index = 1, 4 do
-        local part = type(value) == 'table' and value[index] or nil;
-        result[index] = numbers.clamp(part, 0, 1, fallback[index]);
-    end
-    return result;
-end
+local rgba = numbers.rgba;
 
 -- Keys this doesn't know are kept, as the rest of the settings keep them.
 function tints.tidy(value)
@@ -66,7 +59,7 @@ end
 
 -- A spell's MP cost: the era one, else the client's, kept once read. Nil while the client's data can't be read.
 local costs = {};
-local function index_of(object, key) return object[key]; end
+local index_of = require('core.guard').index_of;
 function tints.cost(id)
     if not finite(id) then return nil; end
     local era = tints.era_costs[id];

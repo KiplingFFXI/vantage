@@ -1,16 +1,13 @@
 -- Who is in the party and alliance, where they are and their jobs, from the client. A value it can't read stays nil.
 local roster = {};
 local client = require('core.client');
+local clear = require('table.clear');
 local zone_names = {};
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-local function call(object, method, ...)
-    if not object then return nil; end
-    local ok, fn = pcall(index_of, object, method);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local success, value = pcall(fn, object, ...);
-    if success then return value; end
-end
+-- Each slot's row from the last refresh, handed on in the next roster while every field read for it is the same.
+local kept = {};
+-- The ids a read has listed, emptied at the start of each read.
+local seen = {};
+local call = require('core.guard').call;
 local function number(value, maximum, minimum)
     if type(value)=='number' and value==value and value>= (minimum or 0) and value<=maximum
         and value==math.floor(value) then return value; end
@@ -40,7 +37,7 @@ function roster.read(now, snapshot)
         out.valid=false; return out;
     end
     local shared=client.roster_members and client.roster_members(snapshot,now);
-    local seen={};
+    clear(seen);
     for slot=0,17 do
         local identity=shared and shared[slot];
         local id=number(call(party,'GetMemberServerId',slot),4294967295,1);
@@ -59,19 +56,27 @@ function roster.read(now, snapshot)
             -- Someone out of the zone, or a slot the client hasn't filled yet, can hold an old job.
             local current=available and (updated==nil or number(updated,4294967295,1)~=nil);
             local name=identity and identity.name or call(party,'GetMemberName',slot);
-            local row={id=id,slot=slot,group=math.floor(slot/6)+1,
-                -- A member whose name hasn't come yet has none, so the displays show their own fallback, never the id.
-                name=type(name)=='string' and name~='' and name or nil,zone=zone,active=true,
-                same_zone=same_zone,available=available};
-            row.scope=slot==0 and 'self' or row.group==1 and 'party' or 'alliance';
-            row.zone_name = zone_name(zone, now);
-            row.job=current and number(call(party,'GetMemberMainJob',slot),18,1) or nil;
-            row.subjob=current and number(call(party,'GetMemberSubJob',slot),18,1) or nil;
+            -- A member whose name hasn't come yet has none, so the displays show their own fallback, never the id.
+            name=type(name)=='string' and name~='' and name or nil;
+            local where = zone_name(zone, now);
+            local job=current and number(call(party,'GetMemberMainJob',slot),18,1) or nil;
+            local subjob=current and number(call(party,'GetMemberSubJob',slot),18,1) or nil;
             if slot == 0 then
-                row.job = row.job or number(snapshot.job, 18, 1);
-                if current and row.subjob == nil then
-                    row.subjob = number(call(call(memory, 'GetPlayer'), 'GetSubJob'), 18, 1);
+                job = job or number(snapshot.job, 18, 1);
+                if current and subjob == nil then
+                    subjob = number(call(call(memory, 'GetPlayer'), 'GetSubJob'), 18, 1);
                 end
+            end
+            local row=kept[slot];
+            if row and row.id==id and row.name==name and row.zone==zone and row.same_zone==same_zone
+                and row.available==available and row.zone_name==where and row.job==job and row.subjob==subjob then
+                -- core/party_distance.lua marks these again each refresh while the distance is on.
+                row.tenths,row.reach,row.steep,row.far=nil,nil,nil,nil;
+            else
+                local group=math.floor(slot/6)+1;
+                row={id=id,slot=slot,group=group,name=name,zone=zone,active=true,same_zone=same_zone,available=available,
+                    scope=slot==0 and 'self' or group==1 and 'party' or 'alliance',zone_name=where,job=job,subjob=subjob};
+                kept[slot]=row;
             end
             out.members[#out.members+1]=row;
         end
@@ -82,5 +87,7 @@ function roster.read(now, snapshot)
     return out;
 end
 
-function roster.reset() zone_names = {}; end
+if VANTAGE_TEST_MODE then
+    function roster.reset() zone_names = {}; end
+end
 return roster;

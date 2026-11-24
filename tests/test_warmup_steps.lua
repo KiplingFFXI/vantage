@@ -2,17 +2,8 @@
 -- doing nothing once its piece is done. Of the window frames only the one in use is a step, and XI View's steps make
 -- only the parts the look draws with. Running every step gives what the old one-shot loads gave, and the old one-shot
 -- functions still work by running them. Art half made between steps is safe to ask for.
-local function u16(value) return string.char(value % 256, math.floor(value / 256) % 256) end
-local function u32(value) return u16(value % 65536) .. u16(math.floor(value / 65536)) end
-local function chunk(kind, payload)
-    local length = math.ceil((16 + #payload) / 16) * 16
-    return 'TEST' .. u32(length / 16 * 128 + kind) .. string.rep('\0', 8) .. payload .. string.rep('\0', length - 16 - #payload)
-end
-local function texture(name, width, height)
-    local data = string.rep(string.rep('\255', 8) .. '\255\255\0\0\0\0\0\0', math.ceil(width / 4) * math.ceil(height / 4))
-    return chunk(0x20, string.char(0xA1) .. name .. u32(40) .. u32(width) .. u32(height)
-        .. string.rep('\0', 28) .. '3TXD' .. u32(#data) .. u32(0) .. data)
-end
+local dat = require('dat_fixture')
+local u16, chunk, texture, upvalue = dat.u16, dat.chunk, dat.texture, dat.upvalue
 local parts = {}
 for code = 32, 126 do
     local width = code == 32 and 4 or 9
@@ -65,13 +56,6 @@ local function total()
     local count = 0
     for filename, value in pairs(reads) do if filename:match('%.DAT$') then count = count + value end end
     return count
-end
-local function upvalue(fn, wanted)
-    for index = 1, 200 do
-        local name, value = debug.getupvalue(fn, index)
-        if name == wanted then return value end
-        if not name then break end
-    end
 end
 local owners = { 'ui.client_assets', 'ui.client_fonts', 'ui.client_menu_fonts', 'ui.fonts',
     'ui.icons', 'ui.item_icons', 'ui.recast_icons', 'ui.action_icons', 'ui.appearance' }

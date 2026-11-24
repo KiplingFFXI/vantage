@@ -5,7 +5,7 @@ return function()
     local h = {pictures=0, listed={}};
     package.loaded['ui.icons'] = {status=function(id) h.pictures = h.pictures + 1; return 5000 + id; end,
         prepare=function() end, clear=function() end, artwork_status=function() return {available=true}; end,
-        reason=function() return nil; end};
+        reason=function() return nil; end, choices = function() return { 'Original FFXI', 'XI View' }, { ['Original FFXI'] = 'Original FFXI', ['XI View'] = 'XI View' }; end,};
     local base = 100000;
     package.preload['core.clock'] = function() return {available=function() return true; end,get_game_time_raw=function() return math.floor(base + MOCK.now); end}; end;
     local buffs, icons, timers = {}, {}, {};
@@ -83,12 +83,13 @@ return function()
         return last;
     end
     -- Lists effects in slot order, with their icons and timers, and sends the packets that report them. An end of
-    -- false lists that effect with no timer.
-    function h.both(list, ends)
+    -- false lists that effect with no timer. slot_ends, when given, holds an end by slot, from 0, for two copies of
+    -- one effect.
+    function h.both(list, ends, slot_ends)
         h.listed = list;
         for index = 0, 31 do
             local effect = list[index + 1];
-            local ending = effect and ends and ends[effect];
+            local ending = effect and (slot_ends and slot_ends[index] or ends and ends[effect]);
             buffs[index], icons[index] = effect or -1, effect or 255;
             timers[index] = effect and ending ~= false and (math.floor(base + (ending or 600)) * 60) % 4294967296 or 0;
         end

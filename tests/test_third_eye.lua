@@ -20,26 +20,14 @@ local function snapshot(listed, revision)
             [FRIEND] = { id = FRIEND, name = 'Friend', kind = 'player' }, [STRANGER] = { id = STRANGER, name = 'Stranger', kind = 'player' },
             [MOB] = { id = MOB, name = 'Yagudo Conquistador', kind = 'monster' } } };
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One target row: { target, message, param, added, added_param, reaction, reaction_param }.
 local function action(actor, category, id, rows)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #rows); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, row in ipairs(rows) do
-        putbits(bytes, at, 32, row[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, row[3] or 0); putbits(bytes, at + 44, 10, row[2] or 0); at = at + 85;
-        putbits(bytes, at, 1, row[4] and 1 or 0); at = at + 1;
-        if row[4] then putbits(bytes, at + 10, 17, row[5] or 0); putbits(bytes, at + 27, 10, row[4]); at = at + 37; end
-        putbits(bytes, at, 1, row[6] and 1 or 0); at = at + 1;
-        if row[6] then putbits(bytes, at + 10, 14, row[7] or 0); putbits(bytes, at + 24, 10, row[6]); at = at + 34; end
+    local targets = {};
+    for i, row in ipairs(rows) do
+        targets[i] = { id = row[1], rows = { { message = row[2], param = row[3], added = row[4], added_param = row[5],
+            reaction = row[6], reaction_param = row[7] } } };
     end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, targets));
 end
 -- A job ability on its user: 100 names the effect it put on, and 156 is one that had no effect.
 local function ability(who, id, effect, message) return action(who, 6, id, { { who, message or 100, effect } }); end

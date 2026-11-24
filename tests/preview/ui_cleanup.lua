@@ -6,7 +6,7 @@ local page = PREVIEW.cleanup_page or 'Party & alliance';
 local party = page == 'Party & alliance';
 local s = app.state.settings;
 s.window.tab, s.window.open, s.window.x, s.window.y = party and 'Display' or page, true, 40, 40;
--- Party list buffs' Size and place tab, with the party in a panel of its own and both folds open, is long enough to scroll.
+-- Party list's Size and place tab, with the party in a panel of its own and both folds open, is long enough to scroll.
 if party then
     require('ui.panel_frame').open('party_ui', 'place');
     s.party_ui.groups[1].native_detached = true;
@@ -25,9 +25,6 @@ s.panels.recasts.enabled = true;
 local function object(settings)
     if party then return settings.party_ui; end;
     return settings.panels.recasts;
-end;
-local function preview_object(settings)
-    return page=='Recasts' and settings or object(settings);
 end;
 local begin_child, input = imgui.BeginChild, imgui.InputTextWithHint;
 imgui.BeginChild = function(label,...)
@@ -73,9 +70,9 @@ end;
 function PREVIEW.cleanup_check(locked,preview,edits)
     local expected=copy(baseline);
     object(expected).locked=locked;
-    preview_object(expected).preview=preview;
+    object(expected).preview=preview;
     assert(equal(history_value(app.state.settings),expected),'Lock and preview each change only their own setting');
-    assert(object(app.state.settings).locked==locked and preview_object(app.state.settings).preview==preview);
+    assert(object(app.state.settings).locked==locked and object(app.state.settings).preview==preview);
     assert(#app.state.history==edits and not app.state.transaction,'Each explicit checkbox click is one completed edit');
     visible_header();
 end;

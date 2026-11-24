@@ -24,20 +24,8 @@ local tracker,alerts,snap,queue,kinds,fired,keys;
 local function feed(list) for _,o in ipairs(list) do queue[#queue+1]=o; end; end;
 local function p037(t) client.accept(MOCK.packet(0x037,MOCK.bytes(0x50)),t,snap); end;
 local function p063(t) local b=MOCK.bytes(200);MOCK.put(b,4,2,9);client.accept(MOCK.packet(0x063,b),t,snap); end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function cast(t)
-    local bytes, at = MOCK.bytes(512), 150;
-    putbits(bytes, 40, 32, SELF); putbits(bytes, 72, 6, 1);
-    putbits(bytes, 82, 4, 4); putbits(bytes, 86, 32, 109);
-    putbits(bytes, at, 32, SELF); putbits(bytes, at + 32, 4, 1); at = at + 36;
-    putbits(bytes, at + 27, 17, 43); putbits(bytes, at + 44, 10, 230); at = at + 87;
-    bytes.n = math.ceil(at / 8);
-    feed(observer.read(MOCK.packet(0x028, bytes), t, snap));
+    feed(observer.read(MOCK.packet(0x028, MOCK.action_bytes(SELF, 4, 109, { { id = SELF, rows = { { message = 230, param = 43 } } } })), t, snap));
 end
 local function wear_off(t)
     local b=MOCK.bytes(28);

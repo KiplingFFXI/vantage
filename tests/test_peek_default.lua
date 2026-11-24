@@ -26,7 +26,7 @@ local function reset(scope)
     changed.window.peek = false;
     return assert(custom.reset(changed, scope)).window.peek;
 end;
-for _, scope in ipairs({ 'navigation', 'all' }) do assert(reset(scope) == true, 'Reset ' .. scope .. ' turns it back on.'); end;
+for _, scope in ipairs({ 'window', 'all' }) do assert(reset(scope) == true, 'Reset ' .. scope .. ' turns it back on.'); end;
 for _, scope in ipairs({ 'appearance', 'panels', 'effects', 'party_ui', 'overhead' }) do
     assert(reset(scope) == false, 'Reset ' .. scope .. ' leaves it alone.');
 end;

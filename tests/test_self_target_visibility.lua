@@ -1,4 +1,5 @@
-package.loaded['ui.icons']={status=function(id)return 1000+id;end};
+package.loaded['ui.icons']={status=function(id)return 1000+id;end,reason=function()return nil;end,folder_warning=function()return nil;end,
+    choices=function()return {'Original FFXI','XI View'},{['Original FFXI']='Original FFXI',['XI View']='XI View'};end};
 local defaults,hud,tracker=require('ui.defaults'),require('ui.hud'),require('core.tracker');
 local visible=require('visible_icons');
 local window=require('ui.settings_window');

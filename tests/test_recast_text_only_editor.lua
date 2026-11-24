@@ -1,4 +1,4 @@
--- Help says what the recast panels draw: the coverage note names the choices of Icons show, and on Text the Row text list
+-- The guide says what the recast panels draw: its coverage note names the choices of Icons show, and on Text the Row text list
 -- shows the name and countdown it always draws, without a tick that does nothing.
 local imgui = require('imgui')
 local defaults, hud = require('ui.defaults'), require('ui.hud')
@@ -40,12 +40,13 @@ for _, display in ipairs({ 'separate', 'combined' }) do
     local effect = has(shown.Selectable, '##effect'):match('^(.-)##')
     local action = has(shown.Selectable, '##action'):match('^(.-)##')
     assert(effect == 'The effect it gives' and action == 'The spell or ability', 'Fixture: the recast icon choices.')
-    editor.window.tab = 'Help'
-    local note = has(draw(editor, panel, 'show').TextWrapped, 'Item recasts cover')
-    assert(note, 'Help shows the recast coverage note: ' .. display)
-    assert(note:find(effect, 1, true) and note:find(action, 1, true),
-        'The coverage note says which recasts show buff and debuff icons and which keep action pictures: ' .. display)
-    assert(note:find('Icons show', 1, true), 'The coverage note names the setting it depends on: ' .. display)
+    local file = assert(io.open(ADDON_DIR .. '/../docs/GUIDE.md', 'rb'))
+    local note = ('\n' .. file:read('*a')):match('\n(%*%*Icons show%*%* picks[^\n]+)')
+    file:close()
+    assert(note, 'The guide has the recast coverage note: ' .. display)
+    assert(note:find('**' .. effect .. '**', 1, true) and note:find('**' .. action .. '**', 1, true),
+        'The coverage note names both choices as the Show tab labels them: ' .. display)
+    assert(note:find('keep their own picture', 1, true), 'The coverage note says which recasts keep action pictures: ' .. display)
 end
 
 -- Text: Row text lists the name and countdown as shown and the other parts as hidden, whatever the bar layouts saved, and has

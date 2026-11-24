@@ -1,5 +1,5 @@
 -- ui/snap.lua, the one snapping every move uses: edit mode's drags and each display's own Shift drag. Only a display
--- ticked for Grid mode snaps, and only while Grid mode is on; any other move runs no search and shows no line and no
+-- ticked to snap snaps, and only while Snap while moving is on; any other move runs no search and shows no line and no
 -- grid. A move snaps its nearest edge or middle, and a resize only the edge it pulls, to the nearest line within the
 -- snap distance, from the lines the snapping switches choose: the grid's, the screen's, the other displays',
 -- the game's party list's and the chat log's. With every switch off nothing snaps. A display that follows the one moved
@@ -28,21 +28,21 @@ local function down(line, y) return line[1] == 0 and line[2] == y and line[3] ==
 -- No display drawn: two Presents make every record stale.
 local function clear() elements.frame(); elements.frame(); elements.party_list, elements.chat = nil, nil; end;
 
--- Fresh settings have Grid mode off with no display ticked for it, and once it is on snap to everything, 8 px away at
+-- Fresh settings have Snap while moving off with no display ticked for it, and once it is on snap to everything, 8 px away at
 -- most, on a 16 px grid that shows.
 assert(e.grid_mode == false and type(e.grid_displays) == 'table' and next(e.grid_displays) == nil,
-    'Grid mode starts off, with no display ticked for it.');
+    'Snap while moving starts off, with no display ticked for it.');
 assert(e.grid == 16 and e.snap_distance == 8 and e.show_grid, 'Fixture: the edit mode defaults.');
 for _, name in ipairs(SWITCHES) do assert(e[name] == true, name .. ' starts on.'); end;
--- So fresh settings snap nothing, and nor does Grid mode on with nothing ticked: a display 3 px from grid lines stays.
+-- So fresh settings snap nothing, and nor does Snap while moving on with nothing ticked: a display 3 px from grid lines stays.
 local function stays(id)
     local x, y = snap.move(s, id, 323, 165, 100, 40, SW, SH);
     return x == 0 and y == 0;
 end;
 clear();
-assert(stays('rolls'), 'With Grid mode off nothing snaps.');
+assert(stays('rolls'), 'With Snap while moving off nothing snaps.');
 e.grid_mode = true;
-assert(stays('rolls'), 'With Grid mode on and nothing ticked nothing snaps.');
+assert(stays('rolls'), 'With Snap while moving on and nothing ticked nothing snaps.');
 -- A tick keeps each display once, in the displays' own order, and only a ticked display snaps.
 snap.tick(s, 'self_debuffs', true); snap.tick(s, 'rolls', true); snap.tick(s, 'self_buffs', true); snap.tick(s, 'rolls', true);
 assert(table.concat(e.grid_displays, ' ') == 'self_buffs self_debuffs rolls', 'Ticked in order: ' .. table.concat(e.grid_displays, ' '));
@@ -50,7 +50,7 @@ assert(not stays('rolls') and stays('target'), 'A ticked display snaps; one not 
 snap.tick(s, 'target', true); snap.tick(s, 'target', false);
 assert(table.concat(e.grid_displays, ' ') == 'self_buffs self_debuffs rolls' and not snap.ticked(s, 'target'), 'An untick takes it out.');
 e.grid_mode = false;
-assert(stays('rolls') and snap.ticked(s, 'rolls'), 'Grid mode off: a ticked display stays put and keeps its tick.');
+assert(stays('rolls') and snap.ticked(s, 'rolls'), 'Snap while moving off: a ticked display stays put and keeps its tick.');
 e.grid_mode = true;
 
 -- The grid: either edge snaps to the nearest grid line, across and down.
@@ -236,7 +236,7 @@ back, front = {}, {};
 snap.show(s, 'rolls', SW, SH, at);
 assert(#back == 157 and #front == 0, 'Without the lists nothing is drawn, and no old line waits for the next frame.');
 
--- The gate: while Grid mode is off, and for a display not ticked for it, a move and a resize run no search, and a
+-- The gate: while Snap while moving is off, and for a display not ticked for it, a move and a resize run no search, and a
 -- drag's frame draws no grid and no line and leaves none for the next. What they read of the edit mode settings shows
 -- it: only the switch and the ticks.
 local real, read = s.edit_mode, {};
@@ -258,7 +258,7 @@ for _, case in ipairs({ { false, 'rolls' }, { false, 'target' }, { true, 'target
     local ex, ey = snap.edge(s, case[2], start, 'bottom_right', SW, SH);
     local rect = snap.resize(s, case[2], start, 'bottom_right', 0, 0, { screen_width = SW, screen_height = SH });
     snap.show(s, case[2], SW, SH, at);
-    local what = (case[1] and 'Grid mode on, ' or 'Grid mode off, ') .. case[2] .. (snap.ticked(s, case[2]) and ' ticked' or ' not ticked');
+    local what = (case[1] and 'Snap while moving on, ' or 'Snap while moving off, ') .. case[2] .. (snap.ticked(s, case[2]) and ' ticked' or ' not ticked');
     assert(dx == 0 and dy == 0 and ex == 0 and ey == 0 and rect.x == start.x and rect.y == start.y and rect.width == start.width
         and rect.height == start.height, what .. ': nothing snaps.');
     assert(not searched(), what .. ': no search runs, but it read ' .. tostring(searched()));
@@ -290,23 +290,11 @@ local function moves(count)
         if leak then made = {}; end;
     end;
 end;
-local function measure(count)
-    jit.off(); jit.flush();
-    moves(60);
-    collectgarbage('collect'); collectgarbage('collect');
-    collectgarbage('stop');
-    moves(6);
-    local before = collectgarbage('count');
-    moves(count);
-    local each = (collectgarbage('count') - before) / count;
-    collectgarbage('restart');
-    jit.on();
-    return each;
-end;
-local each = measure(600);
+local alloc = require('alloc_fixture');
+local each = alloc.measure(moves, 600);
 assert(each < 0.002, ('The search makes %.4f KB a move; nothing expected'):format(each));
 leak = true;
-each = measure(600);
+each = alloc.measure(moves, 600);
 leak = false;
 assert(each >= 0.002 and made, ('A table made each move shows as %.4f KB a move'):format(each));
 elements.party_list, elements.chat = nil, nil;

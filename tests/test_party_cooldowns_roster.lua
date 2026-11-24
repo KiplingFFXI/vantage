@@ -1,4 +1,4 @@
--- Party cooldowns read the party's jobs on their own (vantage.lua needs_party_roster), so with Party list buffs off a
+-- Party cooldowns read the party's jobs on their own (vantage.lua needs_party_roster), so with Party list off a
 -- member who changes job still loses that job's abilities and keeps the two-hour.
 local store = require('core.store');
 local self_id, ally = 1001, 1002;
@@ -46,4 +46,4 @@ assert(listed[31] and listed[16], 'Berserk and Mighty Strikes count down for a W
 ally_job = 3;
 MOCK.now = 4; app.refresh(4);
 listed = abilities();
-assert(not listed[31] and listed[16], 'A Warrior who changed to White Mage keeps only the two-hour, with Party list buffs off');
+assert(not listed[31] and listed[16], 'A Warrior who changed to White Mage keeps only the two-hour, with Party list off');

@@ -1,4 +1,4 @@
--- Guarded access to the client's memory for the client, party list and chat readers. Nothing here keeps what it finds,
+-- Guarded access to the client's memory for every reader of it. Nothing here keeps what it finds,
 -- and no reader keeps a page check past the frame it made it in, as the client frees memory between frames. The one
 -- exception is a page of a loaded image, the client's own code and data, which stays as long as the game runs.
 local memory = {};

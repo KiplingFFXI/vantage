@@ -43,7 +43,7 @@ local function states(s, mode)
     s.panels.target.anchor.to, s.panels.self_buffs.anchor.to, s.panels.party.anchor.to = 'chat', 'screen', 'party';
     s.watch_ids = { 4101 };
     s.ready_pulse.enabled, s.ready_pulse.spot, s.ready_pulse.ignore = true, 'screen', { [1] = true };
-    -- Party list buffs beside the game's list in one state and in panels in the others, with what shows on each.
+    -- Party list beside the game's list in one state and in panels in the others, with what shows on each.
     local party = s.party_ui;
     party.enabled, party.effects.timers, party.locked = true, true, mode == 'text';
     for group = 1, 3 do party.groups[group].native_detached = mode ~= 'bars'; end;
@@ -124,7 +124,7 @@ for _, mode in ipairs({ 'bars', 'expanded', 'icons', 'text' }) do
     h.fresh(function(s)
         states(s, mode);
         s.enabled, s.alerts.muted, s.edit_mode.grid_mode, s.preview = mode == 'icons', mode ~= 'icons', true, true;
-        s.window.sections['Home/More look'], s.window.sections['Home/Colors'] = true, true;
+        for _, fold in ipairs({ 'Artwork', 'Sizes', 'Boxes', 'Text effects', 'Colors' }) do s.window.sections['Home/' .. fold] = true; end;
         s.style.window_type = 2;
         s.durations.overrides = { timed('spell', 253, 'fixed', ''), timed('ability', 16, 'add', 'Crab'), timed('effect', 33, 'percent', ''),
             timed('effect', 60000, 'count_up', ''), timed('spell', 60000, 'fixed', ''), timed('ability', 60000, 'fixed', '') };
@@ -161,14 +161,14 @@ assert(h.app.callbacks.profile_save('Support', false) and h.app.callbacks.profil
 profile_page.pick('Support');
 h.s.job_profiles[3], h.s.job_profiles[4] = 'Support', 'Gone';
 page('Profiles');
-for _, wait in ipairs({ 'Overwrite##profile_overwrite', 'Delete##profile_delete' }) do
+for _, wait in ipairs({ 'Overwrite##profile_overwrite_Support', 'Delete##profile_delete_Support' }) do
     h.draw(wait); h.draw();
     read('Profiles, ' .. wait);
     h.draw('Cancel profile change');
 end;
 for _, kind in ipairs(share.kinds) do
     plain(share.kind_names[kind], 'A kind of export');
-    h.pick('##Export', share.kind_names[kind] .. '##' .. kind);
+    h.pick('##What to export', share.kind_names[kind] .. '##' .. kind);
     h.draw('Copy##share_copy'); h.draw();
     read('Copying ' .. kind);
     clipboard = MOCK.clipboard;

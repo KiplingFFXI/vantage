@@ -63,13 +63,16 @@ local function box_rect(config,style,lines)
     return {x=config.x,y=config.y,width=config.width,height=config.height>0 and config.height or height};
 end;
 
-local function notice_rect(settings,screen,x,y)
+-- count, when given, asks for room for that many notices instead.
+local function notice_rect(settings,screen,x,y,count)
     local style,alerts=settings.style,settings.alerts;
     local width=math.min(alerts.notice_width*(style.scale or 1),screen.width);
     if x<0 then x=(screen.width-width)/2;end;
-    -- Room for as many notices as show at once, each up to two lines, and one line more.
+    -- Room for as many notices as show at once, each up to two lines, and one line more. hud.draw_notices draws them at
+    -- Notice text size, or Text size while that is 0, and in a fixed Height when one is set.
+    local size=(alerts.notice_text_size or 0)>0 and alerts.notice_text_size or style.font_size;
     return {x=math.max(0,math.min(x,screen.width-width)),y=y,width=width,
-        height=(2*(alerts.max_notices or 2)+1)*(style.font_size+3)*(style.scale or 1)};
+        height=((alerts.notice_height or 0)>0 and alerts.notice_height or (2*(count or alerts.max_notices or 2)+1)*(size+3))*(style.scale or 1)};
 end;
 
 -- The chat log's windows, the main one first.
@@ -131,15 +134,21 @@ end;
 -- spot when it is turned on. The Pet display and then the Phantom Roll display come last, on or off, each at the first
 -- free spot from where it starts, clear of each other and the party cooldown list as well. The Pet display goes first
 -- so a Phantom Roll display with no room at its start can't take the spot. The combined recast panel and the spell
--- recast panel share one spot,
--- as they do at a fresh install. What goes under a panel leaves it room to fill one more row where the screen has a
--- spot for that. One turned off with no spot from where its row starts, which a panel off in the first row can push
--- past the bottom of the screen, looks again from the top of the first row.
+-- recast panel share one spot, as they do at a fresh install. What goes under a panel leaves it room to fill one more
+-- row where the screen has a spot for that. One turned off with no spot from where its row starts, which a panel off in
+-- the first row can push past the bottom of the screen, looks again from the top of the first row.
+-- With no spot that has room for every notice, and Height at Fit, the notices take the first spot with room for fewer.
+-- A Pet or Phantom Roll display with no spot, whose start is under the notices' room, can take a spot kept for a panel
+-- that is off. After a panel is turned on, a Size button still moves the notices, the panels kept around them and
+-- that display when it can tell they're Vantage's. It can't always (setup.respace).
 local function slots(settings,screen,flowing,context)
     local taken,result,bottom=obstacles(settings,screen,flowing,context),{},nil;
+    local notice_room;
     local function take(rect) taken[#taken+1]=rect;end;
-    local function find(width,height,origin,also_x)
-        return spot(width,height,origin,grown(taken),screen,also_x) or spot(width,height,origin,taken,screen,also_x);
+    -- list is what to keep clear of, everything taken so far unless told.
+    local function find(width,height,origin,also_x,list)
+        list=list or taken;
+        return spot(width,height,origin,grown(list),screen,also_x) or spot(width,height,origin,list,screen,also_x);
     end;
     local function flow(shown_pass)
         for index,row in ipairs(ROWS)do
@@ -156,7 +165,7 @@ local function slots(settings,screen,flowing,context)
                     local rect=find(panel.width,height,origin);
                     if index>1 and not (rect or shown_pass) then rect=find(panel.width,height,{x=40,y=ROWS[1].y});end;
                     if rect then
-                        rect.grow=row_more(panel,settings.style);
+                        rect.grow,rect.off=row_more(panel,settings.style),not shown_pass;
                         take(rect);
                         for _,member in ipairs(group)do result[member]=rect;end;
                         if index==1 then bottom=math.max(bottom or 0,rect.y+rect.height);end;
@@ -177,7 +186,19 @@ local function slots(settings,screen,flowing,context)
             if not result.notice and fits and free(preferred,taken) then result.notice={x=fresh.notice_x,y=fresh.notice_y};end;
             result.notice=result.notice or find(preferred.width,preferred.height,{x=40,y=fresh.notice_y},preferred.x);
         end;
-        if result.notice then take(notice_rect(settings,screen,result.notice.x,result.notice.y));end;
+        -- With no spot that has room for them all, they go to the first spot with room for fewer, one fewer at a time.
+        -- A fixed Height is drawn that tall however few notices are up, so it skips this.
+        if not result.notice and not ((settings.alerts.notice_height or 0)>0) then
+            for count=(settings.alerts.max_notices or 2)-1,1,-1 do
+                local fewer=notice_rect(settings,screen,fresh.notice_x,fresh.notice_y,count);
+                local rect=find(fewer.width,fewer.height,{x=40,y=fresh.notice_y},fewer.x);
+                if rect then result.notice={x=rect.x,y=rect.y};break;end;
+            end;
+        end;
+        -- The whole room is kept where they go, held on the screen. With no spot at all, they go where they start.
+        notice_room=require('ui.layout').clamp(result.notice and notice_rect(settings,screen,result.notice.x,result.notice.y)
+            or preferred,screen.width,screen.height);
+        take(notice_room);
     end;
     flow(false);
     local layout,style=require('ui.layout'),settings.style;
@@ -185,6 +206,14 @@ local function slots(settings,screen,flowing,context)
     local function flows(id,start,lines)
         local rect=box_rect(settings[id],style,lines);
         result[id]=find(rect.width,rect.height,start) or find(rect.width,rect.height,{x=40,y=ROWS[1].y});
+        -- One with no spot goes back to where it starts. When that is under the notices' room, it looks once more, past
+        -- the spots kept for panels that are off.
+        local at_start=layout.clamp({x=start.x,y=start.y,width=rect.width,height=rect.height},screen.width,screen.height);
+        if not result[id] and notice_room and overlaps(at_start,notice_room) then
+            local on={};
+            for _,other in ipairs(taken)do if not other.off then on[#on+1]=other;end;end;
+            result[id]=find(rect.width,rect.height,start,nil,on) or find(rect.width,rect.height,{x=40,y=ROWS[1].y},nil,on);
+        end;
         if result[id] then take(result[id]);end;
     end;
     stays(settings.party_cooldowns.list);
@@ -321,23 +350,91 @@ function setup.respace(old,new,screen)
     -- One away from its start, or from where a fresh install's first frame put it, is where the player put it or
     -- where an earlier apply did. Those had the player's ones in their way, so one is theirs when, with the others
     -- still away standing where they are, the flow puts it there. Taking those out one at a time leaves the player's.
+    -- A panel turned on since that apply moves the flow, so the two cases after the first settle look again.
     local function flowing_without(skip)
         local flowing={};
         for id in pairs(free_ids)do if not away[id] or id==skip then flowing[id]=true;end;end;
         return flowing;
     end;
-    local found=true;
-    while found do
-        found=false;
-        for _,id in ipairs(ids)do
-            if away[id] then
-                local x,y=spot_of(old,id);
-                local was=slots(old,screen,flowing_without(id),old_context)[id];
-                local before=other and slots(old,other,flowing_without(id),other_context)[id];
-                if was and x==was.x and y==was.y or before and x==before.x and y==before.y then away[id],found=nil,true;break;end;
+    -- settings is old, or old with some panels turned off.
+    local function settle(settings)
+        local found=true;
+        while found do
+            found=false;
+            for _,id in ipairs(ids)do
+                if away[id] then
+                    local x,y=spot_of(old,id);
+                    local was=slots(settings,screen,flowing_without(id),old_context)[id];
+                    local before=other and slots(settings,other,flowing_without(id),other_context)[id];
+                    if was and x==was.x and y==was.y or before and x==before.x and y==before.y then away[id],found=nil,true;break;end;
+                end;
             end;
         end;
     end;
+    -- With no spot that had room for every notice, the notices took a spot with room for fewer, and the panels that
+    -- were off were kept around them. Turning one of those panels on moves the flow, so the notices and that panel
+    -- would then stay as if the player had put them there. The notices' whole room then doesn't fit where they are,
+    -- clear of the panels that are on, the chat log and the game's windows. In that case the ones still away are
+    -- looked at once more, with the panels that are on and away turned off. A panel kept at its first-frame spot isn't
+    -- away, so it stays on here.
+    local layout=require('ui.layout');
+    local room=notice_rect(old,screen,old.alerts.notice_x,old.alerts.notice_y);
+    local turned;
+    if room.y+room.height>screen.height or not free(room,obstacles(old,screen,{notice=true},old_context)) then
+        for _,pid in ipairs(defaults.panel_order)do
+            if away[pid] and defaults.panel_enabled(old,pid) then
+                turned=turned or require('core.store').copy(old);
+                turned.panels[pid].enabled=false;
+            end;
+        end;
+    end;
+    settle(old);
+    if turned then settle(turned);end;
+    -- A Pet or Phantom Roll display with no spot can take a spot kept for a panel that is off. Turning a panel on moves
+    -- the flow, so that display would then stay as if the player had put it there, and the panels never keep clear of
+    -- one that stays. So it is still Vantage's when the flow puts it there with the panels under it turned off, alone
+    -- or with one more panel turned off, and that flow keeps each of those panels where it is now. That only happens
+    -- to a display whose start is under the notices' room, so only that one is looked at. The panels turned off above
+    -- stay off here too.
+    local kept,off=away,turned;
+    layout.clamp(room,screen.width,screen.height);
+    -- Whether placed puts each panel in try where it is now. One with no spot there counts as at its fresh spot.
+    local function stands(try,placed)
+        for _,pid in ipairs(try)do
+            local rect=placed[pid] or fresh.panels[pid];
+            if rect.x~=old.panels[pid].x or rect.y~=old.panels[pid].y then return false;end;
+        end;
+        return true;
+    end;
+    for _,id in ipairs({'pet','rolls'})do
+        local under,others,tries={},{},{};
+        local rect=box_rect(old[id],old.style,id=='rolls' and ROLL_LINES or nil);
+        local start=layout.clamp({x=fresh[id].x,y=fresh[id].y,width=rect.width,height=rect.height},screen.width,screen.height);
+        if kept[id] and overlaps(start,room) then
+            for _,pid in ipairs(defaults.panel_order)do
+                local panel=old.panels[pid];
+                if free_ids[pid] and defaults.panel_enabled(turned or old,pid) then
+                    local list=overlaps(rect,{x=panel.x,y=panel.y,width=panel.width,height=panel_height(panel,old.style)})
+                        and under or others;
+                    list[#list+1]=pid;
+                end;
+            end;
+        end;
+        if #under>0 then tries[1]=under;end;
+        for _,pid in ipairs(others)do tries[#tries+1]={pid,unpack(under)};end;
+        for _,try in ipairs(tries)do
+            off=off or require('core.store').copy(old);
+            for _,pid in ipairs(try)do off.panels[pid].enabled=false;end;
+            away={};
+            for key in pairs(kept)do away[key]=true;end;
+            settle(off);
+            local found=not away[id] and (stands(try,slots(off,screen,flowing_without(nil),old_context))
+                or other and stands(try,slots(off,other,flowing_without(nil),other_context)));
+            for _,pid in ipairs(try)do off.panels[pid].enabled=true;end;
+            if found then kept[id]=nil;break;end;
+        end;
+    end;
+    away=kept;
     local flowing=flowing_without(nil);
     local alerts=new.alerts;
     local placed=slots(new,screen,flowing,new_context);

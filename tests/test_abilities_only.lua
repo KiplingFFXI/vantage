@@ -1,4 +1,4 @@
--- Only effects from job abilities, on Party members' timers and Party list buffs, through vantage.lua as the game drives
+-- Only effects from job abilities, on Party members' timers and Party list, through vantage.lua as the game drives
 -- it. A row goes by the action seen to put it on, and blood pacts and rolls count as abilities. A row whose action
 -- wasn't seen goes by data/ability_effects.lua, which leaves out what a spell gives too. Bob (1002) and Dave (1003) are
 -- in your party.

@@ -5,7 +5,7 @@ local s, edits, history = defaults.make(), 0, {};
 s.window.open = true;
 s.panels.self_buffs.mode, s.panels.spell_recasts.mode = 'icons', 'icons';
 s.style.font = 'XI View';
--- Party countdowns start off; on here, so their controls show. The party list buffs' position and gap show while a
+-- Party countdowns start off; on here, so their controls show. Party list's position and gap show while a
 -- group is in a panel of its own, the only place that reads them.
 s.party_ui.effects.timers = true;
 s.party_ui.groups[1].native_detached = true;
@@ -33,7 +33,7 @@ local function called(kind, label)
     for _, call in ipairs(MOCK.imgui_calls) do if call[1] == kind and call[2] == label then return true; end; end;
     return false;
 end;
--- On a fresh save Self buffs shows icons, the recast panels bars, and the party list buffs no countdowns, so there the
+-- On a fresh save Self buffs shows icons, the recast panels bars, and Party list no countdowns, so there the
 -- search leads to what shows these.
 for _, label in ipairs({ 'Icon countdown position', 'Icon countdown size', 'Icon countdown gap' }) do
     local found = {};
@@ -42,9 +42,15 @@ for _, label in ipairs({ 'Icon countdown position', 'Icon countdown size', 'Icon
         assert(found[place], label .. ' finds ' .. place .. ' before the page is opened.');
     end;
 end;
+-- The gap row's old name on timer panels still finds it.
+local old_name = false;
+for _, result in ipairs(window.search('Space below the icon')) do
+    if result.tab == 'Display' and result.label == 'Icon countdown gap' then old_name = true; end;
+end;
+assert(old_name, 'Space below the icon finds Icon countdown gap.');
 local function panel_case(id)
-    return { page='Display', open=function() panels.open(id, 'place'); end, effect=s.panels[id], size='##frame_Size_countdown', gap='##frame_Gap_countdown',
-        position='##frame_Position_countdown', position_label='Position', inside='Inside##inside', below='Below##below' };
+    return { page='Display', open=function() panels.open(id, 'place'); end, effect=s.panels[id], size='##frame_Countdown size_countdown', gap='##frame_Countdown gap_countdown',
+        position='##frame_Countdown position_countdown', position_label='Countdown position', inside='Inside icon##inside', below='Below icon##below' };
 end;
 local cases = {
     panel_case('self_buffs'), panel_case('spell_recasts'),
@@ -71,7 +77,7 @@ for _, case in ipairs(cases) do
     draw(case.below, case.position);
     assert(case.effect.icon_countdown_gap == 4 and called('SliderFloat', case.gap), 'Returning below restores the saved gap.');
 end;
--- Beside the game's party list the time sits inside the icon, so with no group in a panel of its own Party list buffs
+-- Beside the game's party list the time sits inside the icon, so with no group in a panel of its own Party list
 -- shows the countdown size and neither the position nor the gap. Their saved choices stay for a panel of its own.
 s.party_ui.groups[1].native_detached = false;
 s.party_ui.effects.icon_countdown_position, s.party_ui.effects.icon_countdown_gap = 'below', 4;

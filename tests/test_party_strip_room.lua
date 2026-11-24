@@ -95,6 +95,20 @@ window.x = 41;
 for _, row in pairs(window.rows) do row.x = 41; end;
 local tight = plan();
 assert(tight.width == 15 and overlay.no_room and #cells(tight.rows[1]) == 0, 'With 15 px beside the list no 20 px icon shows.');
+-- The settings' line goes by what the strips were planned with. A draw that plans nothing, with the strips off or no
+-- screen yet, takes it back, so it never speaks for a side picked since. A draw that plans this strip again says it.
+local drawing, screen = { native_geometry = geometry }, MOCK.screen;
+MOCK.screen = { 1920, 1080 };
+p.enabled = false;
+overlay.draw(roster, subjects, p, 100, drawing);
+assert(not overlay.no_room, 'Turned off, the strips plan nothing and the line goes.');
+p.enabled = true;
+overlay.draw(roster, subjects, p, 100, drawing);
+assert(overlay.no_room, 'Drawn again with no room, the line is back.');
+MOCK.screen = { 0, 0 };
+overlay.draw(roster, subjects, p, 100, drawing);
+assert(not overlay.no_room, 'With no screen yet the strips plan nothing, and the line goes.');
+MOCK.screen = screen;
 window.x = 1795;
 for _, row in pairs(window.rows) do row.x = 1795; end;
 assert(plan().width == 420 and not overlay.no_room, 'With room again they show.');

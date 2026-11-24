@@ -39,9 +39,9 @@ h.pick('##frame_Threshold unit', 'Seconds remaining##seconds');
 assert(rule().unit == 'seconds' and listed(rule().thresholds) == '10', 'Seconds keep every threshold.');
 
 -- A name left blank reads Alert, so the list has no blank tick.
-h.type('##frame_Rule name', '   ');
+h.type('##frame_Alert name', '   ');
 assert(rule().name == 'Alert', 'A blank name reads Alert: ' .. rule().name);
-h.type('##frame_Rule name', 'Haste low');
+h.type('##frame_Alert name', 'Haste low');
 assert(rule().name == 'Haste low', 'Any other name stays as typed.');
 
 -- The thresholds box left with nothing it can read shows the thresholds the rule still uses.

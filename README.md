@@ -14,17 +14,17 @@ Author: **Kipling**.
 
 1. Download `vantage-<version>-addon.zip` from the release page.
 2. Copy the `addons/vantage` folder from the zip into your Phoenix `addons` folder. You should end up with `addons/vantage/vantage.lua`. If you're updating, move the old `addons/vantage` folder out of the game folder first so no old files get mixed in.
-3. In game, type `/addon load vantage`. If Vantage is already loaded, type `/addon reload vantage` instead.
+3. In game, type `/addon load vantage`. If Vantage is already loaded, type `/addon reload vantage` instead, right away and before you open `/vg`.
 
 The game can stay open while you do this. To load Vantage automatically, enable vantage under **Manually installed** on the Phoenix launcher's Addons page. Or add `/addon load vantage` to `scripts/default.txt`, outside the launcher's managed block. Use one method.
 
-Leave `config/addons/vantage/` where it is when you update. It holds each character's settings, your profiles, shared layouts, and your custom fonts and sounds. The [install notes](docs/INSTALL.md) have the full steps and show how to remove Vantage.
+Leave `config/addons/vantage/` where it is when you update. It holds each character's settings, your profiles, shared layouts, and your custom fonts, sounds and icon sets. The [install notes](docs/INSTALL.md) have the full steps and show how to remove Vantage.
 
 ## Start here
 
-Type `/vg` to open the main page (`/vantage` works too). Your own buffs, your own debuffs and your target's timers start on. Tick anything else you want under **What to show**, or apply a **Starter profile** for your role. Pick a **Skin** and a **Size** under **How it looks**, and click **Edit** beside a display to open its full editor.
+Type `/vg` to open the main page (`/vantage` works too). Your own buffs, your own debuffs and your target's timers start on. Tick anything else you want under **What to show**, or pick your role under **Quick setup for a role**. Pick a **Skin** and a **Size** under **How it looks**, and click **Edit** beside a display to open its full editor.
 
-- Every display starts locked. Click **Unlock all** under **Moving** or type `/vg unlock`, then hold Shift until the handles show up. Drag the middle of a display to move it, or drag an edge or corner to resize it. With **Grid mode** on, the displays you tick for it snap to the grid, to other displays, to the party list and to chat.
+- Every display starts locked. Click **Unlock all** under **Moving** or type `/vg unlock`, then hold Shift until the handles show up. Drag the middle of a display to move it, or drag an edge or corner to resize it. With **Snap while moving** on, the displays ticked for it snap to the grid, to other displays, to the party list and to chat.
 - **Show samples** fills the displays with made-up effects so you can arrange them before a fight.
 - **Find a setting** at the top finds any control, even on a tab you haven't opened. **Undo** and **Redo** step through your changes, and **Profiles** saves named setups that any character can load.
 - If something looks wrong, `/vg report` writes down what Vantage found. [Check it](docs/INSTALL.md#check-it) says what the report covers.
@@ -33,7 +33,7 @@ Type `/vg` to open the main page (`/vantage` works too). Your own buffs, your ow
 
 ### Timer panels
 
-There's a separate panel for your own buffs, your own debuffs, your target, party members and the enemies you choose to watch. Each panel has its own layout (bars, expanded bars, icons or text), fill direction, fields, sorting, filters, colors and placement.
+There's a separate panel for your own buffs, your own debuffs, your target, party members and the enemies you choose to watch. Each panel has its own layout (bars, expanded bars, icons or text), fill direction, fields, sorting, filters, colors and placement. A wide panel can put its rows in columns. Pointing at an effect shows its details, with what it does in the game's own words.
 
 ![The same effects drawn as bars, expanded bars, icons and text](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/timer-layouts.png)
 
@@ -63,11 +63,11 @@ Vantage shows recasts for spells, abilities and equipped enchanted items. They c
 
 ### Party and alliance
 
-**Party members' timers** show the effects on your party, on bars that say whose effect each row is.
+**Party members' timers** show the effects on your party, on bars that say whose effect each row is. Two optional ticks add your own effects to the panel and show one cast on several members, like a Protectra, as one row.
 
 ![Party members' timers](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/party-members.png)
 
-**Buffs beside the game's party list** cover your party and each of the other alliance parties, and each one has its own switch. A row grows as it gets more buffs, and each group can go in a panel of its own that you place yourself.
+**Party list** puts buffs beside the game's party list for your party and each of the other alliance parties, and each one has its own switch. A row grows as it gets more buffs, and each group can go in a panel of its own that you place yourself. Rows can also show how far each member is from you. Its icons can fill each member's row or take a size of their own, and **My order** puts every member's effects in the order you pick.
 
 ![Buffs beside the party list](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/party-list-buffs.png)
 
@@ -75,7 +75,7 @@ Vantage shows recasts for spells, abilities and equipped enchanted items. They c
 
 Both can show only the effects job abilities put on your party, such as Berserk, rolls and blood pacts. Tick **Only effects from job abilities** on their **Filters** tab.
 
-**Party cooldowns** start off. They show the two-hours and key abilities your party and alliance were seen using, with an estimate of when each is ready again. They can go beside the party list, over the party members' heads or in a list.
+**Party cooldowns** start off. They show the two-hours, key abilities and Utsusemi your party and alliance were seen using, and when each is ready again. An ability's time is an estimate, and Utsusemi's is the recast the game sent. They can go beside the party list, over the party members' heads or in a list.
 
 ![Party cooldowns](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/party-cooldowns.png)
 
@@ -85,7 +85,7 @@ Both start off. **Phantom Roll** shows a roll's total, what it gives you, its lu
 
 ![Phantom Roll display](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/phantom-roll.png)
 
-**Pet** shows your pet's HP, MP and TP, its effects, your pet command recasts, a charm's estimated time, a jug's time left and a PUP's maneuvers.
+**Pet** shows your pet's HP, MP and TP, its effects, your pet command recasts, a charm's estimated time, a jug's time left and a PUP's maneuvers. More ticks on its page, all off at first, add what your pet is fighting and doing, how far off it is and how long it has been out. For an automaton they add attachment timers, its own cooldowns, its build and its MP as a number. They also add what an avatar costs you in MP, when Healing Breath would fire, a mark where Sic is ready, what Reward would heal, and notices for low pet HP, 1000 TP and a charm or a jug pet about to end. **Replace the game's pet bar**, under **While playing** on the main page and off at first, hides the pet's name, HP bar and TP that the game draws above the party list, so the Pet display is the only one.
 
 ![Pet display](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/pet.png)
 
@@ -97,7 +97,7 @@ Overhead icons start off. They show buffs and debuffs above the heads of your ta
 
 ### Looks
 
-There are ten skins, Original FFXI and XI View client artwork with all eight client window skins, 17 fonts plus your own, and countdown bold, shadow and outline for every display. With the Original FFXI or XI View font, the settings window's text is made from the game's own letters and keeps their soft edges.
+There are ten skins, Original FFXI and XI View client artwork with all eight client window skins, 17 fonts plus your own, buff icons of your own if you add them, and countdown bold, shadow and outline for every display. With the Original FFXI or XI View font, the settings window's text is made from the game's own letters and keeps their soft edges.
 
 ![The same panel in nine skins](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/skins.png)
 
@@ -111,27 +111,27 @@ Most of the settings are on the main page, in the order you set things up: **Wha
 
 ![Settings main page](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/main-page.png)
 
-**Starter profiles** for melee, tanks, healers, support, crowd control and pet jobs turn on what that role wants in one step, and they keep your own look.
+**Quick setup for a role** covers melee, tanks, healers, support, crowd control and pet jobs. It turns on what that role wants in one step and keeps your own look.
 
-![Starter profiles](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/starter-profiles.png)
+![Quick setup for a role](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/starter-profiles.png)
 
 Each display's editor has its layout, fields, filters, colors and placement. It also has **When to show**, which can go by job, level, Level Sync, zone kind, solo, party or alliance, engaged and pet out.
 
 ![A display's editor](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/display-editor.png)
 
-**Hidden everywhere** is one list of what's hidden on every display. You can hide Signet and Level Sync there, or add rules by effect, type, player name, job and group. Each display's own **Filters** include, exclude, pin and order effects. Hidden effects are still tracked for alerts.
+The **Hide list** is one list of what's hidden on every display. You can hide Signet and Level Sync there, or add rules by effect, type, player name, job and group. Each display's own **Filters** include, exclude, pin and order effects. Hidden effects are still tracked for alerts.
 
-![Hidden everywhere](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/hidden-everywhere.png)
+![Hide list](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/hidden-everywhere.png)
 
-**Alerts** cover gains, remaining time, removals and missing effects. They can show as notices, row emphasis or a line in your chat log, or play your own WAV or MP3 sounds.
+**Alerts** cover gains, remaining time, removals and missing effects. They can show as notices, row emphasis or a line in your chat log, or play your own WAV or MP3 sounds. Notices can have their own text size and color, and each alert can give its notice a color of its own.
 
 ![Alerts](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/alerts.png)
 
-**Edit mode** (`/vg edit`) outlines every display so you can move it with Shift and the mouse or with the arrow keys. **Moves with** keeps a display next to a spot on the screen, another display, the party list or chat.
+**Arrange on screen** (`/vg edit`) outlines every display, locked or not, so you can move it with Shift and the mouse or with the arrow keys. **Moves with** keeps a display next to a spot on the screen, another display, the party list or chat.
 
-![Edit mode with the grid](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/edit-mode.png)
+![Arrange on screen with the grid](https://raw.githubusercontent.com/KiplingFFXI/vantage/main/docs/images/edit-mode.png)
 
-**Profiles** are named setups that every character can load, and each character can link them to its jobs. Your characters can also share where things are, or where things are and how they look. A reset can cover just one part of your setup and leave the rest alone. **Import and export** copies a display, where everything is, the Hidden everywhere list, alert rules or a whole profile as text that holds only data. When you import one, you can add it or replace what you have.
+**Profiles** are named setups that every character can load, and each character can link them to its jobs. Your characters can also share where things are, or where things are and how they look. A reset can cover just one part of your setup and leave the rest alone. **Import and export** copies a display, where everything is, the Hide list, alert rules, a whole profile or a saved profile as text that holds only data, to the clipboard or to a file. When you import one, you can add it or replace what you have.
 
 ### What it knows and what it sends
 
@@ -139,8 +139,8 @@ Your own timers come from the game. For everyone else, Vantage shows what it saw
 
 Vantage doesn't send anything to the game. It never casts, uses items, changes your target or posts to chat.
 
-With **Replace the game's buff icons** on, Vantage changes how the game draws its own buff icons, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn that off or unload Vantage. Cancelling a buff is still done by the game's own + menu. Before it changes anything, Vantage checks that this part of the game is exactly the one it knows. If a game update has changed it, or something else in the game has, such as another addon or plugin, Vantage leaves the game's icons alone, and a line under the tick says why.
+With **Replace the game's buff icons** on, Vantage changes how the game draws its own buff icons, in the game's memory, and keeps the game's + menu off screen. It puts both back when you turn that off or unload Vantage. Cancelling a buff is still done by the game's own + menu. Before it changes anything, Vantage checks that this part of the game is exactly the one it knows. If a game update has changed it, or something else in the game has, Vantage leaves the game's icons alone, and a line under the tick says why. **Replace the game's pet bar** works the same way on a smaller scale: it changes one spot in the game's memory, so the game doesn't draw its own pet bar above the party list, puts it back when you turn that off or unload Vantage, and makes the same check first.
 
 ## Source and license
 
-The mechanics data follows [Phoenix's source](https://github.com/phoenixffxi/Phoenix) at revision [`ed41f351f6`](https://github.com/phoenixffxi/Phoenix/commit/ed41f351f63b24e015059c5a58f1c29eb3f198ac). `docs/SOURCE_MANIFEST.json` lists every Phoenix file it uses. Vantage uses the [GNU GPL v3](LICENSE) for its source and data, except the addon's `core/json.lua`. That file is rxi's json.lua 0.1.2, under the MIT license in its header. Vantage's copy adds stricter decoding (surrogate pairs, number syntax and trailing commas) and reads strings with escapes in one pass. The icons, window art and game font in the example images belong to Square Enix. Vantage reads them from your installed client, and its zip holds no game artwork, fonts or sounds.
+The mechanics data follows [Phoenix's source](https://github.com/phoenixffxi/Phoenix) at revision [`9785020970`](https://github.com/phoenixffxi/Phoenix/commit/978502097031e587dbc618392cc8b868e3cbe3ab). `docs/SOURCE_MANIFEST.json` lists the Phoenix files the generated effect data is built from, with their hashes. Vantage uses the [GNU GPL v3](LICENSE) for its source and data, except the addon's `core/json.lua`. That file is rxi's json.lua 0.1.2, under the MIT license in its header. Vantage's copy adds stricter decoding (surrogate pairs, number syntax and trailing commas) and reads strings with escapes in one pass. The icons, window art and game font in the example images belong to Square Enix. Vantage reads them from your installed client, and its zip holds no game artwork, fonts or sounds.

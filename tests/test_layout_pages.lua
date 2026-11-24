@@ -23,18 +23,25 @@ local function found(query, tab, label)
     for _, result in ipairs(window.search(query)) do if result.tab == tab and result.label == label then return true; end end
     return false;
 end;
--- Grid size and Snap to the chat log show only while Grid mode is on, and it starts off, so they find Grid mode.
-for _, entry in ipairs({ { 'Start edit mode', 'Home', 'Edit mode' }, { 'Grid size', 'Home', 'Grid mode' }, { 'Snap to the chat log', 'Home', 'Grid mode' }, { 'anchor', 'Display', 'Moves with' },
-    { 'nudge', 'Home', 'Edit mode: grid, snapping and nudging' },
+-- Grid size and Snap to the chat log are in Arrange on screen's bar, so they find Snap while moving.
+for _, entry in ipairs({ { 'Start edit mode', 'Home', 'Arrange on screen' }, { 'Grid size', 'Home', 'Snap while moving' },
+    { 'Snap to the chat log', 'Home', 'Snap while moving' }, { 'anchor', 'Display', 'Moves with' },
+    { 'nudge', 'Home', 'Arrange on screen: snapping and nudging' },
     { 'fallback', 'Display', 'What a display moves with' }, { 'Lowest level', 'Display' }, { 'Level Sync', 'Display' },
     { 'Battlefields', 'Display' }, { 'Mog House', 'Display' }, { 'In an alliance', 'Display' }, { 'Engaged', 'Display', 'Fighting' },
-    { 'dynamis', 'Display', 'When each display shows' }, { 'Copy the export', 'Profiles' }, { 'Import from clipboard', 'Profiles' },
-    { 'clipboard', 'Profiles', 'Import and export settings' }, { 'Edit mode', 'Home' } }) do
+    { 'dynamis', 'Display', 'When each display shows' }, { 'clear conditions', 'Display', 'When each display shows' },
+    { 'Clear these conditions', 'Display', 'When each display shows' }, { 'Copy the export', 'Profiles' }, { 'Import from clipboard', 'Profiles' },
+    { 'clipboard', 'Profiles', 'Import and export settings' }, { 'Edit mode', 'Home', 'Arrange on screen' } }) do
     assert(found(entry[1], entry[2], entry[3] or entry[1]), 'Search finds ' .. (entry[3] or entry[1]) .. ' on ' .. entry[2] .. ' before it is drawn.');
 end;
--- The edit mode bar has no width or height box, so searching for them doesn't lead there.
+-- Clear these conditions went, as Reset this tab on When to show does the same, so its words lead to that tab.
+for _, result in ipairs(window.search('clear conditions')) do
+    if result.label == 'When each display shows' then assert(result.destination == 'when', 'Clear conditions opens When to show: ' .. tostring(result.destination)); end;
+    assert(result.label ~= 'Clear these conditions', 'Clear these conditions is gone.');
+end;
+-- Arrange on screen's bar has no width or height box, so searching for them doesn't lead there.
 for _, word in ipairs({ 'width', 'height' }) do
-    assert(not found(word, 'Home', 'Edit mode: grid, snapping and nudging'), 'Search for ' .. word .. ' doesn\'t lead to edit mode.');
+    assert(not found(word, 'Home', 'Arrange on screen: snapping and nudging'), 'Search for ' .. word .. ' doesn\'t lead to Arrange on screen.');
 end;
 
 local combo, slider;
@@ -71,23 +78,9 @@ local function screen(s) s.panels.self_buffs.anchor.to = 'screen'; end;
 local function beside(s) s.panels.self_buffs.anchor.to, s.panels.self_buffs.anchor.element = 'element', 'target'; end;
 local function pet_screen(s) s.pet.locked, s.pet.anchor.to = false, 'screen'; end;
 local function pet_beside(s) s.pet.locked, s.pet.anchor.to, s.pet.anchor.element = false, 'element', 'target'; end;
--- The ticks and the grid's controls show while Grid mode is on.
-local function grid_on(s) s.edit_mode.grid_mode = true; end;
 -- { page, name, setup, steps, check(settings), Undo label, key }
 local rows = {
-    { 'Home', 'Grid mode', nil, click('Grid mode##main_grid_mode'), function(s) return s.edit_mode.grid_mode == true; end, 'Grid mode', 'edit_mode' },
-    { 'Home', 'A tick for Grid mode', grid_on, click('Self buffs##grid_tick_self_buffs'),
-        function(s) return #s.edit_mode.grid_displays == 1 and s.edit_mode.grid_displays[1] == 'self_buffs'; end, 'Tick Self buffs for Grid mode', 'edit_mode' },
-    { 'Home', 'Grid size', grid_on, slide('main_grid_size', 24), function(s) return s.edit_mode.grid == 24; end, 'Grid size', 'edit_mode' },
-    { 'Home', 'Show the grid', grid_on, click('Show the grid##main_show_grid'), function(s) return s.edit_mode.show_grid == false; end, 'Show the grid', 'edit_mode' },
-    { 'Home', 'Snap to the grid', grid_on, click('Snap to the grid##main_snap_grid'), function(s) return s.edit_mode.snap_grid == false; end, 'Snap to the grid', 'edit_mode' },
-    { 'Home', 'Snap to the screen center and edges', grid_on, click('Snap to the screen center and edges##main_snap_screen'), function(s) return s.edit_mode.snap_screen == false; end,
-        'Snap to the screen center and edges', 'edit_mode' },
-    { 'Home', 'Snap to other displays', grid_on, click('Snap to other displays##main_snap_elements'), function(s) return s.edit_mode.snap_elements == false; end, 'Snap to other displays', 'edit_mode' },
-    { 'Home', "Snap to the game's party list", grid_on, click("Snap to the game's party list##main_snap_party"), function(s) return s.edit_mode.snap_party == false; end,
-        "Snap to the game's party list", 'edit_mode' },
-    { 'Home', 'Snap to the chat log', grid_on, click('Snap to the chat log##main_snap_chat'), function(s) return s.edit_mode.snap_chat == false; end, 'Snap to the chat log', 'edit_mode' },
-    { 'Home', 'Snap distance', grid_on, slide('main_snap_distance', 12), function(s) return s.edit_mode.snap_distance == 12; end, 'Snap distance', 'edit_mode' },
+    { 'Home', 'Snap while moving', nil, click('Snap while moving##main_grid_mode'), function(s) return s.edit_mode.grid_mode == true; end, 'Snap while moving', 'edit_mode' },
     { 'pet/place', 'Moves with on Pet', nil, pick('frame_Moves with', 'A spot on the screen', 'screen'), function(s) return s.pet.anchor.to == 'screen'; end, 'Moves with', 'pet' },
     { 'pet/place', 'Moves with another display on Pet', nil, pick('frame_Moves with', 'Phantom Roll', 'element:rolls'),
         function(s) return s.pet.anchor.to == 'element' and s.pet.anchor.element == 'rolls'; end, 'Moves with', 'pet' },
@@ -135,8 +128,8 @@ local rows = {
         'In a party', 'panels' },
     { 'Display/when', 'Fighting', nil, click('Only while engaged##frame_Fighting_fight_yes'), function(s) return s.panels.self_buffs.conditions.engaged == 'yes'; end, 'Fighting', 'panels' },
     { 'Display/when', 'Pet', nil, click('Only with no pet out##frame_Pet_pet_no'), function(s) return s.panels.self_buffs.conditions.pet == 'no'; end, 'Pet', 'panels' },
-    { 'Display/when', 'Clear these conditions', function(s) s.panels.self_buffs.conditions.main_jobs[5] = true; end, click('Clear these conditions##frame_when'),
-        function(s) return next(s.panels.self_buffs.conditions.main_jobs) == nil; end, 'Clear the When to show choices of Self buffs', 'panels' },
+    { 'Display/when', 'Reset this tab', function(s) s.panels.self_buffs.conditions.main_jobs[5] = true; end, click('Reset this tab##frame'),
+        function(s) return next(s.panels.self_buffs.conditions.main_jobs) == nil; end, 'Reset this tab', 'panels' },
 };
 local function outside(s, key)
     local value = copy(s);
@@ -180,12 +173,12 @@ for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'TextWrapped' then said
 local words = table.concat(said, ' | ');
 assert(words:find('Self buffs: Main job WHM. In Towns.', 1, true), 'Plain words: ' .. words);
 assert(not words:find('?', 1, true), 'No question marks.');
--- The main page starts and ends edit mode.
+-- The main page starts and ends Arrange on screen.
 begin('Home');
-frame({ click = 'Edit mode##main' });
-assert(require('ui.edit_mode').active(), 'Edit mode turns it on.');
-frame({ click = 'End edit mode##main_edit_end' });
-assert(not require('ui.edit_mode').active(), 'End edit mode turns it off.');
+frame({ click = 'Arrange on screen##main' });
+assert(require('ui.edit_mode').active(), 'Arrange on screen turns it on.');
+frame({ click = 'Done arranging##main_edit_end' });
+assert(not require('ui.edit_mode').active(), 'Done arranging turns it off.');
 -- The main page's links.
 begin('Home');
 frame({ click = 'Profiles' });
@@ -209,7 +202,7 @@ command('/vg get edit_mode.grid');
 assert(MOCK.printed[#MOCK.printed]:find('edit_mode.grid = 32', 1, true), '/vg get reads the grid.');
 assert(app.callbacks.reset('edit_mode') and app.state.settings.edit_mode.grid == 16, '/vg reset edit_mode restores it.');
 assert(app.callbacks.reset('moves_with') and app.state.settings.panels.target.anchor.to == 'none', '/vg reset moves_with clears them.');
--- /vg reset layout takes Grid mode, its ticks and the grid back as well, as one Undo step.
+-- /vg reset layout takes Snap while moving, its ticks and the grid back as well, as one Undo step.
 do
     local s = app.state.settings;
     s.edit_mode.grid, s.edit_mode.grid_mode, s.edit_mode.grid_displays = 40, true, { 'pet' };

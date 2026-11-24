@@ -61,7 +61,7 @@ function MOCK.fire(name, event)
     for _, callback in pairs(MOCK.events[name] or {}) do callback(event); end
 end
 function MOCK.frame(seconds)
-    MOCK.now = MOCK.now + (seconds or 1 / 60);
+    MOCK.now, MOCK.frame_count = MOCK.now + (seconds or 1 / 60), (MOCK.frame_count or 0) + 1;
     MOCK.fire('d3d_present');
 end
 function ashita.fs.exists(path)
@@ -304,6 +304,10 @@ local functions = {
     }; end,
     GetFont = function () return 'default'; end,
     GetFontSize = function () return MOCK.font_stack[#MOCK.font_stack] or 18; end,
+    -- A text row and ImGui's 4 pixels under it, as a Selectable list steps.
+    GetTextLineHeightWithSpacing = function () return (MOCK.font_stack[#MOCK.font_stack] or 18) + 4; end,
+    -- ImGui's frame count, one more each MOCK.frame.
+    GetFrameCount = function () return MOCK.frame_count or 0; end,
     CalcTextSize = function (text) return #tostring(text) * 8, 18; end,
     GetFrameHeight = function () return 26; end,
     PushFont = function (_, size) MOCK.font_stack[#MOCK.font_stack + 1] = size or 18; end,
@@ -353,6 +357,38 @@ function MOCK.bytes(size)
 end
 function MOCK.put(bytes, offset, size, value)
     for i = 0, size - 1 do bytes[offset + i] = math.floor(value / 256 ^ i) % 256; end
+end
+-- Writes value's low length bits from bit offset on, lowest bit first, into bytes that start out 0 there.
+function MOCK.putbits(bytes, offset, length, value)
+    for i = 0, length - 1 do
+        local at = offset + i;
+        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
+    end
+end
+-- A 0x028's bytes: the actor at bit 40, the target count at 72, the category at 82, the action id at 86 and the recast
+-- at 118 when given. From bit 150 each target { id, rows } is its id and result count, then each result is 85 bits with
+-- its param at +27 and its message at +44. After those come the added effect and the reaction, each a flag bit and,
+-- when it's set, its own bits: an added effect's param at +10 and message at +27, and a reaction's kind at +0, param at
+-- +10 and message at +24. A row's reaction can be true for one with no message.
+function MOCK.action_bytes(actor, category, id, targets, recast)
+    local put, bytes, at = MOCK.putbits, MOCK.bytes(2048), 150;
+    put(bytes, 40, 32, actor); put(bytes, 72, 6, #targets); put(bytes, 82, 4, category); put(bytes, 86, 32, id);
+    if recast then put(bytes, 118, 32, recast); end
+    for _, target in ipairs(targets) do
+        put(bytes, at, 32, target.id); put(bytes, at + 32, 4, #target.rows); at = at + 36;
+        for _, row in ipairs(target.rows) do
+            put(bytes, at + 27, 17, row.param or 0); put(bytes, at + 44, 10, row.message or 0); at = at + 85;
+            put(bytes, at, 1, row.added and 1 or 0); at = at + 1;
+            if row.added then put(bytes, at + 10, 17, row.added_param or 0); put(bytes, at + 27, 10, row.added); at = at + 37; end
+            put(bytes, at, 1, row.reaction and 1 or 0); at = at + 1;
+            if row.reaction then
+                put(bytes, at, 6, row.reaction_kind or 0); put(bytes, at + 10, 14, row.reaction_param or 0);
+                put(bytes, at + 24, 10, type(row.reaction) == 'number' and row.reaction or 0); at = at + 34;
+            end
+        end
+    end
+    bytes.n = math.ceil(at / 8);
+    return bytes;
 end
 -- An incoming packet event, as userdata like Ashita's.
 function MOCK.packet(id, bytes)

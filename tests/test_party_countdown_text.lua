@@ -32,7 +32,7 @@ assert(not placement.party_ui.effects.countdown_bold and placement.target_ui == 
     'Placement-only sharing does not overwrite countdown appearance');
 
 local imgui=require('imgui');
--- Party list buffs says whether countdowns show. How their text looks is on the main page, so the panel sets none of it.
+-- Party list says whether countdowns show. How their text looks is on the main page, so the panel sets none of it.
 local h=require('panel_fixture')();
 settings=h.fresh(function(saved)
     saved.party_ui.style.icon_art='XI View';
@@ -57,7 +57,9 @@ end;
 fonts.failed=function()return false;end;
 fonts.measure=function(_,value,size)return #value*size*.5;end;
 fonts.measure_countdown=function(_,value,size)return #value*size*.5,size;end;
-fonts.countdown_renderer=function(face)return function(_,value,x,y,size,ink)record_timer(face,value,x,y,size,ink);end;end;
+fonts.countdown_renderer=function(face)return function(_,value,x,y,size,_,count,dxs,dys,inks)
+    for pass=1,count do record_timer(face,value,x+dxs[pass],y+dys[pass],size,inks[pass]);end;
+end;end;
 fonts.face=function(face)return face;end;
 fonts.draw=function(_,face,value,x,y,size,ink)ordinary[#ordinary+1]={face=face,value=value,x=x,y=y,size=size,ink=ink};return true;end;
 imgui.CalcTextSize=function(value)local size=imgui.GetFontSize();return #value*size*.5,size;end;
@@ -210,8 +212,10 @@ end;
 local original_measure_countdown=fonts.measure_countdown;
 fonts.measure_countdown=function(_,value,size)return #value*math.floor(size*.5+.5),size;end;
 local original_renderer=fonts.countdown_renderer;
-fonts.countdown_renderer=function(face)return function(_,value,x,y,size,ink)
-    timer_calls[#timer_calls+1]={face=face,value=value,x=x,y=y,size=size,ink=ink,width=#value*math.floor(size*.5+.5)};
+fonts.countdown_renderer=function(face)return function(_,value,x,y,size,_,count,dxs,dys,inks)
+    for pass=1,count do
+        timer_calls[#timer_calls+1]={face=face,value=value,x=x+dxs[pass],y=y+dys[pass],size=size,ink=inks[pass],width=#value*math.floor(size*.5+.5)};
+    end;
 end;end;
 effect.remaining,effect.status=359999,'estimated';
 options.icon_size=12;

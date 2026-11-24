@@ -22,7 +22,7 @@ imgui.Checkbox = function(label, ...)
 end;
 -- Taken once a fresh install has placed its displays (its first refresh with a screen), before any click.
 local baseline;
-local TABS, FIRST_ROW = 'When to show##frame_tab', 'A panel for each kind##frame_Show as_separate';
+local TABS, FIRST_ROW = 'Show##frame_tab', 'A panel for each kind##frame_Show as_separate';
 local function fits(label)
     local bounds = PREVIEW_PY.item_bounds(label);
     local win = app.state.settings.window;
@@ -32,8 +32,8 @@ end;
 function PREVIEW.compact_capture()
     app.state.history, app.state.redo, app.state.transaction = {}, {}, nil;
     assert(PREVIEW.body.height >= 80, 'Short menus retain a usable scroll area.');
-    -- The page ends a line of text above the window's bottom edge, clear of the resize corners, so at this size the
-    -- tabs' second line starts with its bottom cut off.
+    -- The page ends a line of text above the window's bottom edge, clear of the resize corners, and the top bar takes
+    -- three lines at this size, so only the tabs' first line is in view.
     local tabs = PREVIEW_PY.item_bounds(TABS);
     assert(tabs[2] >= PREVIEW.body.y and tabs[2] < PREVIEW.body.y+PREVIEW.body.height, 'The tabs start in view: '..table.concat(tabs, ','));
     local inside, bounds = fits(FIRST_ROW);

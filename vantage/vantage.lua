@@ -1,6 +1,6 @@
 addon.name = 'vantage';
 addon.author = 'Kipling';
-addon.version = '1.3.0';
+addon.version = '1.4.0';
 addon.desc = 'Customizable buff, debuff and recast timers, with buffs beside the game party list, for Phoenix.';
 addon.link = 'https://github.com/KiplingFFXI/vantage';
 
@@ -81,10 +81,19 @@ local function game_in_front()
     return ffi.C.GetWindowThreadProcessId(handle,foreground_process)~=0
         and tonumber(foreground_process[0])==tonumber(ffi.C.GetCurrentProcessId());
 end;
-local function game_focused()
-    local ok,focused=pcall(game_in_front);
-    return ok and focused or false;
-end;
+-- Each read makes a new window handle, so while the game is in front it's read ten times a second rather than every
+-- frame. While it isn't, it's read every frame, so a click right after coming back counts.
+local game_focused;
+do
+    local read_at,focused=-math.huge,false;
+    game_focused=function(t)
+        if not focused or t<read_at or t-read_at>=0.1 then
+            local ok,front=pcall(game_in_front);
+            focused,read_at=ok and front or false,t;
+        end
+        return focused;
+    end;
+end
 local function shift_held()
     return ffi.C.GetAsyncKeyState(0x10)<0;
 end;
@@ -92,10 +101,20 @@ end;
 local folder = identity.root();
 local saved_profiles = profiles.new(folder);
 local state = { settings=defaults.make(),snapshot={valid=false},view={rows={},subjects={},valid=false,context={}},
-    dirty=false,sampled=-1,queue={},history={},redo={},transaction=nil,changed_at=0,hidden=false,shared_at=0,unsaved={},retry_at=0,report={},zone_epoch=0,failing={},
+    dirty=false,sampled=-1,queue={},history={},redo={},transaction=nil,changed_at=0,hidden=false,shared_at=0,unsaved={},retry_at=0,report={},zone_epoch=0,failing={},display_failures=0,
     chat_read_at=0,
+    -- The file as read when each copy in unsaved was first kept, so neither a retry nor the character's next login here
+    -- puts the copy over a newer save from another game.
+    unsaved_base={},
     -- Counts every change to the settings, for the profile summary's Modified check.
-    settings_revision=0 };
+    settings_revision=0,
+    -- Of those, the ones a display's drag or arrow press marks as only moving or sizing it (callbacks.look_revision),
+    -- and the frames drawn, which tell one frame's changes from the next (callbacks.changed).
+    place_changes=0,frame=0 };
+-- The pet display's own notices go out as an alert's do, while Alerts is on and not muted.
+pet_watch.announce=function(key,message,t)
+    if state.settings.alerts.enabled and not state.settings.alerts.muted then alerts:announce(key,message,t); end
+end;
 local callbacks = {};
 local refresh;
 -- Packets that wake a refresh at once. Your 0x037 wakes one only when your status icons change, and the party's HP
@@ -172,10 +191,11 @@ local function shared_layouts(settings)
 end
 
 -- Adds to out each field a newer shared layout changed, with its path and new value. It walks old and new together
--- until they stop both being tables, and a list counts as one value. A field new doesn't have changes to nil. path is
--- the way down to the current field.
+-- until they stop both being tables, and a list counts as one value, except the party groups, which it walks group by
+-- group as the merge does (core/profiles.lua by_group). A field new doesn't have changes to nil. path is the way down
+-- to the current field.
 local function changes(old,new,path,out)
-    if type(old)~='table' or type(new)~='table' or #old>0 or #new>0 then
+    if type(old)~='table' or type(new)~='table' or (#old>0 or #new>0) and not profiles.by_group(path[#path-1],path[#path]) then
         if not customization.equal(old,new) then
             local at={};
             for index=1,#path do at[index]=path[index]; end
@@ -254,6 +274,37 @@ local function rebase_history(before,after)
     state.transaction=open;
 end
 
+-- What reading shared_layout.json last said was wrong with it. While this character shares the file, a save that
+-- doesn't touch it leaves that said, so the next poll doesn't say it again. A read or publish of the file that works
+-- takes it back.
+local function shared_problem(message)
+    if message then problem(message); elseif state.problem==state.shared_problem then problem(nil); end
+    state.shared_problem=message;
+end
+
+-- What is written to the character's own file: its settings and, while a change to the shared layout is still to be
+-- sent (a publish that failed, or one held back by a save of this file that failed), a note of that with the layout
+-- the change started from. A login reads the note (read_settings) and sends the change before it reads the shared
+-- file, so a switch of character or an unload with the change still owed doesn't put the older shared layout back over
+-- it. The note is never in state.settings.
+local function settings_file(settings)
+    if not state.publish_pending then return settings; end
+    local out={};
+    for key,value in pairs(settings) do out[key]=value; end
+    out.shared_unsent={base=state.shared_value};
+    return out;
+end
+
+-- Writes the character's file again when its note is out of step with what is owed: once when a publish first fails
+-- and once when it goes through. A write that fails leaves the settings to be saved again, which writes the note as
+-- it should be then.
+local function note_unsent()
+    local owed=state.publish_pending==true;
+    if owed==(state.unsent_saved==true) or state.dirty or not state.path or state.unread==state.path then return; end
+    if store.write(state.path,settings_file(state.settings)) then state.unsent_saved=owed or nil;
+    else state.dirty,state.retry_at=true,now()+5; end
+end
+
 -- Publishes this character's shared layout after its own file is saved. One that fails waits for its own
 -- retry, which backs off while it keeps failing, and the shared poll waits with it, so a newer shared layout
 -- can't take the place of the change still to be sent. Returns whether nothing is left to publish.
@@ -262,8 +313,15 @@ local function publish()
     local shared=profiles.capture_layout(state.settings);
     if customization.equal(shared,state.shared_value) then state.publish_pending=nil; return true; end
     local before=(#state.history>0 or #state.redo>0) and shared_layouts(state.settings);
-    local ok,why,_,merged = saved_profiles:publish_layout(state.settings,state.shared_value);
+    local ok,why,_,merged,base = saved_profiles:publish_layout(state.settings,state.shared_value);
     if not ok then
+        -- What the publish took from another character before its write failed stays taken, as after one that works.
+        -- The base moves past it, and with it the note this character's file is written with (settings_file), so only
+        -- this character's own change is still owed. The Undo steps take it too.
+        if merged then
+            state.shared_value=base;
+            if before then rebase_history(before,shared_layouts(state.settings)); end
+        end
         state.publish_wait=state.publish_pending and math.min(60,state.publish_wait*2) or 5;
         state.publish_pending,state.publish_at=true,now()+state.publish_wait;
         state.publish_problem='Your settings were saved, but not the shared layout. '
@@ -271,6 +329,7 @@ local function publish()
         problem(state.publish_problem); return false,why;
     end
     state.publish_pending=nil;
+    shared_problem(nil);
     if state.problem==state.publish_problem then problem(nil); end
     -- The file can be in the other scope's form. The base is this character's own layout, as load and
     -- poll keep it, so the next save compares like with like.
@@ -281,10 +340,12 @@ local function publish()
         if before then rebase_history(before,shared_layouts(state.settings)); end
         local written,issue = store.write(state.path,state.settings);
         if not written then
+            if state.unsaved[state.path]==nil then state.unsaved_base[state.path]=store.read(state.path); end
             state.unsaved[state.path]=store.copy(state.settings);
             state.dirty,state.retry_at=true,now()+5;
             problem(issue or 'Settings could not be saved.'); return false,issue;
         end
+        state.unsent_saved=nil;
     end
     return true;
 end
@@ -297,7 +358,7 @@ local function save()
     state.profile_summary_cache,state.settings_revision=nil,state.settings_revision+1;
     if not state.dirty and not state.navigation_dirty then
         -- A publish still waiting goes with a save.
-        if state.publish_pending then publish(); end
+        if state.publish_pending then publish(); note_unsent(); end
         return true;
     end
     -- Before a character loads there is no file to save to, and its saved settings replace these when it does, so
@@ -313,37 +374,59 @@ local function save()
     end
     -- The job these settings are used on goes with them, so the next login knows whether the job changed.
     if state.last_job then state.settings.profile_job=state.last_job; end
-    local ok,why = store.write(state.path,state.settings);
+    local file=settings_file(state.settings);
+    local ok,why = store.write(state.path,file);
     if not ok then
-        state.unsaved[state.path]=store.copy(state.settings);
+        -- A shared change is sent only after this file saves (publish). So the copy kept to save again notes it as still
+        -- to be sent, as a failed publish does, and a switch of character before a retry gets through leaves it for that
+        -- character's next login to send.
+        if state.settings.shared_layout and not state.publish_pending
+            and not customization.equal(profiles.capture_layout(state.settings),state.shared_value) then
+            state.publish_pending,state.publish_at,state.publish_wait=true,now(),5;
+            file=settings_file(state.settings);
+        end
+        if state.unsaved[state.path]==nil then state.unsaved_base[state.path]=store.read(state.path); end
+        state.unsaved[state.path]=store.copy(file);
         state.retry_at=now()+5;
         problem(why or 'Settings could not be saved.'); return false,why;
     end
+    state.unsent_saved=file~=state.settings or nil;
     state.dirty,state.navigation_dirty=false,false;
-    state.unsaved[state.path]=nil;
+    state.unsaved[state.path],state.unsaved_base[state.path]=nil,nil;
     state.retry_at=0;
     local published,issue=publish();
-    if state.dirty then return false,issue; end
-    if published then problem(nil); end
+    -- Only a write publish itself could not make is this save's failure. The note's own write is tried again quietly.
+    local unsaved=state.dirty;
+    note_unsent();
+    if unsaved then return false,issue; end
+    -- A problem reading the shared file stays said while this character shares it (shared_problem).
+    if published and (state.problem~=state.shared_problem or not state.settings.shared_layout) then problem(nil); end
     return true;
 end
 
-local function changed_after()
+local function changed_after(kind)
     -- A drag changes settings every frame. The profile status waits for its 2 second refresh, or the save after the
     -- drag.
     state.settings_revision=state.settings_revision+1;
+    if kind=='place' then state.place_changes=state.place_changes+1; end;
     if not state.mouse_held then state.profile_summary_cache=nil; end;
 end
 -- window_geometry marks a step that moves or resizes the settings window, which Undo and Redo put back.
 -- window_navigation marks one that resets its navigation (the Hold Shift to see through this window switch), which they
--- put back too.
-function callbacks.changed(stage, label, _, window_geometry, window_navigation)
+-- put back too. kind 'place' marks a change that only moves or sizes a display, as each frame of a drag makes.
+function callbacks.changed(stage, label, kind, window_geometry, window_navigation)
     if stage=='before' then
-        state.transaction = state.transaction or {settings=store.copy(state.settings),label=label or 'Settings change',
-            window_geometry=window_geometry==true or nil,window_navigation=window_navigation==true or nil,epoch=state.zone_epoch};
+        label=label or 'Settings change';
+        -- A step still open with another name, from an earlier frame, is closed first, so this change is a step of its
+        -- own. Calls in one frame share a step, and a run of one name, as a drag's frames or quick arrow presses, stays one.
+        local open=state.transaction;
+        if open and open.label~=label and open.frame~=state.frame then checkpoint(); end
+        state.transaction = state.transaction or {settings=store.copy(state.settings),label=label,
+            window_geometry=window_geometry==true or nil,window_navigation=window_navigation==true or nil,epoch=state.zone_epoch,
+            frame=state.frame};
     else
         state.dirty,state.changed_at = true,now();
-        changed_after();
+        changed_after(kind);
     end
 end
 
@@ -358,6 +441,9 @@ end
 callbacks.save = save;
 -- The count of settings changes, so the settings window keeps what it works out from the settings until the next one.
 function callbacks.settings_revision() return state.settings_revision; end;
+-- The same count without the ones a drag or arrow press marks as only moving or sizing a display, which change no look. The settings window's
+-- look and Party list's go by it, so a drag doesn't make them again on every frame.
+function callbacks.look_revision() return state.settings_revision-state.place_changes; end;
 -- An error stops the settings window for this character. Only a character switch, a window reset or
 -- a command that opens the window tries it again. Undo, profiles and other /vg set changes keep it stopped.
 local function settings_stopped()
@@ -382,6 +468,7 @@ local function keep_editing()
     copy_list(editing.history,state.history);copy_list(editing.redo,state.redo);
     editing.dirty,editing.changed_at,editing.retry_at=state.dirty,state.changed_at,state.retry_at;
     editing.publish_pending,editing.publish_at,editing.publish_wait=state.publish_pending,state.publish_at,state.publish_wait;
+    editing.unsent_saved=state.unsent_saved;
     editing.navigation_dirty=state.navigation_dirty;
     editing.shared_value,editing.shared_at,editing.hidden=state.shared_value,state.shared_at,state.hidden;
     editing.identity,editing.last_job,editing.job_seen=state.identity,state.last_job,state.job_seen;
@@ -393,6 +480,7 @@ local function keep_editing()
     end;
     editing.path=state.path;
     editing.unsaved=state.path and state.unsaved[state.path];
+    editing.unsaved_base=state.path and state.unsaved_base[state.path];
     editing.recovery,editing.drawing=nil,true;
     store.journal(editing.journal);
 end;
@@ -400,7 +488,7 @@ end;
 local function finish_editing()
     editing.drawing=false;store.journal(nil);
     for path in pairs(editing.journal.files) do editing.journal.files[path]=nil; end;
-    if editing.reset_alerts then editing.reset_alerts=nil;alerts:reset(); end;
+    if editing.reset_alerts then editing.reset_alerts=nil;alerts:hush(); end;
 end;
 local function restore_editing()
     editing.drawing,editing.reset_alerts=false,nil;store.journal(nil);
@@ -409,6 +497,7 @@ local function restore_editing()
     state.history,state.redo,state.transaction=editing.history_list,editing.redo_list,editing.transaction;
     state.dirty,state.changed_at,state.retry_at=editing.dirty,editing.changed_at,editing.retry_at;
     state.publish_pending,state.publish_at,state.publish_wait=editing.publish_pending,editing.publish_at,editing.publish_wait;
+    state.unsent_saved=editing.unsent_saved;
     state.navigation_dirty=editing.navigation_dirty;
     state.shared_value,state.shared_at,state.hidden=editing.shared_value,editing.shared_at,editing.hidden;
     -- The shared file the page read stays unread, so the next poll still takes a newer one.
@@ -416,7 +505,7 @@ local function restore_editing()
     -- A job change seen while the page drew is seen again by the next refresh, so its linked profile
     -- still loads. A character switch keeps the new character's job.
     if state.identity==editing.identity then state.last_job,state.job_seen=editing.last_job,editing.job_seen; end;
-    if editing.path then state.unsaved[editing.path]=editing.unsaved; end;
+    if editing.path then state.unsaved[editing.path],state.unsaved_base[editing.path]=editing.unsaved,editing.unsaved_base; end;
     if editing.recovery then
         saved_profiles:restore_recovery(editing.recovery);
         state.deleted_history=editing.deleted_history;
@@ -429,7 +518,8 @@ local function restore_editing()
     for path,kept in pairs(editing.journal.files) do files[path]=kept; end;
     local missed=store.undo(editing.journal.files) or {};
     -- Another program held a file that couldn't be read back a moment ago, so it is saved again after the usual wait.
-    if missed[state.path]=='failed' then state.dirty,state.changed_at=true,now(); end;
+    -- The file then still holds the page's write, so a copy kept to save again has no sure file to be checked against.
+    if missed[state.path]=='failed' then state.dirty,state.changed_at,state.unsaved_base[state.path]=true,now(),nil; end;
     if missed[saved_profiles.layout_path]=='failed' then
         if state.settings.shared_layout then state.dirty,state.changed_at,state.shared_value=true,now(),nil;
         else later[saved_profiles.layout_path]=files[saved_profiles.layout_path]; end;
@@ -457,8 +547,10 @@ local function undo_later(t)
         if why=='failed' then state.undo_later=state.undo_later or {};state.undo_later[path]=pending[path]; end;
     end;
 end;
+-- The notices up go. What each alert has told stays, so an effect still missing isn't told again, and an alert the
+-- change made new or different starts over by itself (core/alerts.lua).
 local function reset_alerts()
-    if editing.drawing then editing.reset_alerts=true; else alerts:reset(); end;
+    if editing.drawing then editing.reset_alerts=true; else alerts:hush(); end;
 end;
 -- A profile change also changes the recovery list, and what each delete took from Undo, which a page that
 -- fails puts back.
@@ -483,7 +575,7 @@ callbacks.settings_blocks_input = function(x,y,shift,typing)
     end;
     return false;
 end;
--- The Party list buffs page reads the game's party list each draw, so it gets the one kept, with no copy.
+-- The Party list page reads the game's party list each draw, so it gets the one kept, with no copy.
 callbacks.party_native_status = native_party.live_status;
 callbacks.recast_catalog = recast_source.catalog;
 callbacks.recast_item_status = recast_source.item_status;
@@ -520,25 +612,45 @@ function callbacks.open_page(page)
     return true;
 end;
 
+-- Each unit's subject and its effects list are kept by its id and filled again at each refresh, so the strips and the
+-- hide rules find the same tables and keep what they worked out from them (layout.kept_effects, effect_filters.subject).
+-- A row that isn't a buff or a debuff is shown as a copy, kept by the tracker's row and filled again from it too: the
+-- tracker hands out the same row while it holds the same thing, with its time left worked out again in place. copies
+-- has them by row, spare_copies is the map the next refresh fills, and unseen the ids this refresh hasn't listed.
+local subjects_by_id, remapped_rows, copies, spare_copies, unseen = {}, {}, {}, {}, {};
 local function party_subjects(view)
-    local subjects, remapped = {}, {};
+    local subjects, remapped, filled = subjects_by_id, remapped_rows, spare_copies;
+    for id in pairs(subjects) do unseen[id] = true; end
     for _, subject in ipairs(view.subjects or {}) do
-        subjects[subject.id] = { known = subject.known == true, complete = subject.known == true,
-            effects = {}, source = subject.known and 'client' or 'observed' };
+        local held = subjects[subject.id];
+        if not held then held = { effects = {} }; subjects[subject.id] = held; end
+        held.known, held.complete = subject.known == true, subject.known == true;
+        held.source = subject.known and 'client' or 'observed';
+        local effects = held.effects;
+        for index = #effects, 1, -1 do effects[index] = nil; end
+        unseen[subject.id] = nil;
     end
+    for id in pairs(unseen) do subjects[id], unseen[id] = nil, nil; end
+    local count = 0;
     for _, row in ipairs(view.rows or {}) do
         local subject = subjects[row.entity_id];
         if subject and row.domain ~= 'recast' then
             local effect = row;
             if row.kind ~= 'buff' and row.kind ~= 'debuff' then
-                effect = {};
+                effect = copies[row] or {};
+                for key in pairs(effect) do if row[key] == nil then effect[key] = nil; end end
                 for key, value in pairs(row) do effect[key] = value; end
                 effect.kind = 'neutral';
-                remapped[#remapped + 1] = effect;
+                filled[row] = effect;
+                count = count + 1;
+                remapped[count] = effect;
             end
             subject.effects[#subject.effects + 1] = effect;
         end
     end
+    for index = #remapped, count + 1, -1 do remapped[index] = nil; end
+    for row in pairs(copies) do copies[row] = nil; end
+    copies, spare_copies = filled, copies;
     return subjects, remapped;
 end
 
@@ -567,9 +679,19 @@ end
 local function rejoin(was)
     local s=state.settings;
     if not s.shared_layout or was.shared_layout and was.shared_scope==s.shared_scope then return; end
-    local ok,issue,found=saved_profiles:load_layout(s);
-    if not ok and issue then problem(issue); end
-    state.shared_value=ok and found and profiles.capture_layout(s) or nil;
+    local before=shared_layouts(s);
+    local ok,issue,found,changed=saved_profiles:load_layout(s);
+    if not ok then
+        if issue then shared_problem(issue); end
+        -- As at a login (read_settings), a shared file that can't be read leaves this step's own layout as the base, and
+        -- the poll loads the file once it reads.
+        state.shared_value,saved_profiles.layout_seen=profiles.capture_layout(s),nil;
+        return;
+    end
+    state.shared_value=found and profiles.capture_layout(s) or nil;
+    -- The poll gave no step what changed while this character didn't share it, so the other Undo and Redo steps take
+    -- what the shared file changed here too. Going on past this step then doesn't publish the older layout they held.
+    if changed~=false then rebase_history(before,shared_layouts(s)); end
 end
 
 -- Undo takes the last step from history and keeps the settings it replaces in redo; Redo does the reverse.
@@ -609,12 +731,15 @@ end
 function callbacks.undo() return step('history','redo','There is no earlier change to restore.'); end
 function callbacks.redo() return step('redo','history','There is no change to redo.'); end
 
--- The settings window asks each frame, so the answer is one table filled in place. Read it before the next call.
+-- The settings window and Arrange on screen's bar ask each frame, so the answer is one table filled in place. Read it
+-- before the next call. A change still open, which closes at the save 0.6 s after the last one, counts as a step,
+-- since Undo closes it first and takes it. open_label is its name, nil with none open.
 local history_status={};
 function callbacks.history_status()
-    local status=history_status;
-    status.undo,status.redo=#state.history,#state.redo;
-    status.undo_label=state.history[#state.history] and state.history[#state.history].label;
+    local status,open=history_status,state.transaction;
+    status.undo,status.redo=#state.history+(open and 1 or 0),#state.redo;
+    status.open_label=open and open.label or nil;
+    status.undo_label=open and open.label or state.history[#state.history] and state.history[#state.history].label;
     status.redo_label=state.redo[#state.redo] and state.redo[#state.redo].label;
     return status;
 end
@@ -623,10 +748,9 @@ function callbacks.reset(section)
     finish_layout();
     local candidate,why=customization.reset(store.copy(state.settings),section);
     if not candidate then return false,why; end
-    -- Reset all and /vg reset navigation can be undone, the window's part too: its
-    -- navigation, and for Reset all its place and size.
+    -- Reset all can be undone, the window's part too: its navigation, place and size.
     local all=section==nil or section=='all';
-    callbacks.changed('before',customization.reset_label(section),nil,all,all or section=='navigation');
+    callbacks.changed('before',customization.reset_label(section),nil,all,all);
     state.settings=defaults.tidy(candidate);
     -- A first spot is where a fresh install's first frame puts a display on this screen.
     local screen,spots=imgui.GetIO().DisplaySize,require('ui.setup_defaults');
@@ -873,6 +997,15 @@ function callbacks.share_copy(kind,id)
     imgui.SetClipboardText(text);
     return true,nil,note;
 end
+-- The same export in a new file in the shared folder, named after what it holds. It returns the file as profile_share does.
+function callbacks.share_save(kind,id)
+    local share=require('core.share');
+    local text,note=share.export(state.settings,kind,id,character_name());
+    if not text then return false,note; end
+    local file,problem=share.save_file(folder..'shared/',share.settings_file_name(kind,id),text,character_name());
+    if not file then return false,problem; end
+    return true,nil,note,identity.relative('shared/'..file);
+end
 function callbacks.share_read()
     local ok,text=pcall(imgui.GetClipboardText);
     if not ok then return nil,'The clipboard could not be read.'; end
@@ -889,11 +1022,20 @@ function callbacks.share_import(payload,mode)
     local share=require('core.share');
     local candidate,why=share.candidate(state.settings,payload,mode);
     if not candidate then return false,why; end
+    -- A change still open is its own step, as for a profile load, so the step the import makes is only its own.
+    checkpoint();
+    -- An export keeps 14 digits, as a saved file does, so one that differs from your settings only past them changes
+    -- nothing: no step and no save.
+    if profiles.same(customization.history_value(candidate),customization.history_value(state.settings)) then return true,nil,false; end
+    local last=state.history[#state.history];
     callbacks.changed('before',(mode=='add' and 'Add from' or 'Replace with')..' an export');
     state.settings=candidate;
     callbacks.changed('after');
     reset_alerts();
-    return save();
+    local ok,problem=save();
+    -- An export with nothing to change makes no step, and Undo would take back something else: the third value says
+    -- whether it made one.
+    return ok,problem,state.history[#state.history]~=last;
 end
 -- A saved profile as a whole profile export, made from it without loading it: on the clipboard, or with to_file
 -- in a new file in the shared folder, whose name it returns. The settings and Undo stay as they are.
@@ -958,6 +1100,8 @@ function callbacks.export_report(quiet)
         party_display=store.copy(state.settings.party_ui),native_party=native_party.status(),
         -- Replace the game's buff icons: whether it is in effect, why not, and how often the game's + menu was moved.
         game_buffs=require('core.game_buffs').status(),
+        -- Replace the game's pet bar: whether it is in effect, and why not.
+        game_pet_bar=require('core.game_pet_bar').status(),
         recasts=store.copy(state.recasts or {}),
         chat=chat_window.describe and chat_window.describe() or 'Unavailable',
         rows=store.copy(state.view.rows or {}),history=store.copy(state.report),pet=store.copy(pet_watch:report()),
@@ -966,6 +1110,10 @@ function callbacks.export_report(quiet)
     report.overhead.icons_drawn=overhead_icons.drawn();
     -- Party icons made at their drawn size: the sizes kept, textures made, builds, fallbacks and the slowest build.
     report.party_icon_sizes=require('ui.client_assets').icon_sizes_report();
+    -- Your icon sets: each with its pictures, the folder inside its own they were read from when they are one folder
+    -- down, how many are made, and the files and folders left out with why, then the packed files not extracted yet and
+    -- the pictures outside a set's folder.
+    report.icon_sets=require('ui.icon_packs').report();
     -- The client art and fonts: where each part came from, and why any part isn't drawn as chosen.
     report.art=require('ui.fonts').report(state.settings.style.font);
     -- The timings are taken last, so they hold the camera check above and /vg report's own time up to here
@@ -973,6 +1121,8 @@ function callbacks.export_report(quiet)
     if performance and state.report_started then performance.record('command.report',state.report_started); end;
     state.report_started=nil;
     report.performance=performance and performance.snapshot() or {available=false,reason=performance_problem or 'Timings are unavailable.'};
+    -- A path under the game's, Ashita's or your user folder starts from it, so your Windows user name isn't written.
+    report=require('ui.client_assets').without_folders(report);
     local path=folder..'reports/latest.json';
     -- A report replaces the last one, even one that is no longer JSON, which a save would keep.
     if not store.read(path) then os.remove(path); end
@@ -1008,12 +1158,17 @@ local function enrich_rule(rule,index,names)
     return value;
 end
 
+-- The rules' names, and the recasts' names a recast rule takes its name from, filled again at each refresh.
+-- alerts:update reads them only while it runs, and keeps a copy.
+local rule_names,recast_rule_names={},{};
 local function alert_names()
     if not state.settings.alerts.enabled then return; end
-    local names,recast_names={};
+    local names,recast_names=rule_names;
+    for index in pairs(names) do names[index]=nil; end
     for index,rule in ipairs(state.settings.alerts.rules) do
         if rule.domain=='recast' and rule.effect and rule.effect~=0 and not recast_names then
-            recast_names={};
+            recast_names=recast_rule_names;
+            for effect in pairs(recast_names) do recast_names[effect]=nil; end
             for _,row in ipairs(state.recasts.rows or {}) do if not recast_names[row.effect] then recast_names[row.effect]=row.name; end end
         end
         names[index]=effect_name(rule,recast_names);
@@ -1047,7 +1202,7 @@ function callbacks.watch(id)
     if not id or id~=id or id<=0 or id>4294967295 or id~=math.floor(id) then return false,'Select an entity to watch.'; end
     for _,held in ipairs(state.settings.watch_ids) do if held==id then return true; end end
     if #state.settings.watch_ids>=64 then return false,'Remove a watched entity before adding another.'; end
-    callbacks.changed('before');
+    callbacks.changed('before','Watch');
     state.settings.watch_ids[#state.settings.watch_ids+1]=id;
     state.settings.panels.watch.enabled=true;
     callbacks.changed('after');
@@ -1059,7 +1214,7 @@ function callbacks.unwatch(id)
     local watched=false;
     for _,held in ipairs(state.settings.watch_ids) do watched=watched or held==id; end
     if not watched then return false,id and 'That entity is not watched.' or 'Select a watched entity to stop watching.'; end
-    callbacks.changed('before');
+    callbacks.changed('before','Stop watching');
     for i=#state.settings.watch_ids,1,-1 do if state.settings.watch_ids[i]==id then table.remove(state.settings.watch_ids,i); end end
     callbacks.changed('after');
     return save();
@@ -1092,7 +1247,19 @@ local function read_settings(snapshot)
     local directory=folder..name..'_'..tostring(snapshot.id)..'/';
     state.path=directory..'settings.json';
     local loaded,why=store.read(state.path);
-    if state.unsaved[state.path] then loaded=store.copy(state.unsaved[state.path]); end
+    -- A copy kept to save again loads in place of the file, unless another game saved the file since it was kept.
+    if state.unsaved[state.path] then
+        if state.unsaved_base[state.path]==nil or loaded==nil or store.equal(loaded,state.unsaved_base[state.path]) then
+            loaded=store.copy(state.unsaved[state.path]);
+        else
+            state.unsaved[state.path],state.unsaved_base[state.path]=nil,nil;
+            say('The change made here before you switched characters was not saved, because another game saved '
+                ..store.name(state.path)..' since. The newer file was kept.');
+        end
+    end
+    -- The note of a shared layout change still to be sent (settings_file) is taken out before the settings are read.
+    local unsent=type(loaded)=='table' and loaded.shared_unsent or nil;
+    if unsent~=nil then loaded.shared_unsent=nil; end
     state.unread,state.unread_at=not loaded and state.path or nil,now()+5;
     state.settings=defaults.tidy(loaded or defaults.make());
     -- The window always opens on the main page, whatever page it was left on.
@@ -1110,21 +1277,80 @@ local function read_settings(snapshot)
     saved_profiles:set_owner(identity);
     state.report={};
     state.shared_value,state.publish_pending=nil,nil;
+    state.unsent_saved=unsent~=nil or nil;
     state.dirty,state.navigation_dirty=state.unsaved[state.path]~=nil,false;
     alerts:reset();
     if state.problem==before_load then problem(nil); end
     if why then problem(why); end
-    if state.settings.shared_layout then
+    if state.settings.shared_layout and type(unsent)=='table' then
+        -- This character's last change to the shared layout was never sent. It goes out with the next save, over the
+        -- layout it started from, so what the others changed since is merged in (publish). The shared file isn't read
+        -- first: that would put the older layout back over the change.
+        local base=nil;
+        if type(unsent.base)=='table' then
+            local probe=store.copy(state.settings);
+            local read,applied=pcall(profiles.apply_layout,probe,unsent.base,state.settings.shared_scope);
+            base=read and applied and profiles.capture_layout(probe) or nil;
+        end
+        state.shared_value,saved_profiles.layout_seen=base,nil;
+        state.publish_pending,state.publish_at,state.publish_wait=true,now(),5;
+    elseif state.settings.shared_layout then
         local ok,issue,found=saved_profiles:load_layout(state.settings);
-        if not ok and issue then problem(issue); end
+        if not ok and issue then shared_problem(issue); end
         if ok and found then state.shared_value=profiles.capture_layout(state.settings); end
+        -- A shared file that can't be read leaves this character on its own layout, and that is its base meanwhile. So a
+        -- save that changes nothing shared publishes nothing, and a shared change is merged into the file once it reads
+        -- (publish). The poll loads the file once it reads, even when it's the one the last character here saw.
+        if not ok then state.shared_value,saved_profiles.layout_seen=profiles.capture_layout(state.settings),nil; end
     end
     -- What these settings draw with joins the warmup: their window frame, XI View for a look that uses it, the name point
     -- for overhead icons.
     require('ui.client_assets').want_window(state.settings.style.window_type);
     if require('ui.appearance').uses_xiview(state.settings) then warmup.want('xiview'); end;
     if state.settings.overhead.enabled then warmup.want('names'); end;
+    if state.settings.replace_game_buffs then warmup.want('buffs'); end;
+    if state.settings.replace_game_pet_bar then warmup.want('petbar'); end;
 end
+
+-- The sounds the alert rules can play now, each once, in the rules' order: a rule that is on, with a sound, at a volume
+-- above 0, while Alerts are on and not muted.
+local function alert_sounds()
+    local out,seen,config={},{},state.settings.alerts;
+    if not config.enabled or config.muted then return out; end
+    for _,rule in ipairs(config.rules) do
+        local name=rule.sound;
+        local volume=rule.volume and rule.volume>=0 and rule.volume or config.volume or 0;
+        if rule.enabled and type(name)=='string' and name~='' and volume>0 and not seen[name] then seen[name]=true; out[#out+1]=name; end
+    end
+    return out;
+end;
+
+-- Opening a sound takes tens of milliseconds (core/sound.lua), so the rules' sounds are opened as warmup steps, one
+-- a step, and the frame an alert fires in only plays. As many steps as the sounds that can be open at once.
+local function sound_steps()
+    local list={};
+    for index=1,8 do
+        list[index]={name='sounds.'..index,run=function()
+            local names=alert_sounds();
+            if not names[index] then return; end
+            -- A place held by a sound no rule plays now is given up before one a rule does.
+            local keep={};
+            for _,name in ipairs(names) do keep[name]=true; end
+            sound.prepare(names[index],keep);
+        end};
+    end
+    return list;
+end;
+
+-- The steps run again when the sounds the rules play change, so a sound chosen for a rule is open before it fires.
+local function ready_sounds()
+    if state.sounds_revision==state.settings_revision then return; end
+    state.sounds_revision=state.settings_revision;
+    local names=table.concat(alert_sounds(),'|');
+    if names==state.sounds_ready then return; end
+    state.sounds_ready=names;
+    if names~='' then warmup.want('sounds'); warmup.restart('sounds'); end
+end;
 
 local function deliver(t)
     for _,notice in ipairs(alerts:drain(t,state.settings.alerts.volume)) do
@@ -1155,25 +1381,25 @@ local function clear_zone(reason,t)
 end
 
 -- Whether a display follows the game's party list, or a move snaps to it, so the party list's place is read. A move
--- snaps to it only with Grid mode and Snap to the game's party list on, for a display ticked for Grid mode that is on
--- and unlocked. Then it is read while Shift and the mouse button are down, as a Shift drag snaps like edit mode, and
--- all the while edit mode is on, so the list's warmup is done before the first drag there and that drag snaps to it
--- from its first move.
+-- snaps to it only with Snap while moving and the party list switch on, for a display ticked to snap that is on
+-- and can move: unlocked, or any display while edit mode is on, as it moves locked ones too. Then it is read while
+-- Shift and the mouse button are down, as a Shift drag snaps like edit mode, and all the while edit mode is on, so
+-- the list's warmup is done before the first drag there and that drag snaps to it from its first move.
 local function wants_party_list(s)
     for _, element in ipairs(elements.list) do
         local anchor = element.anchor and elements.anchor(s, element.id);
         if anchor and anchor.to == 'party' then return true; end
     end
-    local e = s.edit_mode;
-    if not (edit_mode.active() or state.shift_drag) or not e.grid_mode or not e.snap_party then return false; end
+    local e, editing = s.edit_mode, edit_mode.active();
+    if not (editing or state.shift_drag) or not e.grid_mode or not e.snap_party then return false; end
     for _, element in ipairs(elements.movable) do
         local id = element.id;
-        if snap.on(s, id) and elements.on(s, id) and not elements.locked(s, id) then return true; end
+        if snap.on(s, id) and elements.on(s, id) and (editing or not elements.locked(s, id)) then return true; end
     end
     return false;
 end
 
--- Whether the settings window has the Party list buffs panel, without loading the window to ask.
+-- Whether the settings window has the Party list page, without loading the window to ask.
 local function party_panel_open()
     local frame = package.loaded['ui.panel_frame'];
     return frame ~= nil and frame.opened() == 'party_ui';
@@ -1188,9 +1414,12 @@ local function needs_party_roster()
         or effect_filters.compile(s.effect_filters).needs_jobs or wants_party_list(s);
 end
 
+-- What the recasts are read for, worked out again into the same table at each refresh.
+local recast_wants={};
 local function recast_options()
     local s=state.settings;
-    local options={enabled=false,spells=false,abilities=false,items=false};
+    local options=recast_wants;
+    options.enabled,options.spells,options.abilities,options.items=false,false,false,false;
     for key,kind in pairs(defaults.recast_panels) do
         if defaults.panel_enabled(s,key) then
             if kind=='all' then
@@ -1219,6 +1448,11 @@ local function recast_options()
     options.enabled=options.spells or options.abilities or options.items;
     return options;
 end
+
+-- The roster a refresh that reads no party list gives. Nothing writes into it but that refresh.
+local idle_roster={valid=false,members={}};
+-- The options alerts:update gets, refilled at each refresh. It reads them only while it runs.
+local alert_options={enrich=enrich_rule};
 
 -- The first refresh after a load times its parts for /vg report (first_refresh.*); later ones time none. true starts
 -- the parts when the load asked for them; a name records the part since the last.
@@ -1263,11 +1497,14 @@ refresh = function(t, force_roster)
         state.job_seen=true;
     end
     -- The queue is taken first: an observation that can't be read goes with its frame, not again on every refresh.
+    -- The packets queue into the one the refresh before emptied, and this one is emptied once the tracker has it.
     local queue=state.queue;
-    state.queue={};
+    state.queue,state.spare_queue=state.spare_queue or {},nil;
     -- Duration overrides and learned times set the estimates first, and mark your own casts to learn from.
     require('core.durations').prepare(queue,state.settings,snapshot);
     tracker:observe(queue,t,snapshot);
+    for index=#queue,1,-1 do queue[index]=nil; end
+    state.spare_queue=queue;
     tracker:reconcile(snapshot,t);
     split('first_refresh.tracker');
     local screen=imgui.GetIO().DisplaySize;
@@ -1309,8 +1546,15 @@ refresh = function(t, force_roster)
     if force_roster or needs_party_roster() then
         state.roster=party_roster.read(t,snapshot);
         state.roster_ready=needs_party_roster();
+        -- How far each member is from you, for Party list, only while it and the distance are on
+        -- (core/party_distance.lua).
+        if state.settings.party_ui.enabled and state.settings.party_ui.distance then
+            require('core.party_distance').mark(state.roster,snapshot,state.settings.party_ui);
+        end;
     else
-        state.roster={valid=false,members={},typing=snapshot.chat_open==true};
+        -- With no party list read, one roster stands in, with only whether you are typing filled again.
+        idle_roster.typing=snapshot.chat_open==true;
+        state.roster=idle_roster;
         state.roster_ready=false;
     end
     split('first_refresh.roster');
@@ -1333,6 +1577,7 @@ refresh = function(t, force_roster)
     -- before it can't let them draw without XI View or the game's party list. If a command at the title screen let
     -- them draw with the defaults, they wait again from here for what these settings ask for.
     if state.identity and warmup.asked() then state.ready=false; end;
+    ready_sounds();
     -- Each display's show conditions, from where you are now.
     conditions.update(state.settings,snapshot);
     state.party_subjects,state.party_remapped=party_subjects(state.view);
@@ -1358,17 +1603,17 @@ refresh = function(t, force_roster)
     if state.settings.diagnostics and state.settings.diagnostics.record then
         for _,event in ipairs(events) do
             state.report[#state.report+1]=store.copy(event);
-            if #state.report>state.settings.diagnostics.max_entries then table.remove(state.report,1); end
+            while #state.report>state.settings.diagnostics.max_entries do table.remove(state.report,1); end
         end
-    else state.report={}; end
-    alerts:update(state.view,events,state.settings.alerts.rules,t,{
-        enabled=state.settings.alerts.enabled,
-        muted=state.settings.alerts.muted,
-        quiet=state.settings.alerts.quiet_events and (snapshot.in_event or snapshot.dead or not snapshot.valid),
-        watch_ids=state.settings.watch_ids,list_debuffed=state.settings.panels.watch.list_debuffed,
-        enrich=enrich_rule,
-        enrich_context=alert_names(),
-    });
+    elseif #state.report>0 then state.report={}; end
+    alert_options.enabled=state.settings.alerts.enabled;
+    alert_options.muted=state.settings.alerts.muted;
+    -- When to show on Alerts holds back every alert, its chat line and sound too, not only its notice.
+    alert_options.quiet=state.settings.alerts.quiet_events and (snapshot.in_event or snapshot.dead or not snapshot.valid)
+        or not conditions.shown('notices');
+    alert_options.watch_ids,alert_options.list_debuffed=state.settings.watch_ids,state.settings.panels.watch.list_debuffed;
+    alert_options.enrich_context=alert_names();
+    alerts:update(state.view,events,state.settings.alerts.rules,t,alert_options);
     state.view.notices=alerts:view(t);
     state.sampled=t;
     -- The first snapshot of the player in the new zone ends the wait of its zone window in /vg report.
@@ -1399,22 +1644,33 @@ local function hidden_by_rules(settings,snapshot)
 end;
 
 -- A copy parked by a save that failed on a character since switched away from is written once its file can
--- be. That character's shared-layout publish waits for its next login.
+-- be. That character's shared-layout publish waits for its next login. When another game saved the file since the
+-- copy was parked, the newer file stays and the copy is dropped.
 local function retry_unsaved(t,force)
     for path,copy in pairs(state.unsaved) do
         if path~=state.path and (force or t>=(state.unsaved_retry_at or 0)) then
-            if store.write(path,copy) then state.unsaved[path]=nil; else state.unsaved_retry_at=t+5; end
+            local ok,_,code=store.write(path,copy,state.unsaved_base[path]);
+            if ok or code=='changed' then
+                state.unsaved[path],state.unsaved_base[path]=nil,nil;
+                if not ok then
+                    say('The change made here before you switched characters was not saved, because another game saved '
+                        ..store.name(path)..' since. The newer file was kept.');
+                end
+            else state.unsaved_retry_at=t+5; end
         end
     end
 end;
 
 -- What Present hands the party list strips. Present refills the values each frame, so the callbacks are made once.
 local party_options={
-    begin_edit=function() callbacks.changed('before','Party layout'); end,
+    -- Each strip drag is a step of its own. It closes any step still open first, even one the last strip drag left, as a
+    -- strip drag saves nothing when it ends.
+    begin_edit=function() checkpoint(); callbacks.changed('before','Party layout'); end,
     end_edit=function() end,
     changed=function() callbacks.changed('after',nil,'party'); end,
 };
 local function present()
+    state.frame=state.frame+1;
     local t=now();
     local gui_ok,gui_visible=pcall(read_gui_visible);
     local gui_hidden=gui_ok and gui_visible==false;
@@ -1441,7 +1697,7 @@ local function present()
         state.wake = false;
     end
     if t~=state.sampled then tracker:project(state.view,t,state.party_remapped); recasts:project(state.recasts,t); end
-    local focused=game_focused();
+    local focused=game_focused(t);
     callbacks.focused=focused;
     local ok,shift=true,false;
     if focused then ok,shift=pcall(shift_held); end;
@@ -1483,11 +1739,11 @@ local function present()
     if state.settings.shared_layout and not state.dirty and not state.publish_pending and t-state.shared_at>2 and not held then
         -- The file this character last read or wrote is in its settings already.
         local layout,issue,unchanged=saved_profiles:read_layout();
-        if not layout and issue then problem(issue); end
+        if not layout and issue then shared_problem(issue); elseif unchanged then shared_problem(nil); end
         if layout and not unchanged then
             local before=(#state.history>0 or #state.redo>0 or state.transaction) and shared_layouts(state.settings);
             local loaded,why,found,changed=saved_profiles:load_layout(state.settings,nil,layout);
-            if not loaded and why then problem(why); end
+            if not loaded and why then shared_problem(why); elseif loaded then shared_problem(nil); end
             if loaded and found then
                 state.shared_value=profiles.capture_layout(state.settings);
                 if changed~=false then
@@ -1501,7 +1757,7 @@ local function present()
     local s=state.settings;
     local visibility=effect_filters.compile(s.effect_filters);
     if visibility.active and (state.filter_snapshot~=state.snapshot or state.filter_roster~=state.roster) then
-        state.filter_recipients=effect_filters.recipients(state.snapshot,state.roster);
+        state.filter_recipients=effect_filters.recipients(state.snapshot,state.roster,state.filter_recipients);
         state.filter_snapshot,state.filter_roster=state.snapshot,state.roster;
     end;
     callbacks.effect_filters=visibility;
@@ -1511,11 +1767,26 @@ local function present()
     -- Replace the game's buff icons (core/game_buffs.lua) is in effect while the settings ask for it, the displays are
     -- ready, and neither /vg hide nor the game's hidden interface hides them. It hands back what the game's + menu is
     -- on, for the cursor on the self panels (ui/hud.lua), and a line to say when it could not start or had to stop.
-    local replace=not displays_hidden and state.ready~=false and defaults.game_buffs_replaced(s)==true;
+    -- A display that keeps failing draws none of Vantage's icons in their place, so the game draws its own meanwhile.
+    -- So does When to show hiding both self panels, outside edit mode. With one of them shown it still stands in.
+    local replace=not displays_hidden and state.ready~=false and state.display_failures<3 and defaults.game_buffs_replaced(s)==true
+        and (callbacks.editing or conditions.shown('self_buffs') or conditions.shown('self_debuffs'));
+    -- Its client searches are warmup steps, a pattern each. Until they have run the game draws its own icons.
+    if replace and warmup.need('buffs') then replace=false; end;
     local watched,pick,notice=pcall(require('core.game_buffs').update,replace);
     callbacks.menu_pick=watched and pick or nil;
     if not watched then keeps_failing('The game\'s buff icons could not be replaced.',pick);
-    elseif notice then say(notice); end;
+    -- A client that can't start hands back its line each time it is asked again, and When to show can ask on every
+    -- engage, so the same line is said only once.
+    elseif notice and notice~=state.buffs_notice then state.buffs_notice=notice; say(notice); end;
+    -- Replace the game's pet bar (core/game_pet_bar.lua), in effect on the same terms: the Pet display stands in for
+    -- the game's own pet line, so the game draws its own whenever Vantage's can't show, or its When to show hides it.
+    local replace_pet=not displays_hidden and state.ready~=false and state.display_failures<3 and defaults.game_pet_bar_replaced(s)==true
+        and (callbacks.editing or conditions.shown('pet'));
+    if replace_pet and warmup.need('petbar') then replace_pet=false; end;
+    local held,pet_notice=pcall(require('core.game_pet_bar').update,replace_pet);
+    if not held then keeps_failing('The game\'s pet bar could not be replaced.',pet_notice);
+    elseif pet_notice and pet_notice~=state.pet_notice then state.pet_notice=pet_notice; say(pet_notice); end;
     measured=performance and performance.now();
     -- Size labels drawn this Present keep clear of the displays drawn in it and in the last one.
     require('ui.resize').frame();
@@ -1530,6 +1801,8 @@ local function present()
     elseif hud.cancel_gesture then
         hud.cancel_gesture();
     end
+    -- The panels are drawn, or are hidden on purpose: what fails from here on leaves the game's buff icons replaced.
+    state.panels_drawn=true;
     if blocked then
         if hud.cancel_notice_gesture then hud.cancel_notice_gesture(); end
         if window.cancel_resize then window.cancel_resize(); end
@@ -1546,14 +1819,20 @@ local function present()
     -- The strips' show conditions hide them, unless their samples or edit mode show them.
     if state.ready~=false and not party_waits and not displays_hidden and not treasure_open and (s.party_ui.preview or callbacks.editing or require('core.conditions').shown('party_ui')) then
         party_options.shift,party_options.global_style,party_options.cooldowns=callbacks.shift and not callbacks.editing,s.style,s.party_cooldowns;
-        -- A strip's Shift drag snaps by the main page's Grid and snapping settings.
-        party_options.settings,party_options.revision=s,state.settings_revision;
+        -- In edit mode a panel of its own leaves the mouse and the keys to edit mode, one that scrolls too.
+        party_options.editing=callbacks.editing;
+        -- A strip's Shift drag snaps by the snapping settings.
+        party_options.settings,party_options.revision=s,callbacks.look_revision();
         party_options.input_blocked=over_editor;
         -- Party list samples go over an open settings window, outside edit mode.
         party_options.samples_over=s.window.open==true and not callbacks.editing;
         party_options.effect_filters,party_options.effect_recipients=visibility,callbacks.effect_recipients;
         native_hud.draw(state.roster, state.party_subjects or {}, s.party_ui, t, party_options);
-    else native_hud.cancel_layout_gesture(); end
+    else
+        -- Strips that aren't drawn say nothing of the room beside the game's list.
+        native_hud.no_room=false;
+        native_hud.cancel_layout_gesture();
+    end
     if performance then performance.record('draw.party',measured);end;
     -- Edit mode's outlines and bar go over every display drawn above.
     if not blocked and not displays_hidden then require('ui.edit_mode').draw(s,callbacks);
@@ -1635,6 +1914,12 @@ local function warmup_list()
             note='Runs once a display needs the game\'s party list.'},
         {group='names',deferred=true,displays=false,steps=steps('core.name_anchor'),what='the name points for overhead icons',
             note='Runs once overhead icons are on.'},
+        {group='sounds',deferred=true,displays=false,steps=sound_steps(),what='the alert sounds',
+            note='Runs once an alert rule has a sound.'},
+        {group='buffs',deferred=true,displays=false,steps=steps('core.game_buffs'),what='the game\'s buff icon drawing',
+            note='Runs once Replace the game\'s buff icons is ticked.'},
+        {group='petbar',deferred=true,displays=false,steps=steps('core.game_pet_bar'),what='the game\'s pet bar drawing',
+            note='Runs once Replace the game\'s pet bar is ticked.'},
     };
 end;
 
@@ -1677,6 +1962,11 @@ ashita.events.register('unload','vantage_unload',function()
         local clean,why=require('core.game_buffs').release();
         if not clean then say(why); end;
     end);
+    -- And Replace the game's pet bar (core/game_pet_bar.lua).
+    close(function()
+        local clean,why=require('core.game_pet_bar').release();
+        if not clean then say(why); end;
+    end);
     -- No warmup step runs after this. What the steps uploaded so far is released below with the rest.
     close(warmup.reset);
     close(function()finish_layout(true);end);
@@ -1716,6 +2006,19 @@ local function check_device()
     if not rebuilt then problem('Icons could not be made again for the new graphics device. '..tostring(why)); end;
 end;
 
+-- Whether what an observation tells of should show at once: it is about you, your pet, your party or alliance, your
+-- target or a unit on the Watch list, or you or your pet did it. In a crowd most effects land on strangers from
+-- strangers, and those wait for the next refresh, a tenth of a second on at most. One that names no unit shows at once.
+local function shows_at_once(observation)
+    local id,source,snapshot=observation.entity_id,observation.source,state.snapshot;
+    if id==nil or id==snapshot.id or source==snapshot.id then return true; end
+    local pet,target=snapshot.pet,snapshot.target;
+    if pet and (id==pet.id or source==pet.id) or target and id==target.id then return true; end
+    for _,member in ipairs(snapshot.party or no_subjects) do if member.id==id then return true; end end
+    for _,held in ipairs(state.settings.watch_ids) do if held==id then return true; end end
+    return false;
+end;
+
 -- Whether a display shows this entity or the Watch list holds it.
 local function shown_or_watched(id)
     for _,subject in ipairs(state.view.subjects or no_subjects) do if subject.id==id then return true; end end
@@ -1728,10 +2031,11 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
     local id=e.id;
     if refresh_packets[id] then state.wake=true; end
     -- Each read of an event's data copies the packet, so a packet the observer takes is read once, here, for it and
-    -- the overhead icons.
+    -- the overhead icons. An action is read from its bits, so it only needs its size.
     local observed=not observer.interested or observer.interested(id);
     local size,data=0,nil;
-    if observed and client.packet_size then size,data=client.packet_size(e); end
+    if observed and id==0x028 and type(e.size)=='number' and e.size>=0 then size=e.size;
+    elseif observed and client.packet_size then size,data=client.packet_size(e); end
     -- Entity indexes and mob claims for the overhead icons, and the blue magic you have set.
     local read,why=pcall(overhead.packet,e,data and size,data);
     if not read then keeps_failing('An entity update could not be read.',why); end;
@@ -1775,12 +2079,13 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
             state.queue[#state.queue+1]=observation;
         end
         -- A hit only takes effects off, and a fight sends many, so it waits for the next refresh, as does an entity
-        -- leaving view that no display shows. A party cooldown wakes it only while the watch keeps them. Your use of
-        -- an ability waits too, paralyzed or not: the client's recast list shows its cooldown.
+        -- leaving view that no display shows and an effect the player has no hand in (shows_at_once). A party cooldown
+        -- wakes it only while the watch keeps them. Your use of an ability waits too, paralyzed or not: the client's
+        -- recast list shows its cooldown.
         local kind=observation.kind;
         if kind=='cooldown' or kind=='cooldown_reset' then woken=woken or state.settings.party_cooldowns.enabled;
         elseif kind=='despawn' then woken=woken or shown_or_watched(observation.entity_id);
-        elseif kind~='damage' and kind~='used' and kind~='paralyzed' then woken=true; end
+        elseif kind~='damage' and kind~='used' and kind~='paralyzed' then woken=woken or shows_at_once(observation); end
     end
     -- A zone change the client takes starts the zone window in /vg report.
     if id==0x00A and size>=50 or id==0x00B and size>=5 then
@@ -1792,8 +2097,8 @@ ashita.events.register('packet_in','vantage_packet_in',function(e)
 end);
 
 -- Your request to use a job ability (0x01A: action 9 at 0x0A, the ability's id at 0x0C), for the recast reader. Paralysis
--- stops a use with an action that names no ability (core/recasts.lua). A request another addon made still goes to the
--- server, so only one kept from going is left out.
+-- stops a use with an action that names no ability (core/recasts.lua). A request something else in the game made still goes
+-- to the server, so only one kept from going is left out.
 ashita.events.register('packet_out','vantage_packet_out',function(e)
     if e.id~=0x01A or e.blocked then return; end
     local size,data=client.packet_size(e);
@@ -1811,7 +2116,8 @@ local function overhead_frame()
     local started=performance and performance.now();
     local t=now();
     -- Their show conditions hide the blocks over heads; the samples still show.
-    local lines=overhead.update(state.view,state.settings,state.snapshot,t,state.hidden or state.gui_off,not conditions.shown('overhead'));
+    local lines=overhead.update(state.view,state.settings,state.snapshot,t,state.hidden or state.gui_off,not conditions.shown('overhead'),
+        callbacks.effect_filters,callbacks.effect_recipients);
     overhead_icons.draw(overhead.plan,state.party_subjects,state.settings,t,callbacks.effect_filters,callbacks.effect_recipients);
     overhead_preview.draw(state.settings,state.snapshot,t,callbacks.effect_filters,callbacks.effect_recipients);
     if performance then performance.record('frame.overhead',started);end;
@@ -1831,9 +2137,10 @@ end);
 ashita.events.register('d3d_present','vantage_present',function()
     local began=performance and performance.now();
     check_device();
-    -- This Present's budgets: party icons made at their drawn size, and new 32 px status and action icon textures. The
-    -- sized icons let go of earlier are released.
+    -- This Present's budgets: party icons made at their drawn size, and new 32 px status icons, action icon textures and
+    -- item pictures. The sized icons let go of earlier are released, your icon sets' too.
     pcall(require('ui.client_assets').icon_frame);
+    pcall(require('ui.icon_packs').frame);
     -- This Present's warmup steps, before anything reads or draws.
     pcall(warmup.frame,began);
     settle_ready();
@@ -1849,6 +2156,7 @@ ashita.events.register('d3d_present','vantage_present',function()
     text_metrics.begin_frame();
     if client.frame_begin then client.frame_begin(); end;
     local mark=imgui_scopes.depth();
+    state.panels_drawn=false;
     local ok,why=pcall(present);
     -- A display that failed partway leaves the windows, fonts and styles it opened closed again.
     if not ok then imgui_scopes.close(mark); end;
@@ -1857,7 +2165,19 @@ ashita.events.register('d3d_present','vantage_present',function()
     if not ok then
         finish_layout(true);
         keeps_failing('The display could not update.',why);
-    end;
+        -- With the game's buff icons skipped and none of Vantage's drawn, no buff icons would show at all. The third
+        -- frame in a row that fails before the panels are drawn gives the game its own back, here, as a frame can
+        -- fail before it gets to them. They are replaced again once the panels draw. One or two bad frames change
+        -- nothing, so nothing flickers, and a frame that fails after the panels drew still shows your effects.
+        state.display_failures=state.panels_drawn and 0 or state.display_failures+1;
+        if state.display_failures==3 then
+            local asked,_,notice=pcall(require('core.game_buffs').update,false);
+            if asked and notice then say(notice); end;
+            -- The game's pet bar comes back the same way.
+            local released,pet_notice=pcall(require('core.game_pet_bar').update,false);
+            if released and pet_notice then say(pet_notice); end;
+        end;
+    else state.display_failures=0; end;
     after_present();
     local placed,issue=pcall(overhead_frame);
     if not placed then keeps_failing('Overhead icons could not be drawn.',issue); end;
@@ -1886,6 +2206,11 @@ local function run_command(e)
     local args=e.command:args();
     finish_layout();
     local command=(args[2] or ''):lower();
+    -- These take no word after them. One typed there, as in /vg hide party for /vg party hide, changes nothing and
+    -- shows the usage line, as the commands that take a word do with one too many.
+    if args[3] and ({settings=true,filters=true,show=true,hide=true,lock=true,unlock=true,undo=true,redo=true,report=true,chatsample=true})[command] then
+        say('Usage: /vg '..command); return;
+    end;
     if command=='' or command=='settings' then
         if not state.settings.window.open then
             show_settings('Home');
@@ -1902,9 +2227,14 @@ local function run_command(e)
         local choice=(args[3] or ''):lower();
         local labels={longest='longest remaining first',oldest='oldest applied first',remaining='soonest expiring first',name='by name'};
         if not labels[choice] or args[4] then say('Usage: /vg sort longest|oldest|remaining|name'); return; end;
+        -- When every display already sorts this way, nothing changes, so there's no Undo step and /vg undo would take
+        -- back an earlier change. It says so instead and saves nothing, as /vg minimal does.
+        local panels,same={'self_buffs','self_debuffs','target','party','watch'},state.settings.party_ui.effects.sort==choice;
+        for _,id in ipairs(panels) do same=same and state.settings.panels[id].sort==choice; end;
+        if same then say('Buffs and debuffs already sort '..labels[choice]..'.'); return; end;
         callbacks.changed('before','Buff and debuff sorting');
         state.settings.party_ui.effects.sort=choice;
-        for _,id in ipairs({'self_buffs','self_debuffs','target','party','watch'}) do state.settings.panels[id].sort=choice; end;
+        for _,id in ipairs(panels) do state.settings.panels[id].sort=choice; end;
         callbacks.changed('after'); state.wake=true;
         local saved=save();
         say('Buffs and debuffs now sort '..labels[choice]..'. Pinned effects stay first; saved custom orders remain available. /vg undo restores the previous sorting.'
@@ -1917,7 +2247,7 @@ local function run_command(e)
             show_settings('Party & alliance');
         elseif ({show=true,hide=true,preview=true,live=true,lock=true,unlock=true})[action] and not args[4] then
             strip_command(state.settings.party_ui,action);
-        else say('Usage: /vg party [config|show|hide|preview|live|lock|unlock]'); end
+        else say('Usage: /vg party [show|hide|preview|lock|unlock]'); end
     elseif command=='recasts' then
         local action=(args[3] or 'config'):lower();
         if action=='config' and not args[4] then show_settings('Recasts');
@@ -1935,14 +2265,25 @@ local function run_command(e)
                     if action=='show' then defaults.ensure_recast_kind(panel); end;
                 end;
             end;
-            if action=='show' then state.hidden=false; end;
+            -- Showing them resumes paused timer panels too, as the main page's recast ticks do, so they show.
+            if action=='show' then state.hidden,state.settings.enabled=false,true; end;
             callbacks.changed('after'); save(); state.wake=true;
-        else say('Usage: /vg recasts [config|combine|separate|show|hide]'); end;
+        else say('Usage: /vg recasts [combine|separate|show|hide]'); end;
     elseif command=='show' or command=='hide' then
         state.hidden=command=='hide';
     elseif command=='preview' then
+        local choice=args[3] and args[3]:lower();
+        if args[4] or (choice and choice~='on' and choice~='off') then
+            say('Usage: /vg preview [on|off]');
+            return;
+        end
         local s,shown=state.settings,true;
-        local ending=defaults.samples_showing(s);
+        -- on shows them on every display that is on, so with one panel showing its own it adds the rest.
+        local ending=choice~='on' and defaults.samples_showing(s);
+        if choice=='on' and defaults.samples_everywhere(s) or choice=='off' and not ending then
+            say(choice=='on' and 'Samples are showing.' or 'No samples are showing.');
+            return;
+        end
         callbacks.changed('before',ending and 'End samples' or 'Show samples');
         if ending then defaults.samples_off(s); else shown=defaults.samples_on(s); end
         callbacks.changed('after'); save();
@@ -1960,10 +2301,19 @@ local function run_command(e)
         end
         say(state.settings.style.minimal and 'No boxes or headings is on.' or 'No boxes or headings is off.');
     elseif command=='mute' then
-        callbacks.changed('before'); state.settings.alerts.muted=not state.settings.alerts.muted; callbacks.changed('after'); alerts:reset(); save();
+        local choice=args[3] and args[3]:lower();
+        if args[4] or (choice and choice~='on' and choice~='off') then
+            say('Usage: /vg mute [on|off]');
+            return;
+        end
+        local muted=choice=='on' or (choice==nil and not state.settings.alerts.muted);
+        if muted~=state.settings.alerts.muted then
+            callbacks.changed('before',muted and 'Mute alerts' or 'Unmute alerts');
+            state.settings.alerts.muted=muted; callbacks.changed('after'); alerts:hush(); save();
+        end
         say(state.settings.alerts.muted and 'Alerts are muted.' or 'Alerts are unmuted.');
     elseif command=='lock' or command=='unlock' then
-        callbacks.changed('before');
+        callbacks.changed('before',command=='lock' and 'Lock all' or 'Unlock all');
         for _,id in ipairs(defaults.panel_order) do state.settings.panels[id].locked=command=='lock'; end
         state.settings.party_ui.locked=command=='lock';
         state.settings.alerts.notice_locked=command=='lock';
@@ -1978,14 +2328,16 @@ local function run_command(e)
         local on;
         if choice=='on' then on=true; elseif choice=='off' then on=false; end;
         callbacks.edit_mode(on);
-        say(edit_mode.active() and 'Edit mode is on. Click a display to pick it; hold Shift and drag to move it. Esc or /vg edit ends it.'
-            or 'Edit mode is off. Every display stays where it is.');
+        say(edit_mode.active() and 'Arrange on screen is on. Click a display to pick it; hold Shift and drag to move it. Esc or /vg edit ends it.'
+            or 'Arrange on screen is off. Every display stays where it is.');
     elseif command=='watch' or command=='unwatch' then
         -- An ID typed goes by that ID alone. One that isn't a number never falls back to your target.
-        local id=tonumber(args[3]);
+        local id,target=tonumber(args[3]),state.snapshot.target;
         if args[3]~=nil and not id then say(args[3]..' is not an entity ID. Type its number, or nothing for your target.');
+        -- With no ID, /vg watch takes an enemy, as Watch my target does. A player goes on the list only by a typed ID.
+        elseif not id and command=='watch' and target and target.kind=='player' then say('Target an enemy first.');
         else
-            id=id or (state.snapshot.target and state.snapshot.target.id);
+            id=id or (target and target.id);
             local ok,why=callbacks[command](id); if not ok then say(why); end
         end
     elseif command=='undo' or command=='redo' then
@@ -2004,6 +2356,9 @@ local function run_command(e)
             else say(path..' = '..told(value)); end
         else
             local current=customization.get(state.settings,path);
+            -- Spaces typed after the value aren't part of it, so a switch, a color, a choice or text in quotes reads as it
+            -- does without them.
+            raw=(raw or ''):match('^(.-)%s*$');
             if type(current)=='string' and raw:sub(1,1)=='"' and raw:sub(-1)=='"' then raw=raw:sub(2,-2); end
             local candidate,why=customization.set(state.settings,path,raw);
             -- What was stored, read back after tidying, so the line says what the setting holds now. One of the Grid
@@ -2022,7 +2377,7 @@ local function run_command(e)
                 -- Setting the window open this way tries a stopped one again too, even one still open.
                 if candidate.window.open and (path=='window.open' or path=='window') then state.settings_stopped=nil; end;
                 callbacks.changed('before','Set '..path); state.settings=candidate;
-                callbacks.changed('after'); alerts:reset();
+                callbacks.changed('after'); alerts:hush();
                 confirm(save());
             end
         end
@@ -2033,22 +2388,34 @@ local function run_command(e)
         for _,known in ipairs(require('ui.appearance').names) do if known:lower()==typed then name=known; end end
         local candidate=store.copy(state.settings);
         if name and require('ui.appearance').apply(candidate,name,{matching=true}) then
-            callbacks.changed('before','Skin: '..name); state.settings=candidate;
+            callbacks.changed('before','Skin: '..require('ui.appearance').labels[name]); state.settings=candidate;
             callbacks.changed('after'); save();
         else say('Choose Phoenix, Classic FFXI, Original FFXI, XI View, Frameless, High contrast, Ember, Mint, Lavender or Colorblind safe.'); end
     elseif command=='font' then
-        local name=table.concat(args,' ',3);
-        if name=='' then say('Usage: /vg font "Name"'); return; end;
+        local typed=table.concat(args,' ',3):lower();
+        if typed=='' then say('Usage: /vg font "Name"'); return; end;
+        -- A font matches without regard to case, as a skin does, by its name or by the name the main page's list shows
+        -- for it, so Ashita (Agave) finds Agave. Ashita, which that list also shows as Ashita (Agave), finds it too. The
+        -- first match in the list wins, as a custom font can have the name the list shows for another. A name no font
+        -- has is refused, as the displays would only fall back to the Ashita font for it (ui/fonts.lua).
+        for key,label in pairs(fonts.labels) do if key:lower()==typed then typed=label:lower(); end end
+        local name,shown=nil,{};
+        for _,known in ipairs(fonts.names()) do
+            shown[#shown+1]=fonts.labels[known] or known;
+            if not name and (known:lower()==typed or shown[#shown]:lower()==typed) then name=known; end
+        end
+        if not name then say('Choose '..table.concat(shown,', ',1,#shown-1)..' or '..shown[#shown]..'.'); return; end;
         local candidate,why=customization.set(state.settings,'style.font',name);
         if not candidate then say(why);
         else callbacks.changed('before','Font'); state.settings=candidate; callbacks.changed('after'); save(); end
     elseif command=='starter' then
         local ok,why=callbacks.starter(table.concat(args,' ',3),false); if not ok then say(why); end
     elseif command=='copy' then
-        local panel=(args[3] or 'self_buffs'):lower();
+        -- Any display's key copies, the recast ones too, so a word that is none is refused with all of them.
+        local panel,keys=(args[3] or 'self_buffs'):lower(),defaults.panel_order;
         if state.settings.panels[panel] then
             local ok,why=callbacks.copy_shown(panel,(args[4] or ''):lower()=='details'); if not ok then say(why); end
-        else say('Choose self_buffs, self_debuffs, target, party or watch.'); end
+        else say('Choose '..table.concat(keys,', ',1,#keys-1)..' or '..keys[#keys]..'.'); end
     elseif command=='report' then
         local ok,why=callbacks.export_report(); if not ok then say(why); end
     elseif command=='overhead' then
@@ -2071,6 +2438,9 @@ local function run_command(e)
     elseif command=='chatsample' then callbacks.chat_sample();
     elseif command=='profile' then
         local operation=(args[3] or ''):lower();
+        -- What each one takes. A name of several words goes in quotes, so a word past these is refused with the usage
+        -- line. A name typed without quotes then never reaches the profile its first word names.
+        local usage={save='"Name"',overwrite='"Name"',load='"Name"',delete='"Name"',rename='"Old" "New"',link='[job] "Name"'};
         local ok,why;
         if operation=='list' then
             local names,issue=callbacks.profile_list();
@@ -2080,7 +2450,9 @@ local function run_command(e)
             -- The job ID is optional, so the name follows it or takes its place. A quoted name is a name, even
             -- one that reads as a number.
             local job=not e.command:lower():find('link%s+"') and tonumber(args[4]);
-            ok,why=callbacks.profile_link(job or state.snapshot.job,args[job and 5 or 4] or '');
+            if args[job and 6 or 5] then why='Usage: /vg profile link '..usage.link;
+            else ok,why=callbacks.profile_link(job or state.snapshot.job,args[job and 5 or 4] or ''); end
+        elseif usage[operation] and args[operation=='rename' and 6 or 5] then why='Usage: /vg profile '..operation..' '..usage[operation];
         elseif args[4] then
             if operation=='save' then ok,why=callbacks.profile_save(args[4],false);
             elseif operation=='load' then ok,why=callbacks.profile_load(args[4]);
@@ -2090,12 +2462,14 @@ local function run_command(e)
         end
         if not ok then say(why or '/vantage profile save|overwrite|load|delete|rename|recover|list|link [job] "Name"'); end
     elseif command=='reset' then
+        -- One scope. A second word, as in /vg reset party ui for party_ui, would reset Party members' timers instead.
+        if args[4] then say('Usage: /vg reset [scope]'); return; end;
         local last,section=state.history[#state.history],args[3] and args[3]:lower();
         local ok,why=callbacks.reset(section);
         -- A reset with nothing to change makes no step, and Undo would take back something else.
         say(ok and 'Reset '..(section or 'all settings')..'.'..(state.history[#state.history]~=last and ' /vg undo steps back one change.' or '') or why);
     else
-        say('/vantage: settings, sort [longest|oldest|remaining|name], filters, party, alliance, recasts, show, hide, preview, minimal [on|off], mute, lock, unlock, edit [on|off], watch, unwatch, undo, redo, profile, reset, get, set, skin, font, starter, copy, report, overhead [on|off|preview|calibrate], chatsample.');
+        say('/vantage: settings, sort [longest|oldest|remaining|name], filters, party, recasts, show, hide, preview [on|off], minimal [on|off], mute [on|off], lock, unlock, edit [on|off], watch, unwatch, undo, redo, profile, reset, get, set, skin, font, starter, copy, report, overhead [on|off|preview|calibrate], chatsample.');
     end
 end;
 
@@ -2117,4 +2491,4 @@ ashita.events.register('command','vantage_command',function(e)
 end);
 
 if VANTAGE_TEST_MODE then return {state=state,tracker=tracker,alerts=alerts,callbacks=callbacks,refresh=refresh,cooldowns=cooldown_watch,
-    pulses=ready_pulses,rolls=roll_watch,pet=pet_watch}; end
+    pulses=ready_pulses,rolls=roll_watch,pet=pet_watch,party_subjects=party_subjects}; end

@@ -26,7 +26,7 @@ for _, page in ipairs({{'Display','self_buffs','show'},{'Display','self_buffs','
 end
 s.window.tab = 'Display'
 frame.open('notices','show')
-MOCK.clicks['Haste reminder##frame'] = true
+MOCK.clicks['Haste ending##frame'] = true
 window.draw(s,view,cb)
 assert(#s.alerts.rules == 1 and s.alerts.rules[1].effect == 33 and s.alerts.rules[1].sound == '')
 MOCK.clicks['Test this alert##frame'] = true

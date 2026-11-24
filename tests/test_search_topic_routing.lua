@@ -1,6 +1,6 @@
--- A search topic about a tab or a row that names no display (ui/search_index.lua) opens the display open now when it has
--- that tab or row, and otherwise the first that does, never one without it (ui/panel_frame.lua frame.route). The topics
--- about a panel go to a timer or recast panel.
+-- A search topic about a tab or a row that names no display (ui/search_index.lua) opens the display open now when it shows
+-- that tab or row, and otherwise the first that does, never one without it (ui/panel_frame.lua frame.route). A tab its
+-- display hides now counts as lacking. The topics about a panel go to a timer or recast panel.
 local store = require('core.store');
 local SNAP = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, level = 75, self_known = true, self_effects = {},
     party = {}, entities = { [1001] = { id = 1001, index = 0x400, name = 'Tester', kind = 'player' } } };
@@ -19,6 +19,8 @@ local function topic(query, label)
 end
 assert(topic('fallback', 'What a display moves with').destination == 'Moves with', 'What a display moves with goes to the row.');
 assert(topic('dynamis', 'When each display shows').destination == 'when', 'When each display shows goes to the tab.');
+assert(topic('two-hour', 'Party cooldowns: two-hours, key abilities and Utsusemi').destination == 'filters',
+    'The Party cooldowns topic goes to Filters, where the watch list is.');
 for _, label in ipairs({ 'What a panel moves with', 'Panel placement, locking and size' }) do
     local result = topic('attach', label) or topic('unlock', label);
     assert(result and result.timers == true, label .. ' goes to a timer or recast panel.');
@@ -29,8 +31,12 @@ local displays = frame._displays;
 local function by(id) for _, display in ipairs(displays) do if display.id == id then return display; end end end
 local function has(display, destination)
     if display.plain then return false; end
-    if destination == 'when' then return display.tabs.when ~= nil; end
-    return display.named[destination] ~= nil;
+    local tab = destination == 'when' and 'when' or display.named[destination] and display.named[destination].tab;
+    if not (tab and display.tabs[tab]) then return false; end
+    local on = display.tab_on and display.tab_on[tab];
+    if not on then return true; end
+    local s = app.state.settings;
+    return on({ s = s, id = display.id, p = require('ui.elements').config(s, display.id) }) and true or false;
 end
 local lacking = 0;
 for _, destination in ipairs({ 'Moves with', 'when' }) do
@@ -46,3 +52,15 @@ for _, destination in ipairs({ 'Moves with', 'when' }) do
     end
 end
 assert(lacking > 0, 'Fixture: a display lacks one of them.');
+
+-- Every topic that names a row on a display opens a display that has that row. Filters is the tab's name.
+local tabs, lost = { show = true, look = true, filters = true, place = true, when = true, Filters = true }, {};
+for _, row in ipairs(require('ui.search_index').entries) do
+    local destination = row[4];
+    if row[1] == 'Display' and destination and not tabs[destination] then
+        frame.route('Display', row[6] ~= nil and frame.timer_panel(row[6] == 'status') or row[5], destination);
+        local to = by(frame.opened());
+        if not (to and to.named[destination]) then lost[#lost + 1] = row[2] .. ' -> ' .. destination; end;
+    end
+end
+assert(#lost == 0, 'These topics open a display without their row: ' .. table.concat(lost, '; '));

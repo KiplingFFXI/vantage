@@ -44,7 +44,7 @@ local active={0,5,10,11,12,13,14,15,16};
 local ticks=600;
 local late_spell=false;
 local manager={
-    GetSpellTimer=function(_,id) count('timers');return (id>=2 and id<=5 or late_spell and id==6) and ticks or 0;end,
+    GetSpellTimer=function(_,id) count('timers');return (id>=2 and id<=5 or late_spell and id==7) and ticks or 0;end,
     GetAbilityTimerId=function(_,slot) count('timers');return active[slot+1] or 255;end,
     GetAbilityTimer=function(_,slot) count('timers');return active[slot+1] and ticks or 0;end,
 };
@@ -159,12 +159,12 @@ for _,event in ipairs(events) do
 end;
 local read_count=counts.timers;model:update(snapshot,now,{enabled=false});assert(counts.timers==read_count and #model:view(now).rows==0);
 
--- A spell the client has no name for is never read and makes no row, whatever its timer holds. The spells to read are
--- found once, not on each sample.
+-- A spell the client has no name for is never read and makes no row, whatever its timer holds, even one on
+-- data/actions.lua's list as spell 7 is. The spells to read are found once, not on each sample.
 late_spell=true;ticks=600;
 local read_ids,read_spell,looked_up={},manager.GetSpellTimer,counts.spells;
 manager.GetSpellTimer=function(self,id) read_ids[id]=(read_ids[id] or 0)+1;return read_spell(self,id);end;
 for _=1,5 do view=update();end;
-assert(read_ids[2]==5 and read_ids[6]==nil and not row(view,'spell',6) and row(view,'spell',2),'A spell with no name is not read');
+assert(read_ids[2]==5 and read_ids[7]==nil and not row(view,'spell',7) and row(view,'spell',2),'A spell with no name is not read');
 assert(counts.spells==looked_up,'The spells to read are found once');
 manager.GetSpellTimer=read_spell;

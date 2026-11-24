@@ -1,6 +1,6 @@
 -- Start over on Profiles and sharing. Put every display back where it started sends each display to the spot a fresh
 -- install's first frame gives it on this screen at the size it has now, with nothing it moves with and locked. Its size,
--- what it shows and how it looks stay, as do Grid mode and a group's panel of its own. It is one Undo step. Reset all
+-- what it shows and how it looks stay, as do Snap while moving and a group's panel of its own. It is one Undo step. Reset all
 -- settings puts every display in a fresh install's spots, and keeps profiles, job links, watched enemies and learned times.
 local store, defaults = require('core.store'), require('ui.defaults');
 local elements, setup, customization = require('ui.elements'), require('ui.setup_defaults'), require('core.customization');
@@ -77,19 +77,27 @@ local function said(text)
     return false;
 end;
 assert(said('Every display goes back to its first spot, locked. Looks and choices are kept.')
-    and said('Every display goes back to a fresh install: locked, in its first spot. Profiles, job links, watched enemies and learned times are kept.'),
+    and said('Every display goes back to a fresh install: locked, in its first spot. Profiles, job links, watched enemies and learned times are kept. Share settings across my characters turns off.'),
     'Start over says what each button does.');
 local before = store.copy(s);
 MOCK.clicks['Put every display back where it started'] = true;
 window.draw(s, { rows = {}, context = { valid = true, entities = {} } }, app.callbacks);
 assert(not MOCK.clicks['Put every display back where it started'], 'The button is on the page.');
+-- It asks first, and nothing moves until the answer.
+assert(elements.config(app.state.settings, 'self_buffs').x == 701 and #app.state.history == 0, 'The button asks first.');
+MOCK.imgui_calls = {};
+window.draw(s, { rows = {}, context = { valid = true, entities = {} } }, app.callbacks);
+assert(said('Put every display back where it started? Every display goes back to its first spot, locked. Looks and choices are kept.'), 'It asks under the button.');
+MOCK.clicks['Put them back##look_profiles_put_back'] = true;
+window.draw(s, { rows = {}, context = { valid = true, entities = {} } }, app.callbacks);
+assert(not MOCK.clicks['Put them back##look_profiles_put_back'], 'Its answer is on the page.');
 at_first_spots('Put back', first_spots(kept_sizes));
 kept('Put back');
 s = app.state.settings;
 assert(s.panels.self_buffs.width == 444 and s.panels.self_buffs.mode == 'bars' and s.panels.self_buffs.bar_style == 'rail' and s.rolls.width == 345 and s.pet.width == 346,
     'Sizes and what a display shows stay.');
 assert(s.party_ui.groups[2].native_detached and s.party_ui.groups[2].detached_width == 500, 'A group\'s panel of its own stays a choice.');
-assert(s.style.font_size == 20 and s.edit_mode.grid_mode and s.edit_mode.grid == 24, 'Looks and Grid mode stay.');
+assert(s.style.font_size == 20 and s.edit_mode.grid_mode and s.edit_mode.grid == 24, 'Looks and Snap while moving stay.');
 assert(app.callbacks.history_status().undo_label == 'Reset displays' and #app.state.history == 1, 'It is one Undo step.');
 assert(app.callbacks.undo());
 s = app.state.settings;
@@ -108,9 +116,16 @@ assert(event.blocked, 'The command is taken.');
 at_first_spots('The command', first_spots(kept_sizes));
 kept('The command');
 
--- Reset all settings: the same spots, and it keeps what it says.
+-- Reset all settings: it asks first too, then the same spots, and it keeps what it says.
 moved();
-assert(app.callbacks.reset('all'));
+s = app.state.settings;
+s.window.open, s.window.tab = true, 'Profiles';
+MOCK.clicks['Reset all settings'] = true;
+window.draw(s, { rows = {}, context = { valid = true, entities = {} } }, app.callbacks);
+assert(#app.state.history == 0 and app.state.settings.style.font_size == 20, 'Reset all settings asks first.');
+MOCK.clicks['Reset all##look_profiles_reset_all'] = true;
+window.draw(s, { rows = {}, context = { valid = true, entities = {} } }, app.callbacks);
+assert(not MOCK.clicks['Reset all##look_profiles_reset_all'] and #app.state.history == 1, 'Its answer resets.');
 at_first_spots('Reset all', first_spots());
 kept('Reset all');
 s = app.state.settings;

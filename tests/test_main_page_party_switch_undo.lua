@@ -1,5 +1,5 @@
--- The main page's Party list buffs switch through the real settings window and vantage.lua: it turns the buffs beside
--- the game party list on and, with every group off, shows Your party only, as one named Undo step.
+-- The main page's Beside the party list tick for Party buffs, through the real settings window and vantage.lua: it
+-- turns Party list on and, with every group off, shows Your party only, as one named Undo step.
 local store = require('core.store');
 local custom = require('core.customization');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 1, self_known = true,
@@ -28,12 +28,12 @@ p.enabled, p.preview = false, true;
 for key in pairs(p.strips) do p.strips[key] = false; end;
 app.callbacks.changed('after'); assert(app.callbacks.save()); frame();
 local hidden_party, edits = store.copy(app.state.settings.party_ui), #app.state.history;
-frame('Party list buffs##main_party_ui');
+frame('Beside the party list##main_party_ui');
 local visible_party = store.copy(app.state.settings.party_ui);
 assert(visible_party.enabled and visible_party.preview
     and visible_party.strips.party and not visible_party.strips.alliance1 and not visible_party.strips.alliance2,
     'The switch shows Your party without turning on every group.');
-assert(#app.state.history == edits + 1 and app.callbacks.history_status().undo_label == 'Party list buffs',
+assert(#app.state.history == edits + 1 and app.callbacks.history_status().undo_label == 'Party list',
     'The switch is one named Undo step.');
 command('/vg undo'); assert(custom.equal(app.state.settings.party_ui, hidden_party), 'One Undo restores the prior party selection and display.');
 command('/vg redo'); assert(custom.equal(app.state.settings.party_ui, visible_party), 'One Redo shows them again.');

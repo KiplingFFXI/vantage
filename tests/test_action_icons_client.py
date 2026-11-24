@@ -79,7 +79,7 @@ class ClientActionArtworkTests(unittest.TestCase):
                 dds = self.assets[b'_action_dds_for_tests'](texture, 192)
                 converted = Image.open(io.BytesIO(dds)).convert('RGBA')
                 self.assertEqual(converted.size, original.size)
-                for before, after in zip(original.getdata(), converted.getdata()):
+                for before, after in zip(original.get_flattened_data(), converted.get_flattened_data()):
                     self.assertEqual(after[:3], before[:3], name)
                     self.assertEqual(after[3], min(255, int(before[3] * 192 * 2 / 255 + .5)), name)
 

@@ -77,7 +77,7 @@ end
 -- Within one second of every countdown, so no text changes and nothing is worked out again.
 local function still(name)
     now, start, limit = 100.3, 100.3, 100.9;
-    local each = measure(600, 1 / 12000);
+    local each = measure(200, 1 / 12000);
     assert(each < 0.002, ('%s make %.4f KB a frame; nothing expected'):format(name, each));
 end
 

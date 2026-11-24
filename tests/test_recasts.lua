@@ -10,7 +10,7 @@ local inventory={
     GetEquippedItem=function(_,slot) counted('equipment');counts.equipment_min=math.min(counts.equipment_min or slot,slot);counts.equipment_max=math.max(counts.equipment_max or slot,slot);return {Index=equipped[slot] or 0};end,
     GetContainerItem=function(_,container,index) counted('items');return items[container*256+index];end,
 };
-local spell_resources={[2]={Name={[1]='Cure'}},[4]={Name={[1]='Curaga'}},[1023]={Name={[1]='Last spell'}}};
+local spell_resources={[2]={Name={[1]='Cure'}},[4]={Name={[1]='Curaga'}},[1022]={Name={[1]='Unlearned spell'}},[1023]={Name={[1]='Last spell'}}};
 local ability_resources={
     [512]={Name={[1]='Provoke'},RecastTimerId=5},
     [513]={Name={[1]='Shared action'},RecastTimerId=5},
@@ -34,20 +34,25 @@ end};end;
 local recasts=require('core.recasts');
 local model=recasts.new();
 local snapshot={valid=true,id=1001,zone=230,job=1,name='Aster'};
+-- Spells 1022 and 1023 aren't on data/actions.lua's list. You know 1023, so it is still read, and 1022 never is.
+local learned={[1023]=true};
+local player={GetMainJob=function() return snapshot.job;end,HasSpell=function(_,id) counted('has_spell');return learned[id]==true;end};
+memory.GetPlayer=function() return player;end;
 local now=100;
 local function update(delta) now=now+(delta or 0.1);model:update(snapshot,now);return model:view(now);end;
 local function get(view,kind,id)
     for _,row in ipairs(view.rows) do if row.kind==kind and row.recast_id==id then return row;end;end;
 end;
 local function empty_events() assert(#model:drain_events()==0);end;
-spells[2]=600;spells[1023]=120;
+spells[2]=600;spells[1023]=120;spells[1022]=300;
 abilities[0]={id=0,timer=7200};abilities[3]={id=5,timer=1800};abilities[7]={id=5,timer=1200};
 abilities[4]={id=231,timer=14400};
 equipped[13]=2050;items[2050]={Id=17570,Index=2050,Extra=string.char(1)..string.rep('\0',11)};
 info[2050]={use_delay=30,remaining_charges=7};
 local view=update();
 assert(#view.rows==6 and view.valid,'Baseline contains active spells, unique ability timers and equipped item delays');
-assert(view.capabilities.reads.GetSpellTimer==3 and view.capabilities.reads.GetAbilityTimer==31 and view.capabilities.reads.GetAbilityTimerId==31,'Only the spells the client names are read');
+assert(view.capabilities.reads.GetSpellTimer==3 and view.capabilities.reads.GetAbilityTimer==31 and view.capabilities.reads.GetAbilityTimerId==31,'Only the spells on the list the client names, and the ones you know, are read: '..tostring(view.capabilities.reads.GetSpellTimer));
+assert(not get(view,'spell',1022),'A spell off the list you don\'t know has no row');
 assert(view.capabilities.reads.equipment==16 and view.capabilities.reads.inventory==1 and view.capabilities.item_timers);
 assert(counts.spell_min==2 and counts.spell_max==1023 and counts.slot_min==0 and counts.slot_max==30);
 assert(counts.equipment_min==0 and counts.equipment_max==15 and counts.name_min==0 and counts.name_max==2047);
@@ -62,7 +67,7 @@ for _,row in ipairs(view.rows) do
     assert(row.total==nil and row.start==nil,'A timer present atload has no inferred full duration');
 end;
 empty_events();
-local reads=counts.spells;local names_read=counts.ability_names;local spell_names_read=counts.spell_names;
+local reads=counts.spells;local names_read=counts.ability_names;local spell_names_read=counts.spell_names;local asked=counts.has_spell;
 model:project(view,now+0.5);
 assert(get(view,'spell',2).remaining==9.5 and counts.spells==reads,'Perframe projection performs no client reads');
 model:project(view,now+11);
@@ -72,13 +77,15 @@ spells[2]=0;abilities[3].timer=0;abilities[7].timer=0;info[2050].use_delay=-1;
 view=update();local events=model:drain_events();
 assert(#events==3 and not get(view,'spell',2) and not get(view,'ability',5) and not get(view,'item',17570));
 for _,event in ipairs(events) do assert(event.kind=='ready' and event.domain=='recast' and event.remaining==0 and not event.present and event.category~=nil);end;
-spells[2]=900;abilities[3].timer=1200;info[2050].use_delay=45;
+-- After a use the item's bytes hold its next use time (Phoenix src/map/packets/s2c/0x020_item_attr.cpp:97-102).
+spells[2]=900;abilities[3].timer=1200;info[2050].use_delay=45;items[2050].Extra=string.char(1,7,0,0,45)..string.rep('\0',7);
 view=update();events=model:drain_events();
 assert(#events==3 and get(view,'spell',2).total==15 and get(view,'spell',2).start==now,'An observedready-to-active edge records its horizon');
 for _,event in ipairs(events) do assert(event.kind=='started' and event.domain=='recast' and event.present);end;
 local instance=get(view,'spell',2).instance;
 spells[2]=894;update();empty_events();assert(counts.ability_names==names_read,'Ability metadata is indexed once');
 assert(counts.spell_names==spell_names_read,'The spells to read are found once');
+assert(asked and counts.has_spell==asked,'The spells you know off the list aren\'t asked about at every sample');
 spells[2]=1500;view=update();events=model:drain_events();
 assert(#events==1 and events[1].kind=='started' and get(view,'spell',2).instance~=instance and get(view,'spell',2).total==25);
 -- Partial read failures, disappearing slots and depleted gear do not meanready.
@@ -91,6 +98,7 @@ update();empty_events();
 assert(not get(model:view(now),'spell',2),'Recovery tozero after missing data isquiet');
 -- Item instances with the same id remain distinct by client inventory location.
 equipped[14]=2051;items[2051]={Id=17570,Index=2051,Extra=items[2050].Extra};
+items[2050].Extra=string.char(1,255,0,0,60)..string.rep('\0',7);
 info[2050]={use_delay=60,remaining_charges=255};info[2051]={use_delay=90,remaining_charges=2};
 view=update();events=model:drain_events();
 local twins={};for _,row in ipairs(view.rows) do if row.kind=='item' then twins[#twins+1]=row;end;end;
@@ -129,7 +137,7 @@ model:update(snapshot,now,{spells=false,abilities=false,items=false});assert(cou
 -- A changed native identity during the scan invalidates the entire sample.
 local native_id,native_zone,native_job=snapshot.id,snapshot.zone,snapshot.job;
 memory.GetParty=function() return {GetMemberServerId=function() return native_id;end,GetMemberZone=function() return native_zone;end};end;
-memory.GetPlayer=function() return {GetMainJob=function() return native_job;end};end;
+memory.GetPlayer=function() return {GetMainJob=function() return native_job;end,HasSpell=player.HasSpell};end;
 spells[2]=600;update();model:drain_events();
 local read_spell=manager.GetSpellTimer;
 manager.GetSpellTimer=function(self,id) local value=read_spell(self,id);if id==1023 then native_id=native_id+1;end;return value;end;
@@ -153,3 +161,8 @@ abilities[3]={id=5,timer=1200};update();model:drain_events();
 abilities[3].timer=0;abilities[30]={id=-1,timer=0};view=update();empty_events();
 assert(get(view,'ability',5).status=='unknown' and not view.capabilities.ability_complete,'A partial ability snapshot cannot confirm duplicate-slot completion');
 abilities[30]=nil;update();empty_events();
+-- A spell off the list you learn is read within a few seconds.
+learned[1022]=true;spells[1022]=300;
+for _=1,60 do update();end;
+assert(get(model:view(now),'spell',1022),'A spell off the list you learn gets a row');
+model:drain_events();

@@ -5,13 +5,13 @@ from pathlib import Path
 import re
 from urllib.parse import unquote, urlsplit
 
-from release_files import PRIVATE, ROOT, addon_files, addon_version, checked_bytes, linked
+from release_files import PRIVATE, ROOT, addon_files, addon_version, checked_bytes, holds_marker, linked, own_markers
 
 SKIP = {'.git', '.ci', '.venv', '__pycache__', 'dist'}
-TEXT = {'.lua', '.py', '.md', '.txt', '.yml', '.yaml', '.json', '.bat', '.ps1', '.asm', '.cpp', '.hpp', '.def'}
-# Output folders, the decoded client images the client check reads and the x86 LuaJIT the frame benchmark and
-# trace check run in; .gitignore keeps them out of commits.
-SKIP_FOLDERS = {'tests/out', 'tests/preview/fonts', 'tests/fixtures/clients', 'tests/luajit-x86'}
+TEXT = {'.lua', '.py', '.md', '.txt', '.yml', '.json', '.ps1'}
+# Output folders, the decoded client images the client check reads, the research decoder it decodes a DLL with and
+# the x86 LuaJIT the frame benchmark and trace check run in. .gitignore keeps them out of commits.
+SKIP_FOLDERS = {'tests/out', 'tests/preview/fonts', 'tests/fixtures/clients', 'tests/luajit-x86', 'research'}
 
 
 def public_files(root):
@@ -35,11 +35,17 @@ def anchors(text):
 def check(root=ROOT):
     root = Path(root).resolve()
     problems, documents = [], {}
+    # The lines of the marker file are checked in every public file, not just the archive's. The marker file itself
+    # holds them all, and .gitignore keeps it out of the repository. If it isn't ASCII, the walk reports that.
+    try:
+        own = own_markers(root / 'tools/private_markers.txt')
+    except UnicodeError:
+        own = ()
     for path in public_files(root):
         relative = path.relative_to(root).as_posix()
         if linked(path):
             problems.append(relative + ': linked source file')
-        if path.suffix.lower() not in TEXT and path.name not in {'LICENSE', '.gitignore', '.gitattributes', '.clang-format'}:
+        if path.suffix.lower() not in TEXT and path.name not in {'LICENSE', '.gitignore', '.gitattributes'}:
             if not (path.suffix.lower() == '.png' and relative.startswith('docs/images/')):
                 problems.append(relative + ': unexpected public file type')
             continue
@@ -48,7 +54,8 @@ def check(root=ROOT):
         except UnicodeError:
             problems.append(relative + ': expected ASCII text')
             continue
-        if PRIVATE.search(text):
+        if PRIVATE.search(text) or (relative != 'tools/private_markers.txt'
+                                    and holds_marker(text.encode('ascii'), own)):
             problems.append(relative + ': private path or credential marker')
         if path.suffix == '.md':
             documents[path.resolve()] = text

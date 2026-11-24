@@ -18,7 +18,7 @@ local SOURCES = { [4] = 'spell', [6] = 'ability', [11] = 'skill', [13] = 'pact' 
 local LEARNED_KINDS = { spell = true, ability = true, skill = true, pact = true, effect = true };
 -- Copy Image (66) shows its shadows as icons 444, 445 and 446, and every copy leaves the tracker as 66, so an effect
 -- override for one of them reads as 66 too, or it would never match.
-local COPY_IMAGE = { [444] = 66, [445] = 66, [446] = 66 };
+local COPY_IMAGE = require('data.shared_ids').copy_image;
 
 function durations.override()
     return { enabled = true, kind = 'spell', id = 0, name = '', mode = 'fixed', seconds = 60, offset = 0, percent = 100 };
@@ -28,15 +28,10 @@ function durations.make()
     return { overrides = {}, learn = false, learn_samples = 3, learned = {} };
 end
 
-local function table_of(value) return type(value) == 'table' and value or {}; end
+local table_of, choice = numbers.table_of, numbers.choice;
 
 local function number(value, low, high, fallback, integer)
     return (integer and numbers.clamp_round or numbers.clamp)(value, low, high, fallback);
-end
-
-local function choice(value, choices, fallback)
-    for _, item in ipairs(choices) do if value == item then return value; end end
-    return fallback;
 end
 
 -- A unit name as the game shows one: 1 to 40 characters with no control characters, without the spaces around it.
@@ -107,12 +102,25 @@ function durations.tidy(value)
     return value;
 end
 
+-- What kind of action made an observation's effect, and its id. With no kind, it is known by its effect alone.
+-- Phoenix sends some job abilities in the weapon skills' category 3, as Shadowbind and Angon are (sql/abilities.sql
+-- :77, :189), and the observer names them as abilities all the same. Feint's Evasion Down is taken from the next melee
+-- hit, so it goes by the ability that armed it (data/effects.lua reactive).
+local function made_by(observation)
+    local kind = observation.action_kind;
+    if kind == 'abilities' then return 'ability', observation.spell; end
+    local armed = kind == 'reactive' and require('core.catalog').action('reactive', observation.spell);
+    if armed then return 'ability', armed.arm_ability; end
+    return SOURCES[observation.action_category], observation.spell;
+end
+
 -- Where an observation's learned times are kept: what made it, its action id, its effect and, on a mob, the mob's
 -- name in lower case. Learning goes by mob name, as the client can't tell a mob's family, so a mob the game hasn't
 -- named yet has no key.
 function durations.key(observation)
-    local kind = SOURCES[observation.action_category] or 'effect';
-    local id = kind ~= 'effect' and tonumber(observation.spell) or 0;
+    local kind, spell = made_by(observation);
+    kind = kind or 'effect';
+    local id = kind ~= 'effect' and tonumber(spell) or 0;
     if not finite(id) or id < 0 or id > 2047 or id ~= math.floor(id) then return nil; end
     local name = observation.scope == 'enemy' and durations.unit_name(observation.entity_name):lower() or '';
     if observation.scope == 'enemy' and name == '' then return nil; end
@@ -144,7 +152,8 @@ local function matches(rule, observation, name)
     local wanted = durations.unit_name(rule.name);
     if wanted ~= '' and wanted:lower() ~= name then return false; end
     if rule.kind == 'effect' then return observation.effect == rule.id; end
-    return SOURCES[observation.action_category] == rule.kind and observation.spell == rule.id;
+    local kind, id = made_by(observation);
+    return kind == rule.kind and id == rule.id;
 end
 function durations.match(overrides, observation)
     local best, rank;
@@ -177,7 +186,9 @@ function durations.prepare(observations, settings, snapshot)
             -- A length Vantage already knows exactly has nothing to teach.
             local key = learning and not observation.exact and observation.source ~= nil and observation.source == self_id and durations.key(observation);
             local seconds, count = nil, nil;
-            if key then seconds, count = durations.learned_time(config, key); end
+            -- A guess takes no learned time. Its key can be the one an added effect learns into, as Viper Bite's Poison
+            -- shares a Poison proc's, and that time isn't the guess's.
+            if key and not observation.guessed then seconds, count = durations.learned_time(config, key); end
             if seconds then
                 observation.duration, observation.duration_min = at_least_one(seconds), at_least_one(seconds);
                 observation.basis, observation.timing = 'Learned from ' .. count .. ' of your casts.', 'learned';
@@ -202,7 +213,8 @@ function durations.prepare(observations, settings, snapshot)
                 end
             end
             -- Learning takes the true time, whatever the override shows.
-            if key then observation.learn_key = key; end
+            -- A guessed effect has no start anyone saw, so its wear-off is no time to learn.
+            if key and not observation.guessed then observation.learn_key = key; end
         end
     end
 end
@@ -228,7 +240,9 @@ end
 
 -- The tracker's samples (tracker:samples): each wear-off of a row marked for learning that nothing spoiled adds its
 -- time from landing, to a tenth of a second. The time ends at the wear-off's arrival, which Phoenix sends at its
--- next 400 ms check, so it reads up to 0.4 s long. Returns whether anything was learned.
+-- next 400 ms check, so it reads up to 0.4 s long. Phoenix at revision 9785020970 checks wear-offs on each zone tick
+-- (src/map/zone_entities.cpp :1709 for mobs, :1863 for pets, :1925 for players), every 400 ms (src/map/zone.cpp
+-- :1125-1126, src/map/map_constants.h :44-50). Returns whether anything was learned.
 function durations.learn(settings, samples)
     local config = type(settings) == 'table' and settings.durations;
     if type(config) ~= 'table' or config.learn ~= true or type(samples) ~= 'table' then return false; end

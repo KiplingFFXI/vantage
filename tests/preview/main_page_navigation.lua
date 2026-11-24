@@ -47,7 +47,7 @@ function PREVIEW.check_recast()
 end;
 function PREVIEW.check_party()
     local count, label = history();
-    assert(app.state.settings.party_ui.enabled and count == 1 and label == 'Party list buffs', 'Party list buffs turns on in one step.');
+    assert(app.state.settings.party_ui.enabled and count == 1 and label == 'Party list', 'Party list turns on in one step.');
 end;
 function PREVIEW.check_kind()
     local count, label = history();
@@ -72,7 +72,7 @@ local function inside(labels)
     end;
 end;
 function PREVIEW.check_look_rows()
-    inside({ 'More look', '##main_skin', '1x##main_size' });
+    inside({ 'Artwork', '##main_skin', '1x##main_size' });
 end;
 function PREVIEW.check_page(name)
     assert(app.state.settings.window.tab == name, 'Real navigation opens ' .. name);

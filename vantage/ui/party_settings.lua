@@ -1,4 +1,4 @@
--- The editor of the party list buffs, as a display on the panel frame: buffs and debuffs beside the game's party list, or
+-- The editor of Party list, as a display on the panel frame: buffs and debuffs beside the game's party list, or
 -- in panels of their own.
 local conditions_ui = require('ui.condition_settings');
 local cooldowns = require('core.party_cooldowns');
@@ -15,9 +15,12 @@ local ctx = frame.ctx;
 local labels, group_names = widget.labels, widget.group_names;
 -- The panel and the group the rows under them change. They last the session.
 local selection = { panel = 1, group = 1 };
--- What shows the rows only a panel of its own uses: each group's switch on Size and place.
+-- What shows the rows only a panel of its own uses: each group's switch on Show.
 local panel_switches = {};
 for group, name in ipairs(group_names) do panel_switches[group] = name .. ' in a panel of its own'; end;
+-- The size that stacks the icons beside the game's list, and what shows the rows for members' names: the switches and it.
+local BESIDE = 'Icon size beside the game\'s list';
+local name_switches = { panel_switches[1], panel_switches[2], panel_switches[3], BESIDE };
 
 local function effects(c) return c.p.effects; end;
 local function native(c) return c.p.native; end;
@@ -27,7 +30,6 @@ local function picks() return selection; end;
 local function effects_shown(c) return c.p.effects.kind ~= 'none'; end;
 local function timers(c) return c.p.effects.timers == true and effects_shown(c); end;
 local function in_panels(c) return widget.in_panels(c.p); end;
-local function any_group(c) return hud.shown(c.p, 1) or hud.shown(c.p, 2) or hud.shown(c.p, 3); end;
 -- What goes by the game's list goes while every group that shows is in a panel of its own.
 local function any_beside(c)
     for group = 1, 3 do
@@ -35,25 +37,29 @@ local function any_beside(c)
     end;
     return false;
 end;
-local function timers_in_panels(c) return timers(c) and in_panels(c); end;
+-- Whether a group beside the game's list stacks its icons, each member's name over them.
+local function stacked(c) return widget.stacked(c.p, widget.rooms(c.s, c.callbacks)); end;
+-- Whether a group shows its members' names: in a panel of its own, or in a stack.
+local function named(c) return in_panels(c) or stacked(c); end;
+local function timers_named(c) return timers(c) and named(c); end;
 
 -- Header.
 
 local header = {
     frame.line(nil, nil, {
         frame.tick('On', 'enabled', 'Shows the groups ticked on Show beside the game\'s party list. Turning it off ends its samples.', {
-            tag = '_display', find = 'Show this display', alias = 'Show party list buffs Show this panel display',
+            tag = '_display', find = 'Show this display', alias = 'Show party list buffs Party list buffs Show this panel display',
             write = function(c, on) party_defaults.switch(c.p, on); end }),
-        rows.samples('Sample effects beside the real game rows you have now, to arrange them with nothing happening. They make no members or windows, and never make real alerts.',
+        rows.samples('Sample effects, and the distance while it\'s on, on the party rows you have now, to arrange them with nothing happening. They never make real alerts.',
             function(c) return c.p.enabled; end, { alias = 'Sample displays Sample party sample members' }),
-        frame.tick('Locked', nil, 'Locked, the groups stay where they are, even while Shift is held. Unlock first, then hold Shift and drag a group to move it. A group in a panel of its own also resizes from its edges and corners.', {
+        frame.tick('Locked', nil, 'Locked, the groups stay put even with Shift held. Unlocked, hold Shift and drag a group to move it, and a group\'s own panel resizes from its edges.', {
             alias = 'Lock position and size lock unlock move resize shift left drag edges corners protect', read = frame.lock_row.read, write = frame.lock_row.write }),
     }),
 };
 
 local under = {
     frame.note(function(c) return widget.panel_line(c.p); end, { only = in_panels }),
-    frame.button(labels.back, 'Puts every group in a panel of its own back beside the game\'s party list, where the icons fill the step from one row to the next. Groups you moved keep their place, and each panel keeps its size and place for next time. One Undo step puts them back in their panels. It works while Locked.', function(c)
+    frame.button(labels.back, 'Puts every group in a panel of its own back beside the game\'s party list. Each panel keeps its size and place for next time, and Undo puts them back. It works while Locked.', function(c)
         local p = ctx.p;
         c.changed(function() widget.back(p); end, true, labels.back);
     end, { only = in_panels, shown_by = panel_switches, alias = 'Reattach panels of their own Reattach buff panels native detached attach snap move resize wrap width height game windows' }),
@@ -65,7 +71,7 @@ local strip_ticks = {};
 for index, strip in ipairs({ { 'party', 'Show the buffs beside your party\'s window.' }, { 'alliance1', 'Show the buffs beside alliance party 1.' },
     { 'alliance2', 'Show the buffs beside alliance party 2.' } }) do
     local key = strip[1];
-    strip_ticks[index] = frame.tick(group_names[index], nil, strip[2], { tag = '_strip',
+    strip_ticks[index] = frame.tick(group_names[index], nil, strip[2], { tag = '_strip', resets = { 'strips' },
         read = function(c) return c.p.strips[key] == true; end,
         write = function(c, on)
             c.p.strips[key] = on;
@@ -75,7 +81,10 @@ end;
 
 local own_list = { 'always', 'party', 'never' };
 local own_names = { always = 'Always', party = 'Only in a party', never = 'Never' };
-local sort_names = { longest = 'Longest remaining', oldest = 'Oldest first', remaining = 'Ending soonest', name = 'Name' };
+local sort_names = { longest = 'Longest remaining', oldest = 'Oldest first', remaining = 'Ending soonest', name = 'Name', fixed = 'My order' };
+local DISTANCE = 'Show the distance to each member';
+local warn_names = { spell = 'Spell range', ten = '10 yalms', eight = '8 yalms', sixteen = '16 yalms', none = 'Never' };
+local size_names = { small = 'Small', medium = 'Medium', large = 'Large', largest = 'Largest' };
 
 local function cooldowns_here(c)
     local watch = c.s.party_cooldowns;
@@ -87,16 +96,35 @@ local function cooldowns_line(c)
     return effects_shown(c) and 'Party cooldowns show here too.' or 'Only Party cooldowns show here.';
 end;
 
+-- Each group's switch places its panel where the group is drawn now. Locked doesn't stop it; dragging still needs an unlock.
+local function panel_tick(group, old)
+    return frame.tick(group_names[group] .. ' in a panel of its own', nil, 'Puts this group\'s buffs in a panel of its own, where they are now, even while Locked. Off puts them back beside the game\'s list. Size and place sizes it.', {
+        alias = old .. ' in a panel of its own', only = function(c) return hud.shown(c.p, group); end, shown_by = 'Which groups show',
+        of = function(c) return c.p.groups[group]; end, resets = { 'native_detached' },
+        read = function(c) return c.p.groups[group].native_detached == true; end,
+        write = function(c, on)
+            if on then widget.place(c.p, group, widget.rooms(c.s, c.callbacks), c.s.style); else c.p.groups[group].native_detached = false; end;
+        end });
+end;
+
 local show_rows = {
     frame.line('Groups', 'Which of the game\'s party windows get buffs beside them.', strip_ticks, { find = 'Which groups show', alias = 'Show party strip Show alliance strip 1 Show alliance strip 2' }),
     frame.note(party_defaults.strip_help, { only = function(c) return effects_shown(c) and (hud.shown(c.p, 2) or hud.shown(c.p, 3)); end }),
+    panel_tick(1, 'Party'), panel_tick(2, 'Alliance 1'), panel_tick(3, 'Alliance 2'),
     frame.radio('Show', 'kind', { 'all', 'buff', 'debuff', 'none' }, { all = 'Buffs and debuffs', buff = 'Buffs only', debuff = 'Debuffs only', none = 'None' }, party_defaults.kind_help, {
         tag = '_kinds', find = 'Show buffs or debuffs', of = effects, alias = 'Effect types Party buffs and debuffs Party buffs only Party debuffs only Only party cooldowns' }),
-    frame.tick('Light up debuffs you can remove', 'cleanse_light', 'A debuff lights up when your job and level can take it off now and you\'ve learned the spell. Erase doesn\'t reach alliance parties. It uses Glow around lit icons and Light color from Overhead icons, on its Look tab, so there\'s nothing else to set.', {
+    frame.tick('Light up debuffs you can remove', 'cleanse_light', 'A debuff lights up when your job and level can take it off now and you\'ve learned the spell. Erase doesn\'t reach the alliance. Its glow is set on the Look tab.', {
         of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = 'cleanse erase poisona paralyna blindna silena cursna viruna stona' }),
     frame.tick('Countdowns', 'timers', party_defaults.timers_help, { of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = 'Show effect countdowns' }),
-    frame.pick('Your own row', nil, own_list, own_names, 'Only in a party hides the party list buffs while you are solo.', {
-        alias = 'Show my own row Show when solo',
+    -- It doesn't depend on Show, so it works with None too.
+    frame.tick(DISTANCE, 'distance', party_defaults.distance_help, { alias = 'Distance yalms range reach how far away member' }),
+    -- Only a group beside the game's list sizes its numbers by it.
+    frame.pick('Distance size', 'distance_size', { 'small', 'medium', 'large', 'largest' }, size_names, party_defaults.size_help, {
+        only = function(c) return c.p.distance == true and any_beside(c); end, shown_by = DISTANCE, alias = 'Distance text size number size bigger smaller' }),
+    frame.pick('Warning color past', 'distance_warn', { 'spell', 'ten', 'eight', 'sixteen', 'none' }, warn_names, party_defaults.warn_help, {
+        only = function(c) return c.p.distance == true; end, shown_by = DISTANCE, alias = 'Distance warning color out of range too far' }),
+    frame.pick('Include me', nil, own_list, own_names, 'Your own row. Only in a party hides Party list while you are solo.', {
+        alias = 'Your own row Show my own row Show when solo', resets = { 'include_self', 'show_solo' },
         read = function(c)
             if not c.p.include_self then return 'never'; end;
             return c.p.show_solo and 'always' or 'party';
@@ -107,32 +135,54 @@ local show_rows = {
         end }),
     frame.number('Most per member', 'max', 0, 32, 'All that fit shows every known effect that passes your filters. A panel of its own wraps them; beside the game\'s list they still have to fit the row.', {
         of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', special = { [0] = 'All that fit' }, alias = 'Show all matching effects Effects per member',
+        resets = { 'max', 'fit_all' },
         read = function(c) return c.p.effects.fit_all and 0 or c.p.effects.max; end,
         write = function(c, value)
             local e = c.p.effects;
             e.fit_all = value == 0;
             if value > 0 then e.max = value; end;
         end }),
-    frame.pick('Sort', 'sort', { 'longest', 'oldest', 'remaining', 'name' }, sort_names,
-        'Longest remaining sorts 4h, 3m, then 57s. Effects without a countdown go last. Icons fill, on Size and place, chooses the starting edge. Oldest first goes by when each was first seen. Pinned effects come first.',
-        { of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = 'Effect sorting' }),
+    frame.pick('Sort', 'sort', { 'longest', 'oldest', 'remaining', 'name', 'fixed' }, sort_names,
+        'Longest remaining sorts 4h, 3m, then 57s, with no countdown last. Oldest first goes by when each was first seen. My order goes by the list under it, the same on every member. Pinned effects come first whichever you pick.',
+        { of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = 'Effect sorting Same order every member' }),
+    frame.note('Nothing is on My order yet, so effects go by name. Add them on the Filters tab.', {
+        only = function(c) return effects_shown(c) and c.p.effects.sort == 'fixed' and #c.p.effects.order == 0; end }),
+    rows.order_line(effects, effects_shown),
     frame.note(cooldowns_line, { only = cooldowns_row }),
     frame.button('Change on Party cooldowns', 'Opens Party cooldowns.', function(c) c.open_page('Display', 'cooldown_list'); end, { only = cooldowns_row, beside = true }),
+    -- Party buffs show in two other places too, each a display of its own.
+    frame.line('Party buffs elsewhere', 'Party buffs also show in a list, on Party members\' timers, and over heads, on Overhead icons.', {
+        frame.button('Open Party members\' timers', 'Opens Party members\' timers, the list.', function(c) c.open_page('Display', 'party'); end),
+        frame.button('Open Overhead icons', 'Opens Overhead icons, over heads.', function(c) c.open_page('Display', 'overhead'); end),
+    }),
 };
 
--- Look. The party list buffs wear the timer panels' look; only their icon art and opacity are their own.
+-- Look. Party list wears the timer panels' look; only its icon art and opacity are its own.
 
 local name_names = { full = 'Full name', short = 'Short name', job = 'Job', job_icon = 'Job', icon = 'Job' };
 
 local look_rows = {
-    frame.pick('Party buff icons', 'icon_art', { 'Client', 'Original FFXI', 'XI View' }, { Client = 'Client', ['Original FFXI'] = 'Original FFXI', ['XI View'] = 'XI View' },
-        'Client uses Ashita resources. Original FFXI and XI View read their installed packs directly, independent of the font.', { of = look }),
-    frame.note(function(c) return icons.reason and icons.reason(c.p.style.icon_art); end, { live = true }),
+    frame.pick('Party buff icons', 'icon_art', { 'Original FFXI', 'XI View' }, { ['Original FFXI'] = 'Original FFXI', ['XI View'] = 'XI View' },
+        'Original FFXI and XI View read their installed packs directly, independent of the font. Your own icon sets, from the icons folder in Vantage\'s settings folder, come after them.', {
+        of = look, alias = 'Import icons icon sets custom icons own icons',
+        choices_of = function(c) return (icons.choices(c.p.style.icon_art)); end,
+        names_of = function(c) local _, names = icons.choices(c.p.style.icon_art); return names; end }),
+    frame.note(function(c) return icons.reason(c.p.style.icon_art); end, { live = true }),
+    frame.note(function() return icons.folder_warning(); end, { live = true, tone = 'problem_messages' }),
+    frame.button('Reload icons', require('ui.icon_packs').reload_help,
+        function(c) c.note(icons.reload_sets()); end, { alias = 'Import icon sets custom icons own icons', find = 'Reload Party list icons' }),
+    frame.button('Open icons folder', require('ui.icon_packs').open_help,
+        function(c) c.note(icons.open_folder()); end, { folder = true, beside = true, alias = 'Icons folder import icons custom icons own icons File Explorer', find = 'Open Party list icons folder' }),
     frame.number('Opacity', 'opacity', 0.05, 1, nil, { of = look, whole = false, alias = 'Party opacity' }),
-    frame.pick('Member names', 'name_display', { 'full', 'short', 'job' }, name_names, 'The label above each member\'s effects in a panel of its own. A job that isn\'t known shows the member name.', {
-        only = in_panels, shown_by = panel_switches, alias = 'Member name display full short abbreviated replace name job abbreviation' }),
+    frame.tick('Glow around lit icons', 'dispel_glow', 'Lit icons, on the main page, sets this on every display at once.', {
+        of = effects, only = function(c) return c.p.effects.cleanse_light; end, shown_by = 'Light up debuffs you can remove', alias = 'Glow around lit buffs' }),
+    frame.color('Light color', 'dispel_color', 'Lit icons, on the main page, sets this on every display at once.', {
+        of = effects, only = function(c) return c.p.effects.cleanse_light; end, shown_by = 'Light up debuffs you can remove', alias = 'lit light up color',
+        fallback = function() return require('ui.defaults').dispel_color; end }),
+    frame.pick('Member names', 'name_display', { 'full', 'short', 'job' }, name_names, 'The label above each member\'s effects in a panel of its own or a stack beside the game\'s list. A job that isn\'t known shows the member name.', {
+        only = named, shown_by = name_switches, alias = 'Member name display full short abbreviated replace name job abbreviation' }),
     frame.number('Short name length', 'name_length', 3, 16, 'The most characters a short name shows, with the mark that says it is cut short.', {
-        only = function(c) return in_panels(c) and c.p.name_display == 'short'; end, shown_by = 'Member names', alias = 'Abbreviated name length short shorten member player names characters abbreviation' }),
+        only = function(c) return named(c) and c.p.name_display == 'short'; end, shown_by = 'Member names', alias = 'Abbreviated name length short shorten member player names characters abbreviation' }),
 };
 
 -- Filters.
@@ -141,30 +191,35 @@ local always_ticks = {};
 for index, tick in ipairs(overhead_defaults.always) do
     always_ticks[index] = frame.tick(tick.label, tick.key, tick.help, { of = effects, alias = tick.words });
 end;
+-- What Reset this tab puts back on Filters.
+local filter_keys = { 'effects.abilities_only', 'effects.include', 'effects.exclude', 'effects.pinned' };
+for _, tick in ipairs(overhead_defaults.always) do filter_keys[#filter_keys + 1] = 'effects.' .. tick.key; end;
 local filter_rows = {
-    frame.note('Effects on the Hidden everywhere list are hidden here too.', { only = status.list_used }),
-    frame.button('Edit the list', 'Open the Hidden everywhere list.', function(c) c.open_page('Filters'); end, { alias = 'Shared effect filters' }),
+    frame.note('Effects on the Hide list are hidden here too.', { only = status.list_used }),
+    frame.button('Edit the list', 'Open the Hide list.', function(c) c.open_page('Filters'); end, { alias = 'Shared effect filters' }),
     status.list_paused(),
     frame.tick('Only effects from job abilities', 'abilities_only', status.abilities_help, {
         of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = status.abilities_words }),
-    frame.line('Always show', 'Ticked shows it even with Debuffs only or Only effects from job abilities on. Unticked hides it unless it\'s on Show only, where the other settings decide as they do for any effect.', always_ticks, { only = effects_shown, shown_by = 'Show buffs or debuffs' }),
+    frame.line('Always show', 'Ticked, it shows even with Debuffs only or Only effects from job abilities on. Unticked, it hides unless it\'s on Show only, where the other filters still apply.', always_ticks, { only = effects_shown, shown_by = 'Show buffs or debuffs' }),
 };
 for _, item in ipairs(rows.effect_lists({
-    of = effects, find = 'Find an effect', effect = 'Effect', show = 'Show only', hide = 'Hide here', pin = 'Pin first',
-    reset = 'Reset selected effect', clear = 'Clear this display\'s filters',
+    of = effects, show = 'Show only', hide = 'Hide here', pin = 'Pin first', order = 'Add to My order',
+    reset = 'Reset selected effect',
     listed = { include = 'Show only', exclude = 'Hidden here', pinned = 'Pinned first' },
-    alias = { find = 'Find a party effect Effect filters Effect filters and labels', effect = 'Party effect', show = 'Include effect', hide = 'Exclude effect', pin = 'Pin effect first', clear = 'Clear all party effect filters' },
+    alias = { find = 'Find an effect Find a party effect Party effect Effect filters Effect filters and labels', show = 'Include effect', hide = 'Exclude effect', pin = 'Pin effect first' },
 })) do filter_rows[#filter_rows + 1] = item; end;
 
 -- Size and place.
 
 local function panel_group(c) return c.p.groups[selection.panel]; end;
 
--- The groups in a panel of their own that show. A group not shown has no panel.
+-- The groups in a panel of their own that show. A group not shown has no panel. The list is kept and filled again on
+-- each call, so a frame makes no table, and every caller reads it at once.
+local listed = {};
 local function panel_list(c)
-    local panels = {};
-    for group = 1, 3 do if hud.shown(c.p, group) and c.p.groups[group].native_detached then panels[#panels + 1] = group; end; end;
-    return panels;
+    for group = 3, 1, -1 do listed[group] = nil; end;
+    for group = 1, 3 do if hud.shown(c.p, group) and c.p.groups[group].native_detached then listed[#listed + 1] = group; end; end;
+    return listed;
 end;
 
 -- The panel and the group picked are ones of those.
@@ -176,15 +231,6 @@ local function keep_pick(key)
     end;
 end;
 
--- Each group's switch places its panel where the group is drawn now. Locked doesn't stop it; dragging still needs an unlock.
-local function panel_tick(group, old)
-    return frame.tick(group_names[group] .. ' in a panel of its own', nil, 'Puts this group\'s buffs in a panel of its own, where the group is drawn now. It works while Locked. Turn it off to put them back beside the game\'s list.', {
-        alias = old .. ' in a panel of its own', only = function(c) return hud.shown(c.p, group); end, shown_by = 'Which groups show',
-        read = function(c) return c.p.groups[group].native_detached == true; end,
-        write = function(c, on)
-            if on then widget.place(c.p, group, widget.rooms(c.s, c.callbacks), c.s.style); else c.p.groups[group].native_detached = false; end;
-        end });
-end;
 
 local slot_names, slot_ids = {}, {};
 for slot = 0, 5 do slot_names[slot], slot_ids[slot + 1] = 'Slot ' .. (slot + 1), 'party_slot_' .. (slot + 1); end;
@@ -213,30 +259,33 @@ end;
 
 local place_rows = {
     frame.note(function(c) return widget.step(c.p, widget.rooms(c.s, c.callbacks)); end, { live = true, only = any_beside }),
-    frame.number(labels.size, 'icon_size', 12, 128, 'How big each icon is in a group\'s panel of its own. Beside the game\'s party list the icons always fill the step from one row to the next.', {
+    frame.number(BESIDE, 'icon_size', 0, 128, 'Fill the row makes each icon as tall as the step from one of the game\'s rows to the next. A smaller size sits in the middle of each row. A bigger size puts each group\'s buffs in a stack beside the game\'s list, each member\'s name over their icons, growing up from the bottom of the list. Stacks pile up in the order of the game\'s windows, and shrink when they wouldn\'t fit on the screen.', {
+        of = native, only = any_beside, shown_by = panel_switches, special = { [0] = 'Fill the row' },
+        alias = 'Bigger party buffs larger party icons party icon size beside the list stack',
+        write = function(c, value) c.p.native.icon_size = value > 0 and math.max(12, value) or 0; end }),
+    frame.number(labels.size, 'icon_size', 12, 128, 'How big each icon is in a group\'s panel of its own. Icon size beside the game\'s list sizes them beside it.', {
         of = effects, only = in_panels, shown_by = panel_switches, alias = 'Buff and debuff icon size Party icon size' }),
-    frame.locked_line,
-    frame.line('Row width', 'Each group\'s row beside the game\'s party list grows with its buffs up to this width, and always has room for one whole icon. Panels of their own keep their own size.', {
-        frame.number('Longest row', 'width', 40, 900, 'The most a row grows to.', { of = native, locks = true, width = 200, format = 'Longest row %.0f', alias = 'Strip maximum width room gap next row icon room Touching the next row' }),
-    }, { only = any_beside, shown_by = panel_switches }),
+    frame.number('Longest row', 'width', 40, 900, 'A row beside the game\'s party list grows with its buffs up to this, with room for one icon at least. The distance adds its column. Panels of their own size themselves.', {
+        of = native, only = any_beside, shown_by = panel_switches, alias = 'Row width Strip maximum width room gap next row icon room Touching the next row' }),
     frame.number('Countdown size', 'icon_countdown_size', 0, 64, '0 scales the countdown with the icon. Choose 6 to 64 pixels for a fixed size. Inside an icon it shrinks to fit.', {
         of = effects, only = timers, shown_by = 'Countdowns', special = { [0] = 'Automatic' }, alias = 'Icon countdown size',
         write = function(c, value) c.p.effects.icon_countdown_size = value > 0 and math.max(6, value) or 0; end }),
-    -- Beside the game's list the time sits inside the icon, so position and gap show only for a panel of its own.
+    -- Beside the game's rows the time sits inside the icon, so position and gap show only for a panel of its own or a
+    -- stack.
     frame.pick('Countdown position', 'icon_countdown_position', { 'below', 'inside' }, { below = 'Below icon', inside = 'Inside icon' },
-        'Center the countdown below the icon or inside its lower edge, in a panel of its own. Effects without a time show no countdown.', {
-        of = effects, only = timers_in_panels, shown_by = { 'Countdowns', panel_switches[1], panel_switches[2], panel_switches[3] }, alias = 'Icon countdown position' }),
+        'Center the countdown below the icon or inside its lower edge, in a panel of its own or a stack beside the game\'s list. Effects without a time show no countdown.', {
+        of = effects, only = timers_named, shown_by = { 'Countdowns', panel_switches[1], panel_switches[2], panel_switches[3], BESIDE }, alias = 'Icon countdown position' }),
     frame.number('Countdown gap', 'icon_countdown_gap', 0, 16, 'Pixels between the icon and the countdown below it.', {
         of = effects, shown_by = { 'Countdown position', 'Countdowns' }, alias = 'Icon countdown gap',
-        only = function(c) return timers_in_panels(c) and c.p.effects.icon_countdown_position == 'below'; end }),
-    frame.pick('Buff side', 'side', { 'left', 'right' }, { left = 'Left', right = 'Right' }, 'Which side of the game\'s party list the buffs go on.', { of = native, locks = true,
+        only = function(c) return timers_named(c) and c.p.effects.icon_countdown_position == 'below'; end }),
+    frame.pick('Buff side', 'side', { 'left', 'right' }, { left = 'Left', right = 'Right' }, 'Which side of the game\'s party list the buffs go on.', { of = native,
         only = any_beside, shown_by = panel_switches,
         write = function(c, value)
             c.p.native.side = value;
             for _, group in ipairs(c.p.groups) do group.native_side = 'default'; end;
         end }),
     frame.note('There\'s no room on that side of the game\'s list, so these buffs aren\'t showing.', { only = function() return hud.no_room == true; end }),
-    frame.number('Gap from the game\'s list', 'gap', 0, 40, 'The space between the game\'s party list and the nearest icon.', { of = native, locks = true, alias = 'Strip gap Strip placement',
+    frame.number('Gap from the game\'s list', 'gap', 0, 40, 'The space between the game\'s party list and the nearest icon, or the distance while it\'s on.', { of = native, alias = 'Strip gap Strip placement',
         only = any_beside, shown_by = panel_switches }),
     -- How icons fill doesn't move anything, so it stays live, as Fills does on a timer panel.
     frame.pick('Icons fill', 'growth', { 'right', 'left' }, { right = 'Left to right', left = 'Right to left' }, 'Each row fills in this direction, then wraps below. Buff side and Sort stay separate.', { of = effects, only = effects_shown, shown_by = 'Show buffs or debuffs', alias = 'Buff growth direction' }),
@@ -245,23 +294,22 @@ local place_rows = {
         c.changed(function()
             for _, group in ipairs(groups) do group.native_side, group.native_x, group.native_y = 'default', 0, 0; end;
         end, true, 'Put moved groups back');
-    end, { locks = true, alias = 'Reset strip offsets Reattach panels of their own Reattach buff panels', only = any_beside, shown_by = panel_switches }),
+    end, { alias = 'Reset strip offsets Reattach panels of their own Reattach buff panels', only = any_beside, shown_by = panel_switches }),
     frame.fold('Panels of their own', 'A framed panel for one group\'s buffs, at Icon size in a panel of its own, with its own size and place.', {
-        panel_tick(1, 'Party'), panel_tick(2, 'Alliance 1'), panel_tick(3, 'Alliance 2'),
         frame.group({
             { kind = 'custom', draw = keep_pick('panel') },
-            frame.pick('Panel to edit', 'panel', nil, group_names, 'Which panel the numbers below change.', { of = picks, transient = true, choices_of = panel_list }),
-            frame.number('Panel width', 'detached_width', 40, 900, nil, { of = panel_group, locks = true }),
-            frame.number('Panel height', 'detached_height', 40, 16000, 'Effects past this height scroll.', { of = panel_group, locks = true, edge = 'y' }),
-            frame.number('Across the screen', 'detached_x', 0, 16384, 'The panel\'s left edge, in pixels from the left of the screen.', { of = panel_group, locks = true, edge = 'x', room_of = function(c) return panel_group(c).detached_width; end }),
-            frame.number('Down the screen', 'detached_y', 0, 16384, 'The panel\'s top edge, in pixels from the top of the screen.', { of = panel_group, locks = true, edge = 'y', room_of = function(c) return panel_group(c).detached_height; end }),
+            frame.pick('Panel to edit', 'panel', nil, group_names, 'Which panel the numbers below change.', { of = picks, transient = true, buttons = true, choices_of = panel_list }),
+            frame.number('Panel width', 'detached_width', 40, 900, nil, { of = panel_group }),
+            frame.number('Panel height', 'detached_height', 40, 16000, 'Effects past this height scroll.', { of = panel_group, edge = 'y' }),
+            frame.number('Across the screen', 'detached_x', 0, 16384, 'The panel\'s left edge, in pixels from the left of the screen.', { of = panel_group, edge = 'x', room_of = function(c) return panel_group(c).detached_width; end }),
+            frame.number('Down the screen', 'detached_y', 0, 16384, 'The panel\'s top edge, in pixels from the top of the screen.', { of = panel_group, edge = 'y', room_of = function(c) return panel_group(c).detached_height; end }),
         }, { only = in_panels, shown_by = panel_switches }),
-        frame.tick('Snap back beside the game\'s list when released', 'snap', 'Let go of a panel of its own near either side of its group\'s game window to put the buffs back beside it. Turn this off to keep panels of their own where you leave them.', {
-            of = native, locks = true, only = in_panels, shown_by = panel_switches, alias = 'Snap panels of their own to game windows Snap buff panels to game windows native detached attach snap move resize wrap width height game windows' }),
-    }, { opened = true, only = any_group, shown_by = 'Which groups show' }),
+        frame.tick('Snap back beside the game\'s list when released', 'snap', 'Let go of a group\'s own panel near either side of its game window, and the buffs go back beside it. Off, panels stay where you leave them.', {
+            of = native, only = in_panels, shown_by = panel_switches, alias = 'Snap panels of their own to game windows Snap buff panels to game windows native detached attach snap move resize wrap width height game windows' }),
+    }, { opened = true, only = in_panels, shown_by = panel_switches }),
     frame.fold('Member order', 'How a panel of its own orders its members.', {
         { kind = 'custom', draw = keep_pick('group') },
-        frame.pick('Group to order', 'group', nil, group_names, 'Which group the slots below belong to.', { of = picks, transient = true, alias = 'Party group to edit', choices_of = panel_list }),
+        frame.pick('Group to order', 'group', nil, group_names, 'Which group the slots below belong to.', { of = picks, transient = true, buttons = true, alias = 'Party group to edit', choices_of = panel_list }),
         frame.note('Members go by their slot in the game\'s party list. Reorder the slots here without changing the party itself.'),
         { kind = 'custom', draw = draw_slots },
     }, { key = 'Detached panel members', only = in_panels, shown_by = panel_switches, alias = 'Members in a panel of its own Detached panel members' }),
@@ -275,12 +323,22 @@ local place_rows = {
 
 local when_rows = {};
 for index, item in ipairs(conditions_ui.rows) do when_rows[index] = item; end;
-table.insert(when_rows, 3, frame.note('Party list buffs pause while the Treasure Pool is open.'));
-table.insert(when_rows, 3, frame.note('Your own row, on Show, can hide the party list buffs while you are solo too.'));
+table.insert(when_rows, 3, frame.note('Party list pauses while the Treasure Pool is open.'));
+table.insert(when_rows, 3, frame.note('Include me, on Show, can hide Party list while you are solo too.'));
 
 frame.register({
-    id = 'party_ui', name = 'Party list buffs', fold_page = 'Party & alliance',
+    id = 'party_ui', name = 'Party list', fold_page = 'Party & alliance',
     tabs = { show = show_rows, look = look_rows, filters = filter_rows, place = place_rows, when = when_rows },
+    -- Size and place's rows reach only the group picked, so every group's order and spot are put back here. A panel of
+    -- its own gets the size and place ticking it gives, where it is now: sized for its members and clear of the other
+    -- groups. Which groups have a panel of their own is Show's.
+    tab_reset = { filters = frame.reset_keys(filter_keys), place = function(c, fresh)
+        for index, group in ipairs(c.p.groups) do
+            local start = fresh.groups[index];
+            group.native_side, group.native_x, group.native_y, group.order = start.native_side, start.native_x, start.native_y, { unpack(start.order) };
+            if group.native_detached then widget.place(c.p, index, widget.rooms(c.s, c.callbacks), c.s.style); end;
+        end;
+    end },
     header = header, under = under,
     unlocked = function(c)
         return widget.in_panels(c.p) and 'Unlocked: hold Shift and drag a group to move it, or drag a panel\'s edge to resize it.' or 'Unlocked: hold Shift and drag a group to move it.';

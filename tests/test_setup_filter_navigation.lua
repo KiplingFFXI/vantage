@@ -36,10 +36,10 @@ draw('Edit##main_self_buffs');
 assert(s.window.tab == 'Display' and custom.equal(before, custom.history_value(s)) and edits == 0,
     'The main page\'s Edit only navigates and keeps current looks, sizes, filters and locks.');
 s.window.tab = 'Home';
-draw('Edit##main_hidden');
+draw('Hide list');
 draw();
 assert(s.window.tab == 'Display' and panels.context() == 'hidden/show' and called('Button', 'Pause this list##frame'),
-    'The main page opens the single shared filter editor.');
+    'The top bar\'s Hide list opens the single shared filter editor.');
 s.window.tab = 'Filters';
 draw();
 assert(s.window.tab == 'Display' and panels.context() == 'hidden/show', 'The Filters page opens it.');
@@ -50,7 +50,7 @@ local function filters_of(id)
 end;
 filters_of('party_ui');
 assert(panels.context() == 'party_ui/filters');
-assert(not called('Button', 'Pause this list##frame') and called('Button', 'Edit the list##frame'), 'Party list buff filtering is local and links the shared editor.');
+assert(not called('Button', 'Pause this list##frame') and called('Button', 'Edit the list##frame'), 'Party list filtering is local and links the shared editor.');
 draw('Size and place##frame_tab');
 assert(panels.context() == 'party_ui/place' and not called('Button', 'Edit the list##frame'), 'The tabs go where they say.');
 draw('Filters##frame_tab');
@@ -72,13 +72,8 @@ local local_settings = store.copy({ s.panels, s.party_ui, s.alerts });
 panels.open('hidden', 'show');
 draw();
 local count = edits;
-local input_text = imgui.InputText;
-imgui.InputText = function(label, value, ...)
-    if label == '##frame_Find an effect' then value[1] = 'Level Sync'; return true; end;
-    return input_text(label, value, ...);
-end;
+draw('Level Sync##effect_269', '##Effect');
 draw();
-imgui.InputText = input_text;
 draw('Hide it everywhere##frame');
 assert(edits == count + 1 and #s.effect_filters.rules == 1 and s.effect_filters.rules[1].effect == 269);
 draw();

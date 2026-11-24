@@ -20,6 +20,22 @@ local reloaded=defaults.tidy(assert(require('core.store').read(map_path)));
 assert(reloaded.panels.self_buffs.labels[33]=='My haste' and reloaded.panels.self_buffs.include[33],
     'Sparse labels and include filters survive a real JSON file round trip.');
 assert(custom.reset(s,'typo')==nil and custom.equal(s,before), 'An unknown reset cannot reset everything.');
+-- The pet alerts are on Alerts, so resetting Alerts puts them back and resetting Pet leaves them.
+local pet_reset=defaults.make();
+pet_reset.pet.alert_hp,pet_reset.pet.alert_hp_percent,pet_reset.pet.show_reward=true,40,true;
+assert(custom.reset(pet_reset,'pet') and pet_reset.pet.alert_hp and pet_reset.pet.alert_hp_percent==40 and not pet_reset.pet.show_reward,
+    'Resetting Pet leaves the pet alerts.');
+assert(custom.reset(pet_reset,'alerts') and not pet_reset.pet.alert_hp and pet_reset.pet.alert_hp_percent==25,
+    'Resetting Alerts puts the pet alerts back.');
+-- A near miss on a timer panel's key is refused, and the refusal names every panel key, so the right one can be found.
+for _,typo in ipairs({'targets','self_buff'}) do
+    local refused,why=custom.reset(defaults.make(),typo);
+    assert(refused==nil and type(why)=='string','A near miss is refused: '..typo);
+    for _,id in ipairs(defaults.panel_order) do
+        assert(custom.reset(defaults.make(),id),'Fixture: '..id..' is a reset scope.');
+        assert(why:find('%f[%w_]'..id..'%f[^%w_]'),'The refusal names '..id..': '..why);
+    end
+end
 local changed=assert(custom.set(s,'style.font_size','24'));
 assert(changed.style.font_size==24 and s.style.font_size==16);
 assert(custom.set(s,'style.font_size','9999')==nil and custom.set(s,'style.font_size','nan')==nil);
@@ -88,7 +104,7 @@ assert(#app.state.settings.watch_ids==0, 'Undo never revives watched IDs from an
 command('/vg watch 777'); command('/vg undo');
 assert(#app.state.settings.watch_ids==0, 'Watch edits within the same zone remain undoable.');
 command('/vg report');
-assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.3.0');
+assert(require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json').version=='1.4.0');
 local report=require('core.store').read(MOCK_INSTALL_PATH..'/config/addons/vantage/reports/latest.json');
 assert(report.snapshot.valid and report.snapshot.self_known and report.snapshot.self_effects==0,
     'A local report distinguishes a complete empty snapshot from unavailable self-status data.');

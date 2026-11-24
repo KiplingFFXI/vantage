@@ -7,12 +7,17 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / 'vantage'
-CORE = 'alerts catalog chat client customization effect_filters effect_order identity observer profiles sound store tracker roster native_party_ui recasts memory patterns clock json performance camera name_anchor warmup overhead dispel durations recast_tints ready_pulse party_cooldowns rolls pet anchors conditions share starters game_buffs'.split()
-UI = 'alert_panel appearance main_page shared_look client_assets client_fonts client_menu_fonts client_skin countdown_text defaults fields fonts hud icons item_icons action_icons recast_icons layout resize text_wrap render_cache text_metrics effect_blink effect_settings filter_settings settings_window settings_stub search_index controls theme party_defaults party_theme party_layout party_labels party_hud party_settings party_size_widget native_party_hud frame_policy setup_defaults client_bitmap numbers imgui_scopes overhead_defaults overhead_icons overhead_preview overhead_settings duration_settings cooldown_list cooldown_settings ready_pulse element_box roll_display roll_settings pet_display pet_settings elements snap edit_mode condition_settings panel_frame panel_rows status_panel recast_panel profiles_page'.split()
-REQUIRED = {'vantage.lua', 'data/ability_effects.lua', 'data/actions.lua', 'data/catalog.lua', 'data/cleansable.lua', 'data/dispelable.lua', 'data/effects.lua', 'data/gear.lua', 'data/party_cooldowns.lua', 'data/rolls.lua', 'data/pets.lua', 'data/zones.lua'}
+CORE = 'alerts catalog chat client customization effect_filters effect_order identity observer profiles sound store tracker roster native_party_ui recasts memory patterns clock json performance camera name_anchor warmup overhead dispel durations recast_tints ready_pulse party_cooldowns party_distance steady rolls pet pet_lines anchors conditions share starters game_buffs game_pet_bar guard tables code_patch'.split()
+UI = 'alert_panel appearance cast_folds main_page shared_look client_assets client_fonts client_menu_fonts client_skin countdown_text defaults fields fonts hud icons icon_packs item_icons action_icons recast_icons layout resize text_wrap render_cache text_metrics effect_blink effect_settings filter_settings settings_window settings_stub search_index controls theme party_defaults party_theme party_layout party_labels party_hud party_settings party_size_widget native_party_hud frame_policy setup_defaults client_bitmap numbers imgui_scopes overhead_defaults overhead_icons overhead_preview overhead_settings duration_settings cooldown_list cooldown_settings ready_pulse pulse_settings element_box roll_display roll_settings pet_display pet_settings elements snap edit_mode condition_settings panel_frame panel_rows status_panel recast_panel profiles_page'.split()
+REQUIRED = {'vantage.lua', 'data/ability_effects.lua', 'data/actions.lua', 'data/catalog.lua', 'data/cleansable.lua', 'data/dispelable.lua', 'data/effects.lua', 'data/gear.lua', 'data/party_cooldowns.lua', 'data/rolls.lua', 'data/pets.lua', 'data/zones.lua', 'data/shared_ids.lua'}
 REQUIRED |= {'core/%s.lua' % name for name in CORE} | {'ui/%s.lua' % name for name in UI}
-OPTIONAL = set()
 DIRECTORIES = {'core', 'ui', 'data'}
+# Left out of the archive's addon folder: caches, tests, tools, fonts Vantage makes at run time, game data and settings.
+LEFTOVER_FOLDERS = {'__pycache__', '.git', 'tests', 'tools', 'fonts', 'config'}
+LEFTOVER_SUFFIXES = {'.pyc', '.pyo', '.ttf', '.otf', '.dat', '.tmp', '.log', '.bak'}
+# Your own private text, one per line: your Windows user name, email and character names. .gitignore keeps this file
+# out of the repository, so a build without it still checks the paths.
+OWN_MARKERS = Path(__file__).resolve().parent / 'private_markers.txt'
 # require('name'), require 'name' and pcall(require,'name').
 REQUIRE = re.compile(r'''\brequire\s*(?:\(\s*|,\s*)?['"]([\w.]+)['"]''')
 PRIVATE = re.compile(r'(?i)(?:[a-z]:[\\/]+Users[\\/]+|/(?:home|Users)/)[^\s\x00\'"<>]+|'
@@ -30,6 +35,23 @@ def addon_version(addon=ADDON):
     if not match:
         raise RuntimeError('vantage.lua must declare a version with three numeric parts.')
     return match.group(1)
+
+
+def own_markers(path=OWN_MARKERS):
+    """The lines of the local marker file, or none when there's no such file."""
+    if not Path(path).is_file():
+        return ()
+    return tuple(line.strip() for line in Path(path).read_text(encoding='ascii').splitlines() if line.strip())
+
+
+def holds_marker(data, markers):
+    """The first of markers that data holds, plain or UTF-16LE, ignoring case, or None."""
+    lowered = data.lower()
+    for marker in markers:
+        text = marker.lower()
+        if text.encode('ascii') in lowered or text.encode('utf-16-le') in lowered:
+            return marker
+    return None
 
 
 def checked_bytes(path, name):
@@ -59,24 +81,30 @@ def required_modules(addon=ADDON):
     return reached
 
 
-def addon_files(addon=ADDON):
+def addon_files(addon=ADDON, leftovers=False):
+    """[(path, 'vantage/' + name)] of the runtime files. With leftovers, the archive's leftovers are skipped."""
     addon = Path(addon)
     if linked(addon):
         raise RuntimeError('The addon folder must not be linked.')
-    left_out = required_modules(addon) - REQUIRED
+    # Without vantage.lua, the missing-file check below says so.
+    left_out = required_modules(addon) - REQUIRED if (addon / 'vantage.lua').is_file() else set()
     if left_out:
         raise RuntimeError('vantage.lua loads modules the release leaves out: ' + ', '.join(sorted(left_out)))
     found = set()
     for folder, subfolders, filenames in os.walk(addon):
+        if leftovers:
+            subfolders[:] = sorted(name for name in subfolders if name not in LEFTOVER_FOLDERS)
         for name in subfolders:
             path = Path(folder) / name
             relative = path.relative_to(addon).as_posix()
-            if linked(path) or relative not in DIRECTORIES:
+            if linked(path) or (relative not in DIRECTORIES and not leftovers):
                 raise RuntimeError('Unexpected or linked runtime folder: ' + relative)
         for name in filenames:
             path = Path(folder) / name
+            if leftovers and path.suffix.lower() in LEFTOVER_SUFFIXES:
+                continue
             relative = path.relative_to(addon).as_posix()
-            if linked(path) or relative not in REQUIRED | OPTIONAL:
+            if linked(path) or relative not in REQUIRED:
                 raise RuntimeError('Unexpected or linked runtime file: ' + relative)
             found.add(relative)
     missing = REQUIRED - found

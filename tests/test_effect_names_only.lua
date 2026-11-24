@@ -49,26 +49,19 @@ local function no_numbers(list, title)
 end;
 
 -- A panel's Filters tab.
-local finds, effects = '##frame_Find an effect', '##frame_Effect';
-local function effect_rows()
-    local found = {};
-    for _, call in ipairs(MOCK.imgui_calls) do
-        if call[1] == 'Selectable' and tostring(call[2]):find('##%d+$') then found[#found + 1] = call[2]; end;
-    end;
-    return found;
-end;
+local finds = '##effect_search_Effect';
 require('ui.panel_frame').open('self_buffs', 'filters');
-combo = effects;
+combo = '##Effect';
 draw('Display');
-assert(called('InputText', finds), 'The box to type a name in is there.');
+assert(called('InputTextWithHint', finds, 'Find by name'), 'The box to type a name in is at the top of the list.');
 inputs[finds] = 'Haste'; draw('Display'); draw('Display');
-assert(called('Selectable', 'Haste##33'), 'The row reads Haste.');
-no_numbers(effect_rows(), 'The panel list');
+assert(called('Selectable', 'Haste##effect_33'), 'The row reads Haste.');
+no_numbers(rows('##effect_'), 'The panel list');
 inputs[finds] = '33'; draw('Display'); draw('Display');
-local list = effect_rows();
-assert(#list == 1 and list[1] == 'Haste##33', 'A typed number still finds its effect: ' .. table.concat(list, ' '));
+local list = rows('##effect_');
+assert(#list == 1 and list[1] == 'Haste##effect_33', 'A typed number still finds its effect: ' .. table.concat(list, ' '));
 inputs[finds] = '3'; draw('Display'); draw('Display');
-assert(not called('Selectable', 'Haste##33'), 'Only the whole number finds it.');
+assert(not called('Selectable', 'Haste##effect_33'), 'Only the whole number finds it.');
 inputs[finds] = ''; draw('Display');
 combo = nil;
 
@@ -77,23 +70,23 @@ require('ui.panel_frame').open('notices', 'show');
 draw('Display', { 'New alert##frame' });
 combo = '##Effect';
 draw('Display');
-assert(called('InputTextWithHint', '##effect_search_Effect', 'Find an effect by name'), 'The picker asks for a name.');
+assert(called('InputTextWithHint', '##effect_search_Effect', 'Find by name'), 'The picker asks for a name.');
 no_numbers(rows('##effect_'), 'The alert rule list');
 inputs['##effect_search_Effect'] = '33'; draw('Display'); draw('Display');
 assert(called('Selectable', 'Haste##effect_33'), 'The picker finds a typed number too.');
 inputs['##effect_search_Effect'] = ''; draw('Display');
 combo = nil;
 
--- The finders on the display pages share one selection: names in, and a number still finds.
+-- The pickers on the display pages share one selection: it keeps the names, and picks nothing of its own.
 local entries = { { id = 33, name = 'Haste' }, { id = 3, name = 'Poison' }, { id = 330, name = 'Attack Boost' } };
-local pick = { query = '33' };
-assert(selection(entries, pick) == 33 and #pick.ids == 1 and pick.labels[33] == 'Haste', 'A typed number picks its effect and shows its name.');
-pick = { query = 'poison' };
-assert(selection(entries, pick) == 3 and pick.labels[3] == 'Poison', 'A name finds it.');
-pick = { query = '(33)' };
-assert(selection(entries, pick) == nil and #pick.ids == 0, 'The number is no part of a row.');
+local pick = {};
+assert(selection(entries, pick) == nil and pick.labels[33] == 'Haste', 'Nothing is picked until one is chosen, and the names are kept.');
+pick.effect = 3;
+assert(selection(entries, pick) == 3, 'A pick on the list stays.');
+pick.effect = 99;
+assert(selection(entries, pick) == nil, 'One not on it is let go.');
 
--- Sort, on Party list buffs.
+-- Sort, on Party list.
 local panels = require('ui.panel_frame');
 s.party_ui.enabled = true;
 panels.open('party_ui', 'show');

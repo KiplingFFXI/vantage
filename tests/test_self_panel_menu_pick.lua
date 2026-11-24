@@ -1,8 +1,8 @@
 -- Replace the game's buff icons, as the app and the self panels run it. The game side (core/game_buffs.lua) is a
 -- stand-in here, and test_game_buffs.lua covers the real one. Each Present asks for the replacement only while its
--- tick is on, both self panels are on, no samples show and the displays aren't hidden. What the game's + menu is on
--- gets a cursor on Vantage's own icon, or its name in a line when no self panel shows it. What the game side has to
--- say is said once, and an unload puts everything back.
+-- tick is on, both self panels are on, no samples show, the displays aren't hidden and When to show doesn't hide both
+-- self panels. What the game's + menu is on gets a cursor on Vantage's own icon, or its name in a line when no self
+-- panel shows it. What the game side has to say is said once, and an unload puts everything back.
 local wants, releases = {}, 0;
 local pick, notice, broken, unclean;
 package.loaded['core.game_buffs'] = {
@@ -77,6 +77,39 @@ client.read, client.visibility = read, visibility;
 h.app.refresh(MOCK.now);
 record = h.frame();
 assert(h.count(record.icons) == 3, 'Fixture: off the map the panels are back.');
+-- When to show hiding both self panels gives the game's icons back, so some buff icons always show. With only one
+-- hidden the other still stands in, so they stay replaced. Edit mode shows both panels, so they are replaced then.
+do
+    local conditions = require('core.conditions');
+    local function when(key, value) s.panels[key].conditions = conditions.tidy(value); end
+    when('self_buffs', { engaged = 'yes' });
+    h.app.refresh(MOCK.now);
+    record = h.frame();
+    assert(record.icons[40] == nil and record.icons[3] == 1, 'Fixture: When to show hides Self buffs only: ' .. h.describe(record.icons));
+    assert(asked() == true, 'With only Self buffs hidden by When to show, the game\'s icons stay replaced.');
+    when('self_debuffs', { engaged = 'yes' });
+    h.app.refresh(MOCK.now);
+    local from = #wants;
+    record = h.run(3);
+    assert(h.count(record.icons) == 0, 'Fixture: When to show hides both self panels.');
+    for index = from + 1, #wants do
+        assert(wants[index] == false, 'With both self panels hidden by When to show, the game draws its own icons.');
+    end
+    command('/vg edit');
+    assert(asked() == true, 'Edit mode shows both panels, so the game\'s icons are replaced while it is on.');
+    command('/vg edit');
+    assert(asked() == false, 'Out of edit mode the game draws its own again.');
+    when('self_buffs', {});
+    h.app.refresh(MOCK.now);
+    from = #wants;
+    record = h.run(3);
+    assert(record.icons[40] == 1, 'Fixture: Self buffs shows again.');
+    for index = from + 1, #wants do assert(wants[index] == true, 'One self panel showing replaces the game\'s icons again.'); end
+    when('self_debuffs', {});
+    h.app.refresh(MOCK.now);
+    record = h.frame();
+    assert(h.count(record.icons) == 3, 'Fixture: both self panels show again.');
+end
 
 -- The corners of a status icon's picture and of every box drawn in a frame.
 local function drawn(record_calls, effect)
@@ -104,11 +137,11 @@ end
 record = h.frame();
 assert(not boxed(40) and not boxed(41) and not boxed(3) and line(record.texts) == nil, 'With the + menu shut there is no cursor.');
 -- The + menu on Shell: the cursor is on Vantage's Shell, and on nothing else.
-pick = { effect = 41, can_cancel = true };
+pick = { effect = 41 };
 record = h.frame();
 assert(boxed(41) and not boxed(40) and not boxed(3) and line(record.texts) == nil, 'The cursor is on Shell.');
 -- On Poison, which sits on Self debuffs.
-pick.effect, pick.can_cancel = 3, false;
+pick.effect = 3;
 record = h.frame();
 assert(boxed(3) and not boxed(41) and not boxed(40) and line(record.texts) == nil, 'The cursor is on Poison, on Self debuffs.');
 -- Shut again.
@@ -119,7 +152,7 @@ assert(not boxed(3), 'With the + menu shut again the cursor is gone.');
 -- An effect a self panel hides has no icon to take the cursor, so its name shows in a line.
 s.panels.self_buffs.exclude[41] = true;
 h.app.refresh(MOCK.now);
-pick = { effect = 41, can_cancel = true };
+pick = { effect = 41 };
 record = h.frame();
 assert(record.icons[41] == nil, 'Fixture: Shell is hidden on Self buffs.');
 local name = require('core.catalog').get(41).name;
@@ -140,7 +173,7 @@ h.app.refresh(MOCK.now);
 pick = nil;
 h.run(2);
 local plain = box_count();
-pick = { effect = 40, can_cancel = true };
+pick = { effect = 40 };
 record = h.frame();
 local picture, boxes = drawn(MOCK.imgui_calls, 40);
 local around = false;
@@ -154,18 +187,51 @@ h.app.refresh(MOCK.now);
 -- Copy Image's shadows are one effect on Vantage's panels, so the + menu on a shadow icon is on it.
 h.both({ 445 });
 record = h.run(3);
-pick = { effect = 445, can_cancel = true };
+pick = { effect = 445 };
 record = h.frame();
 local shadow;
 for effect in pairs(record.icons) do shadow = effect; end
 assert(shadow and boxed(shadow) and line(record.texts) == nil, 'The cursor is on Copy Image: ' .. h.describe(record.icons));
 pick = nil;
 
+-- Two copies of one effect, as two Marches are: the menu says which copy its cursor is on, counted in the order the
+-- game lists them, and the box is on that one wherever the panel's own order puts it. Slot 0's March ends first
+-- here, then slot 2's does, so by time left the two swap places, and the box goes with the copy.
+local MARCH = 214;
+s.panels.self_buffs.sort = 'remaining';
+local function march_box(copy, first_ends, second_ends)
+    h.both({ MARCH, 40, MARCH }, nil, { [0] = first_ends, [1] = 2000, [2] = second_ends });
+    h.run(3);
+    pick = { effect = MARCH, copy = copy };
+    local seen = h.frame();
+    assert(seen.icons[MARCH] == 2 and line(seen.texts) == nil, 'Fixture: both Marches show: ' .. h.describe(seen.icons));
+    local places, boxes = {}, {};
+    for _, call in ipairs(MOCK.imgui_calls) do
+        local copied = MOCK.drawn[call];
+        if call[1] == 'draw:AddImage' and call[2] == 5000 + MARCH then places[#places + 1] = copied[3][1] .. ',' .. copied[3][2]; end
+        if call[1] == 'draw:AddRect' then boxes[copied[2][1] .. ',' .. copied[2][2]] = true; end
+    end
+    local on = {};
+    for _, place in ipairs(places) do if boxes[place] then on[#on + 1] = place; end end
+    assert(#places == 2 and places[1] ~= places[2] and #on == 1, 'One March has the cursor: ' .. #on .. ' of ' .. #places);
+    pick = nil;
+    -- Which of the two drawn icons has it: 1 for the first drawn.
+    return on[1] == places[1] and 1 or 2;
+end
+local early_first, early_second = march_box(1, 300, 900), march_box(2, 300, 900);
+assert(early_first ~= early_second, 'The cursor on the second March is on the second March, not on the first again.');
+local late_first, late_second = march_box(1, 900, 300), march_box(2, 900, 300);
+assert(late_first ~= late_second and late_first == early_second and late_second == early_first,
+    'The box follows the copy the menu is on when the order on the panel swaps them.');
+-- A menu that names no copy, or one past the copies there are, is on the first, as it was.
+assert(march_box(nil, 300, 900) == early_first and march_box(5, 300, 900) == early_first, 'With no copy named the first has it.');
+s.panels.self_buffs.sort = require('ui.defaults').make().panels.self_buffs.sort;
+
 -- Samples aren't your effects, so they take no cursor.
 h.both({ 40, 41, 3 });
 h.run(3);
 s.preview = true;
-pick = { effect = 40, can_cancel = true };
+pick = { effect = 40 };
 record = h.frame();
 assert(wants[#wants] == false and line(record.texts) == nil, 'Samples take no cursor.');
 s.preview = false;
@@ -215,7 +281,7 @@ do
     local view = h.hud.sample(MOCK.now);
     local function shown(effect)
         MOCK.imgui_calls = {};
-        h.hud.draw(view, s, MOCK.now, { menu_pick = effect and { effect = effect, can_cancel = false } or nil });
+        h.hud.draw(view, s, MOCK.now, { menu_pick = effect and { effect = effect } or nil });
         local texts = {};
         for _, call in ipairs(MOCK.imgui_calls) do
             if call[1] == 'draw:AddText' and type(call[6]) == 'string' then texts[#texts + 1] = call[6]; end

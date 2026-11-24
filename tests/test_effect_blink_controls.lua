@@ -1,4 +1,4 @@
--- Blink is set once, under More look on the main page, for the status timers, the party list buffs, the overhead icons
+-- Blink is set once, under While playing on the main page, for the status timers, Party list, the overhead icons
 -- and the pet. A tick or the slider writes only their blink keys, and the seconds are kept while it is off. Recasts have none.
 local defaults,custom=require('ui.defaults'),require('core.customization');
 local window,hud,imgui=require('ui.settings_window'),require('ui.hud'),require('imgui');
@@ -79,9 +79,9 @@ for _,effects in ipairs(holders(expected))do effects.blink_icons=false;end;
 assert(custom.equal(custom.history_value(settings),expected) and settings.overhead.blink_seconds==47,
     'Disabling blink preserves its selected threshold for later');
 
--- The switch says what blinks: effects whose time left is known or estimated, whether or not their countdown shows.
+-- The switch says what blinks, whether or not its countdown shows.
 local help=require('ui.search_index').controls.Home['Blink before an effect ends'] or '';
-assert(help:find('Effects whose time left is known or estimated blink, whether or not their countdown shows',1,true),
+assert(help:find('countdown shown or not',1,true),
     'The blink switch says what blinks');
 assert((require('ui.search_index').controls.Home['Blink seconds left'] or ''):find('Ending-soon colors and countdown styling keep their own settings.',1,true),
     'A timer panel\'s ending-soon colors keep their own settings');

@@ -15,7 +15,7 @@ local recast_icons = require('ui.recast_icons');
 local overhead = require('core.overhead');
 -- The cooldown list's icons, loaded the first time a cooldown line draws.
 local cooldown_list;
-local floor, ceil, max, min, huge = math.floor, math.ceil, math.max, math.min, math.huge;
+local floor, max, min, huge = math.floor, math.max, math.min, math.huge;
 
 -- Units in a plan and effects looked at for one unit.
 local UNITS, CANDIDATES = 24, 96;
@@ -23,11 +23,6 @@ local UNITS, CANDIDATES = 24, 96;
 -- Amnesia, Terror, Lullaby at 80, Doom 100).
 local CONTROL = 80;
 local DISPELABLE = dispel.buffs;
--- The hide rule scope of each unit type; the party and the alliance take theirs from the roster.
-local SCOPES = { mob = 'enemy', other = 'other', pet = 'pet', other_pet = 'pet', party = 'party', alliance = 'alliance',
-    self = 'self' };
-local OWN_SCOPE = { mob = true, other = true, pet = true, other_pet = true };
-
 -- One unit's block. Icon i: its effect, place (left and top, from the block's anchor), size, whether it is lit, and
 -- its countdown (text, place and font size; '' for none). left, top, right and bottom bound the block from the anchor.
 local slots = {};
@@ -45,24 +40,8 @@ local above = true;
 
 local function clamp(value, low, high) return value < low and low or value > high and high or value; end
 
--- Countdown text, made once for each value it can show: whole seconds under a minute, then minutes, then hours. The
--- seconds and minutes are made at load, so a timer ticking down makes nothing.
-local texts, text_count = { [0] = countdown.time(0) }, 0;
-for second = 1, 60 do texts[second] = countdown.time(second - 0.5); end
-for minute = 1, 59 do texts[10000 + minute] = countdown.time(minute * 60); end
-local function time_text(effect)
-    if effect.effect == 269 and effect.domain ~= 'recast' then return ''; end
-    -- A duration override that counts up (core/durations.lua) shows the time since the effect landed.
-    local left = effect.count_up == true and effect.elapsed or effect.remaining;
-    if type(left) ~= 'number' or left ~= left or left < 0 or left == huge then return ''; end
-    local key = left >= 3600 and 20000 + floor(left / 3600) or left >= 60 and 10000 + floor(left / 60) or ceil(left);
-    local text = texts[key];
-    if not text then
-        text = countdown.time(left);
-        if text_count < 8192 then texts[key], text_count = text, text_count + 1; end
-    end
-    return text;
-end
+-- Countdown text, from countdown_text's one cache, so a timer ticking down makes nothing.
+local time_text = countdown.effect_text;
 
 -- Countdown sizes, by font size and text, kept until the font, its measuring or the countdown look changes.
 local widths, heights, measured = {}, {}, { font = nil, token = nil, bold = nil, shadow = nil, outline = nil };
@@ -114,21 +93,11 @@ local function tier(effect, mob, lit, ticked)
     return (effect.mine or effect.by_pet) and 4 or 5;
 end
 
--- The hide rule subject of a unit: the roster's, when it has one, with the unit's own type deciding enemy, other and
--- pet. Its lowercase name is made only when the name changes.
+-- The hide rule subject of a unit (core/overhead.lua rule_subject, which picks the units by it too). Its lowercase
+-- name is made only when the name changes.
 local function rule_subject(slot, unit, recipients)
-    local subject, known = slot.subject, recipients and recipients[unit.id];
     if slot.name ~= unit.name then slot.name, slot.lower = unit.name, unit.name:lower(); end
-    subject.id, subject.is_self = unit.id, unit.kind == 'self';
-    if known then
-        subject.name, subject.job, subject.group, subject.player = known.name, known.job, known.group, known.player;
-        subject.scope = known.scope;
-    else
-        subject.name, subject.job, subject.group, subject.player = slot.lower, nil, nil, unit.player == true;
-        subject.scope = SCOPES[unit.kind];
-    end
-    if OWN_SCOPE[unit.kind] then subject.scope = SCOPES[unit.kind]; end
-    return subject;
+    return overhead.rule_subject(slot.subject, unit.kind, unit.id, slot.lower, unit.player, recipients);
 end
 
 -- Fills picked with the effects of one unit its type shows, sorted: those its own filters keep
@@ -143,7 +112,9 @@ local function pick(subject, unit, kind, compiled, subject_rules, ready, light, 
         local wanted = count < CANDIDATES and overhead.keeps(kind, effect)
             and not (rules and effect_filters.hide(compiled, effect, subject_rules));
         if wanted then
-            local lit = light and mob and effect.kind ~= 'debuff' and ready and DISPELABLE[effect.effect] == true;
+            -- None lights while the mob has a Magic Shield, and Immortal Shield's lights (core/tracker.lua view).
+            local lit = light and mob and effect.kind ~= 'debuff' and ready
+                and (DISPELABLE[effect.effect] == true or effect.immortal == true) and not effect.shielded;
             local rank = tier(effect, mob, lit, overhead.ticked(kind, effect.effect));
             -- A debuff you can remove lights once its tier is known, so it keeps its place.
             if removable and removable[effect.effect] then lit = true; end
@@ -305,8 +276,8 @@ local function layout(slot, unit, count, kind, config, ui, font)
 end
 
 -- A party or alliance member's party cooldowns (core/party_cooldowns.lua), when they go over heads: one line of up to
--- six of their abilities' icons, soonest ready first, on the far side of the block from the name, each with its
--- estimated time left. clock holds the time left of the one being placed.
+-- six of their abilities' and spells' icons, soonest ready first, on the far side of the block from the name, each
+-- with its time left. clock holds the time left of the one being placed.
 local COOLDOWNS, clock = 6, { effect = 0, remaining = 0 };
 local function cooldown_line(slot, entries, unit, kind, config, ui, font, now)
     local count = min(#entries, COOLDOWNS);

@@ -1,5 +1,6 @@
 -- The Profiles and sharing page. Profiles: which one is in use, the saved ones, and the jobs that load one. Across
--- characters. Import and export (core/share.lua): copy part of your settings as text, or read an export from the clipboard
+-- characters. Import and export (core/share.lua): copy part of your settings or a saved profile as text or save it to a
+-- file, or read an export from the clipboard
 -- or the shared folder, see what adding it or replacing with it would change, and do one of them as one Undo step. A
 -- whole profile can be saved as a new profile instead, which doesn't load it. Start over puts things back. It draws
 -- with the settings window's helpers (c), and what is picked here lasts the session.
@@ -12,6 +13,11 @@ local page = { seen = {} };
 local selected, name_box, picked_job, confirm = '', { '' }, nil, nil;
 -- What to export.
 local pick = { kind = 'profile', id = 'self_buffs' };
+-- Each kind of export, then a saved profile. A saved profile is not one of share.kinds, the kinds an import takes. The
+-- saved profile to export is a pick of its own, so exporting one leaves the profile picked for Load and the job links.
+local export_kinds, export_names, export_name = {}, { saved = 'A saved profile' }, '';
+for _, kind in ipairs(share.kinds) do export_kinds[#export_kinds + 1], export_names[kind] = kind, share.kind_names[kind]; end
+export_kinds[#export_kinds + 1] = 'saved';
 local ids, labels = {}, {};
 for _, element in ipairs(elements.list) do ids[#ids + 1], labels[element.id] = element.id, element.label; end
 -- The string read and what importing it would change, worked out again when the settings change, so an edit made since
@@ -27,13 +33,18 @@ local now = {};
 -- Saved profile names, any problem reading them, and where the current settings came from.
 function page.choices(callbacks)
     local summary = callbacks.profile_summary and callbacks.profile_summary();
-    -- The search goes by this, so it never reads the file while the box holds text.
+    -- The search goes by these, so it never reads the file while the box holds text.
     page.seen = summary and summary.status or {};
-    if summary then return summary.names or {}, summary.problem, summary.status or {}; end
+    if summary then page.saved = #(summary.names or {}); return summary.names or {}, summary.problem, summary.status or {}; end
     local names, problem = {}, nil;
     if callbacks.profile_list then names, problem = callbacks.profile_list(); end
+    page.saved = #(names or {});
     return names or {}, problem, callbacks.profile_status and callbacks.profile_status() or {};
 end
+
+-- Whether any profile is saved, as the page last read: each one's row has its buttons. Before the page reads them, the
+-- rows count as there.
+function page.any_saved() return page.saved == nil or page.saved > 0; end
 
 -- base, or base with " 2", " 3" and so on after it: the first that no saved profile in names has. Each is cut to the 40
 -- characters a profile name can have (core/profiles.lua), the number kept.
@@ -67,17 +78,18 @@ end
 function page.clear() pending, previews, previewed, previewed_revision, other_screen, save_problem = nil, nil, nil, nil, nil, nil; end
 
 -- What the search goes by: whether Confirm shows, whether a string read or a whole profile waits, whether its line about
--- another screen shows, whether Import from a file listed any, and whether the display to export shows.
+-- another screen shows, whether Import from a file listed any, and whether the display or saved profile to export shows.
 function page.confirming() return confirm ~= nil; end
 function page.reading() return pending ~= nil; end
 function page.reading_profile() return pending ~= nil and pending.kind == 'profile'; end
 function page.other_screen() return other_screen ~= nil; end
 function page.listing() return files ~= nil and #files > 0; end
 function page.copying_display() return pick.kind == 'element'; end
+function page.copying_saved() return pick.kind == 'saved'; end
 
 local function link_of(settings, job) return settings.job_profiles[job] or settings.job_profiles[tostring(job)] or ''; end
 
-local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local jobs = require('data.shared_ids').jobs;
 
 -- The job the list shows: the one picked here, or the one you are on until you pick one.
 local function job_shown(view)
@@ -95,9 +107,9 @@ local function help_lines()
     if helps then return helps; end
     local folder = require('core.identity').relative('shared/');
     helps = { folder = folder,
-        share = 'Copies the picked saved profile to the clipboard, without loading it. Send it to a friend to import. Your screen does not change.',
-        save_file = 'Saves the picked saved profile to a new file in ' .. folder .. ', without loading it. A file already there is never replaced.',
-        read = 'Reads the export you copied. Nothing changes until you choose how to import it. An export that is damaged, too long, from another version or holds a setting Vantage doesn\'t have is refused. The entries of a list in it, such as the effects a panel shows, are cleaned as a saved setting\'s are.',
+        share = 'Copies it to the clipboard. A saved profile is not loaded, and your screen does not change. Nothing is sent anywhere.',
+        save_file = 'Saves it to a new file in ' .. folder .. '. A saved profile is not loaded. A file already there is never replaced.',
+        read = 'Reads the export you copied. Nothing changes until you choose how to import it. A damaged export, or one from another version or with settings Vantage doesn\'t have, is refused.',
         open_file = 'Lists the .txt files in ' .. folder .. ', to read one of them. Put a file a friend sent you there first.',
         file = 'The .txt files in ' .. folder .. '. Choosing one reads it as Import from clipboard does.',
         keep = 'Keeps where each of your displays sits and its size. Untick to take the places from the profile.',
@@ -127,10 +139,6 @@ local function list(imgui, c, label, search, help, id, shown, draw_entries, leav
     c.tip(help);
 end
 
-local function profile_entries()
-    for _, name in ipairs(now.names) do if now.imgui.Selectable(name, selected == name) then page.pick(name); end end
-end
-
 -- Overwrite and Delete wait for their Confirm.
 local function ask(kind)
     local c, callbacks = now.c, now.callbacks;
@@ -149,7 +157,7 @@ local function overwrite_profile() ask('overwrite'); end
 
 local function rename_profile()
     local c, callbacks = now.c, now.callbacks;
-    if selected == '' or name_box[1] == '' then c.note('Choose a saved profile and enter its new name.'); return; end
+    if selected == '' or name_box[1] == '' then c.note('Type its new name in the Name box below first.'); return; end
     local state = callbacks.profile_status and callbacks.profile_status(selected) or {};
     if c.call('profile_rename', selected, name_box[1], state.token) ~= false then pick_saved(callbacks, name_box[1]); c.note('Profile renamed.'); end
 end
@@ -170,56 +178,75 @@ end
 
 local function cancel_change() confirm = nil; end
 
-local function share_profile(to_file)
-    local c, callbacks = now.c, now.callbacks;
-    if selected == '' then c.note('Choose a saved profile first.'); return; end
-    if not callbacks.profile_share then c.note('That action is not available right now.'); return; end
-    local ok, why, left, file = callbacks.profile_share(selected, to_file);
-    if not ok then c.note(why or 'That profile could not be exported.', 'problem_messages'); return; end
-    c.note((to_file and 'Saved "' .. selected .. '" as ' .. file .. '. A friend puts it in their own shared folder and uses Import from a file.'
-        or 'Copied "' .. selected .. '". Send it in a message, or use Export to a file to keep it as a file.') .. (left and ' ' .. left or ''), 'done_messages');
-end
-
-local function export_to_clipboard() share_profile(false); end
-local function export_to_file() share_profile(true); end
-
 local function save_new()
     local c = now.c;
     if name_box[1] == '' then c.note('Give this profile a name first.'); return; end
     if c.call('profile_save', name_box[1], false) ~= false then pick_saved(now.callbacks, name_box[1]); c.note('Profile saved.', 'done_messages'); end
 end
 
+-- Each saved profile is a row, and its buttons act on it. Its round button picks it for the job links below and puts
+-- its name in the Name box, to rename it. A row's labels and actions are kept, so a draw makes none.
+local rows = {};
+local function row_of(index)
+    local row, name = rows[index], now.names[index];
+    if not row then
+        local function act(action)
+            return function()
+                selected = now.names[index];
+                action();
+            end;
+        end;
+        row = { load = act(load_profile), overwrite = act(overwrite_profile), rename = act(rename_profile), delete = act(delete_profile), labels = {} };
+        rows[index] = row;
+    end
+    if row.name ~= name then
+        local labels = row.labels;
+        -- A name ending in # would turn the ## into ###, which ImGui reads as one ID for every such name, and the # would
+        -- be hidden. A space keeps them apart.
+        row.name, labels.pick = name, name .. (name:sub(-1) == '#' and ' ##profile_pick' or '##profile_pick');
+        labels.load, labels.overwrite, labels.rename = 'Load##profile_load_' .. name, 'Overwrite##profile_overwrite_' .. name, 'Rename##profile_rename_' .. name;
+        labels.delete = 'Delete##profile_delete_' .. name;
+    end
+    return row;
+end
+local PICK_HELP = 'Picks it for the job links below, and puts its name in the Name box to rename it.';
+
+-- The Confirm an overwrite or delete waits for, under the row it is for.
+local function confirm_lines(imgui, c)
+    imgui.TextWrapped((confirm.kind == 'overwrite' and 'This replaces the saved settings in ' or 'This deletes the saved profile ') .. confirm.name .. '.');
+    -- The search knows both kinds by the words they begin with, which it finds only while a Confirm waits.
+    c.button('Confirm ' .. confirm.kind, confirm_change, nil, nil, 'Confirm ');
+    imgui.SameLine();
+    c.button('Cancel profile change', cancel_change);
+end
+
 local function saved_profiles(imgui, settings, callbacks, c, names, problem, status)
     c.heading('Profiles', 'Save your panels, appearance and alert rules together. Current effects and timer deadlines are never part of a profile.');
     if problem then imgui.TextWrapped(problem); end
     imgui.TextWrapped(status_line(settings, status));
-    -- With nothing to pick, the list is greyed out and says why.
-    local none = #names == 0;
-    if none and imgui.BeginDisabled then imgui.BeginDisabled(true); end
-    list(imgui, c, 'Saved profiles', 'Saved profiles', 'Picking one changes nothing until you use a button below.', '##profiles',
-        none and (problem and 'No profiles could be read' or 'No saved profiles yet') or selected ~= '' and selected or 'Choose a saved profile',
-        profile_entries);
-    if none and imgui.EndDisabled then imgui.EndDisabled(); end
-    c.button('Load##profile_load', load_profile, 'Puts the picked saved profile in place of your settings. Undo puts them back.', nil, 'Load profile');
-    imgui.SameLine();
-    c.button('Overwrite##profile_overwrite', overwrite_profile,
-        'Replaces the picked saved profile after you confirm. Undo the last profile change can put it back.', nil, 'Overwrite profile');
-    imgui.SameLine();
-    c.button('Rename##profile_rename', rename_profile, 'Gives the picked saved profile the name below.', nil, 'Rename profile');
-    imgui.SameLine();
-    c.button('Delete##profile_delete', delete_profile, 'Deletes the picked saved profile after you confirm.', nil, 'Delete profile');
-    if confirm then
-        imgui.TextWrapped((confirm.kind == 'overwrite' and 'This replaces the saved settings in ' or 'This deletes the saved profile ') .. confirm.name .. '.');
-        -- The search knows both kinds by the words they begin with, which it finds only while a Confirm waits.
-        c.button('Confirm ' .. confirm.kind, confirm_change, nil, nil, 'Confirm ');
+    if #names == 0 and not problem then imgui.TextWrapped('No saved profiles yet. Save as new, below, saves your settings as one.'); end
+    -- The buttons line up after the longest name.
+    local widest = 0;
+    for _, name in ipairs(names) do widest = math.max(widest, (imgui.CalcTextSize(name))); end
+    local start, asked = imgui.GetCursorPosX(), false;
+    for index = 1, #names do
+        local row = row_of(index);
+        local labels = row.labels;
+        if imgui.RadioButton(labels.pick, selected == row.name) then page.pick(row.name); end
+        c.mark('Saved profiles', PICK_HELP);
+        c.tip(PICK_HELP);
+        imgui.SameLine(start + widest + imgui.GetFrameHeight() + imgui.GetFontSize());
+        c.button(labels.load, row.load, 'Puts this profile in place of your settings. Undo puts them back.', nil, 'Load profile');
         imgui.SameLine();
-        c.button('Cancel profile change', cancel_change);
+        c.button(labels.overwrite, row.overwrite, 'Saves your settings over this profile after you confirm. Undo the last profile change can put it back.', nil, 'Overwrite profile');
+        imgui.SameLine();
+        c.button(labels.rename, row.rename, 'Gives this profile the name in the Name box below.', nil, 'Rename profile');
+        imgui.SameLine();
+        c.button(labels.delete, row.delete, 'Deletes this profile after you confirm.', nil, 'Delete profile');
+        if confirm and confirm.name == row.name then confirm_lines(imgui, c); asked = true; end
     end
-    -- Export to clipboard and Export to a file sit here, as they act on the profile picked just above.
-    local text = help_lines();
-    c.button('Export to clipboard##profile_share', export_to_clipboard, text.share, nil, 'Export a saved profile');
-    imgui.SameLine();
-    c.button('Export to a file##profile_save_file', export_to_file, text.save_file, nil, 'Export a saved profile to a file');
+    -- A Confirm for a profile that is no longer saved has no row to wait under.
+    if confirm and not asked then confirm = nil; end
     c.row_label('Name', 'What Save as new calls it, and the new name for Rename.');
     imgui.SetNextItemWidth(-(imgui.CalcTextSize('Save as new') + 28));
     imgui.InputTextWithHint('##profile_name', 'Profile name', name_box, 81);
@@ -284,7 +311,7 @@ local function job_links(imgui, settings, view, c, names, status)
     end
 end
 
-local scopes = { placement = 'Where the panels and party list buffs are', presentation = 'Where things are and how they look' };
+local scopes = { placement = 'Where the panels and Party list are', presentation = 'Where things are and how they look' };
 local scope_order = { 'placement', 'presentation' };
 
 local function share_toggled(value) now.c.call('sharing', value, now.settings.shared_scope); end
@@ -302,7 +329,7 @@ local function across_characters(imgui, settings, c)
         share_toggled);
     if not settings.shared_layout then return; end
     list(imgui, c, 'What to share', 'What to share across characters',
-        'How they look shares panels, appearance, groups, visibility, overhead icons, recast marks, the ready pulse, party cooldowns and the Phantom Roll and pet displays. Job links, alert rules and member names stay with each character.',
+        'Where things are and how they look shares every display, the look, chat colors, the Hide list and Timer durations too. Job links, alert rules, member names and learned durations stay with each character.',
         '##Shared settings scope', scopes[settings.shared_scope], scope_entries);
 end
 
@@ -325,9 +352,15 @@ local function read_string(imgui, c, names, payload, why, base)
     import_name[1] = page.free_name(names, base or 'Imported');
 end
 
+-- ImGui hides what follows ## in a label and starts its ID again at each ###. So a name holding ## shows a space
+-- between any two # side by side, and its ID is its place in the list.
 local function file_entries()
     local imgui = now.imgui;
-    for _, file in ipairs(files) do if imgui.Selectable(file .. '##profile_file_' .. file, false) then now.opened = file; end end
+    for index, file in ipairs(files) do
+        local label = file:find('##', 1, true) and file:gsub('#(#)', '# %1'):gsub('#(#)', '# %1') .. '###profile_file_' .. index
+            or file .. '##profile_file_' .. file;
+        if imgui.Selectable(label, false) then now.opened = file; end
+    end
 end
 
 local function read_file(imgui, callbacks, c, names, text)
@@ -379,9 +412,10 @@ local import_with = {};
 for _, mode in ipairs(share.modes) do
     import_with[mode] = function()
         local c = now.c;
-        local ok, why = now.callbacks.share_import(pending, mode);
+        local ok, why, stepped = now.callbacks.share_import(pending, mode);
         if ok ~= false then
-            c.note((mode == 'add' and 'Added from the export.' or 'Replaced with the export.') .. ' Undo takes it back.', 'done_messages');
+            c.note(stepped == false and 'Nothing changed, as nothing in the export differs from yours.'
+                or (mode == 'add' and 'Added from the export.' or 'Replaced with the export.') .. ' Undo takes it back.', 'done_messages');
             page.clear();
         else c.note(why or 'That export could not be used.', 'problem_messages'); end
     end;
@@ -394,11 +428,17 @@ local function clear_import()
 end
 
 local function read_result(imgui, settings, callbacks, c, text)
-    -- Without a revision to go by, each draw works them out.
+    -- Without a revision to go by, each draw works them out. A drag changes settings every frame, so while the mouse is
+    -- held the previews made for these settings stay, as the main page's lines do. Letting go works them out again.
     local revision = callbacks.settings_revision and callbacks.settings_revision();
-    if (previewed ~= settings or revision == nil or previewed_revision ~= revision) and callbacks.share_preview then
+    if (previewed ~= settings or revision == nil or previewed_revision ~= revision and not imgui.IsMouseDown(ImGuiMouseButton_Left or 0))
+        and callbacks.share_preview then
         previews = {};
-        for _, mode in ipairs(share.modes) do previews[mode] = callbacks.share_preview(pending, mode) or { 'It could not be read.' }; end
+        -- One that can't be used says why, as its button does.
+        for _, mode in ipairs(share.modes) do
+            local lines, why = callbacks.share_preview(pending, mode);
+            previews[mode] = lines or { why or 'It could not be read.' };
+        end
         previewed, previewed_revision = settings, revision;
     end
     imgui.TextWrapped('It holds: ' .. share.describe(pending));
@@ -418,14 +458,33 @@ local function read_result(imgui, settings, callbacks, c, text)
     if pending and pending.kind == 'profile' then save_read_profile(imgui, callbacks, c, text); end
 end
 
-local function copy_export()
-    local c, callbacks = now.c, now.callbacks;
-    if not callbacks.share_copy then return; end
-    local ok, why, left = callbacks.share_copy(pick.kind, pick.id);
-    if ok then c.note('Copied an export of ' .. (pick.kind == 'element' and labels[pick.id] or share.kind_names[pick.kind]:lower()) .. '.'
-        .. (left and ' ' .. left or ''), 'done_messages');
-    else c.note(why or 'That export could not be made.', 'problem_messages'); end
+-- The saved profiles to pick from when A saved profile is what to export. A name ending in # gets a space before the
+-- ##, as on the rows' round buttons.
+local function saved_entries()
+    local imgui = now.imgui;
+    for _, name in ipairs(now.names) do
+        if imgui.Selectable(name .. (name:sub(-1) == '#' and ' ##export_profile' or '##export_profile'), export_name == name) then export_name = name; end
+    end
 end
+
+-- Copy and Save to a file. A saved profile is exported without loading it (callbacks.profile_share), and the current
+-- settings by kind (callbacks.share_copy and callbacks.share_save).
+local function export(to_file)
+    local c, callbacks = now.c, now.callbacks;
+    local saved = pick.kind == 'saved';
+    if saved and export_name == '' then c.note('Choose a saved profile first.'); return; end
+    local action = saved and callbacks.profile_share or callbacks[to_file and 'share_save' or 'share_copy'];
+    if not action then c.note('That action is not available right now.'); return; end
+    local ok, why, left, file;
+    if saved then ok, why, left, file = action(export_name, to_file); else ok, why, left, file = action(pick.kind, pick.id); end
+    if not ok then c.note(why or (saved and 'That profile could not be exported.' or 'That export could not be made.'), 'problem_messages'); return; end
+    local what = saved and '"' .. export_name .. '"' or 'an export of ' .. (pick.kind == 'element' and labels[pick.id] or share.kind_names[pick.kind]:lower());
+    c.note((to_file and 'Saved ' .. what .. ' as ' .. file .. '. A friend puts it in their own shared folder and uses Import from a file.'
+        or 'Copied ' .. what .. (saved and '. Send it in a message, or use Save to a file to keep it as a file.' or '.')) .. (left and ' ' .. left or ''), 'done_messages');
+end
+
+local function copy_export() export(false); end
+local function save_export() export(true); end
 
 local function import_clipboard()
     local callbacks = now.callbacks;
@@ -442,15 +501,20 @@ local function open_files()
 end
 
 local function import_export(imgui, settings, callbacks, c, names)
-    c.heading('Import and export', 'An export is text that holds part of your settings, for a friend to import into their Vantage. It holds settings only: never your character\'s name, ids or file paths. It goes through the clipboard or a file, so nothing is sent anywhere.');
-    -- Copy sits beside the last of the two lists.
-    local one_display = pick.kind == 'element';
-    c.choice('Export', pick, 'kind', share.kinds, share.kind_names,
-        'One display holds everything about it but its switch and lock. Where everything is holds where every display sits. Whole profile holds every setting.', nil, not one_display and 'Copy' or nil);
-    if one_display then c.choice('Display to export', pick, 'id', ids, labels, nil, nil, 'Copy'); end
-    imgui.SameLine();
-    c.button('Copy##share_copy', copy_export, 'Copies it to the clipboard. Nothing is sent anywhere.', nil, 'Copy the export');
+    c.heading('Import and export', 'An export is text holding part of your settings, for a friend\'s Vantage. It never holds your character\'s name, ids or file paths, and nothing is sent anywhere.');
+    c.choice('What to export', pick, 'kind', export_kinds, export_names,
+        'One display holds everything about it but its switch and lock. Where everything is holds where every display sits. Whole profile holds every setting. A saved profile exports one of your saved profiles as a whole profile, without loading it.');
+    if pick.kind == 'element' then c.choice('Display to export', pick, 'id', ids, labels); end
+    -- A saved profile no longer there is not picked.
+    if not has_name(names, export_name) then export_name = ''; end
+    if pick.kind == 'saved' then
+        list(imgui, c, 'Profile to export', 'Profile to export', 'The saved profile Copy and Save to a file export. It is not loaded.',
+            '##export_profile', export_name ~= '' and export_name or 'Choose a saved profile', saved_entries);
+    end
     local text = help_lines();
+    c.button('Copy##share_copy', copy_export, text.share, nil, 'Copy the export');
+    imgui.SameLine();
+    c.button('Save to a file##share_save_file', save_export, text.save_file, nil, 'Save the export to a file');
     c.button('Import from clipboard', import_clipboard, text.read);
     imgui.SameLine();
     c.button('Import from a file##profile_open_file', open_files, text.open_file, nil, 'Import from a file');
@@ -459,7 +523,7 @@ local function import_export(imgui, settings, callbacks, c, names)
 end
 
 local PUT_BACK = 'Every display goes back to its first spot, locked. Looks and choices are kept.';
-local RESET_ALL = 'Every display goes back to a fresh install: locked, in its first spot. Profiles, job links, watched enemies and learned times are kept.';
+local RESET_ALL = 'Every display goes back to a fresh install: locked, in its first spot. Profiles, job links, watched enemies and learned times are kept. Share settings across my characters turns off.';
 
 local function shaded(imgui, c, value)
     imgui.PushStyleColor(ImGuiCol_Text, c.look.notes);
@@ -467,15 +531,49 @@ local function shaded(imgui, c, value)
     imgui.PopStyleColor();
 end
 
-local function put_back() now.c.call('reset', 'displays'); end
-local function reset_all() now.c.call('reset', 'all'); end
+-- A reset that reaches more than the tab you are on asks first, under its button. Undo takes any of them back.
+local function asking(id, question, scope, apply, apply_help, cancel_help)
+    return function()
+        now.c.ask(id, question, function() now.c.call('reset', scope); end, apply, apply_help, cancel_help);
+    end;
+end;
+
+local put_back = asking('profiles_put_back', 'Put every display back where it started? ' .. PUT_BACK, 'displays', 'Put them back',
+    'Put every display back. Undo takes it back.', 'Leave every display where it is.');
+local reset_all = asking('profiles_reset_all', 'Reset all settings? ' .. RESET_ALL, 'all', 'Reset all',
+    'Reset every setting. Undo takes it back.', 'Leave every setting as it is.');
+
+-- One part of every display at once, each also a /vg reset scope. A display's own resets are on its tabs.
+local parts = {
+    { scope = 'appearance', label = 'Reset how everything looks',
+        help = 'The main page\'s look goes back to how it started, with each timer panel\'s own colors and bars, every display\'s countdown text and lit icons, and this window\'s text size. Under While playing, Blink before an effect ends, Show details when I point at a timer and Color each countdown by how sure Vantage is of its time go back too.' },
+    { scope = 'conditions', label = 'Reset When to show on every display', help = 'Every display\'s When to show goes back to how it started.' },
+    { scope = 'effects', label = 'Reset the effect lists of every timer panel',
+        help = 'What every timer panel shows, hides, pins, renames and colors goes back to how it started, with the kinds and members picked.' },
+    { scope = 'moves_with', label = 'Reset Moves with on every display', help = 'Every display stops moving with anything and goes to its own spot.' },
+    { scope = 'panels', label = 'Reset every timer panel\'s size and place', help = 'Every timer panel goes back to the size it started with, at its first spot.' },
+    { scope = 'chat_colors', label = 'Reset chat line colors', help = 'The colors of Vantage\'s lines in the chat log go back to how they started.' },
+};
+for _, part in ipairs(parts) do
+    part.id = 'profiles_reset_' .. part.scope;
+    part.action = asking(part.id, ('%s? %s'):format(part.label, part.help), part.scope, 'Reset', 'Reset it. Undo takes it back.', 'Leave it as it is.');
+end;
+local PARTS = 'Puts one part of every display back as it started. Each asks first, and Undo takes it back.';
 
 local function start_over(imgui, c)
     c.heading('Start over');
-    c.button('Put every display back where it started', put_back, PUT_BACK .. ' Undo takes it back.');
+    c.button('Put every display back where it started', put_back, PUT_BACK .. ' It asks first, and Undo takes it back.');
     shaded(imgui, c, PUT_BACK);
-    c.button('Reset all settings', reset_all, RESET_ALL .. ' Undo takes it back.');
+    c.confirm_line('profiles_put_back');
+    c.button('Reset all settings', reset_all, RESET_ALL .. ' It asks first, and Undo takes it back.');
     shaded(imgui, c, RESET_ALL);
+    c.confirm_line('profiles_reset_all');
+    if c.section('Reset one part', PARTS) then
+        for _, part in ipairs(parts) do
+            c.button(part.label, part.action, part.help .. ' It asks first, and Undo takes it back.');
+            c.confirm_line(part.id);
+        end;
+    end;
 end
 
 function page.draw(imgui, settings, view, callbacks, c)

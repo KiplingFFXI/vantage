@@ -43,4 +43,40 @@ function controls.radio(gui, look, label, active)
     return clicked
 end
 
+-- A button with a folder drawn before its caption, in the caption's color, as Vantage ships no icon font. Spaces at the
+-- caption's start make room for the folder, so ImGui sizes the button and draws the caption as it does any other's.
+local function folder_caption(gui, caption)
+    local font = gui.GetFontSize()
+    local side = math.floor(font * 0.9 + 0.5)
+    local space = math.max(1, (gui.CalcTextSize(' ')))
+    return string.rep(' ', math.ceil((side + font * 0.35) / space)) .. caption, side
+end
+
+-- How wide the button is, as a page measures its other buttons.
+function controls.folder_width(gui, caption)
+    return (gui.CalcTextSize((folder_caption(gui, caption)))) + 20
+end
+
+local tab_from, tab_to, front_from, front_to = {}, {}, {}, {}
+-- id keeps it the same button whatever its caption. Returns whether it was clicked.
+function controls.folder_button(gui, look, caption, id)
+    local shown, side = folder_caption(gui, caption)
+    local clicked = gui.Button(shown .. '###' .. id)
+    if gui.GetItemRectMin and gui.GetItemRectMax and gui.GetWindowDrawList then
+        local left, top = gui.GetItemRectMin()
+        local right, bottom = gui.GetItemRectMax()
+        local x = math.floor(left + math.max(0, (right - left - gui.CalcTextSize(shown)) / 2) + 0.5)
+        local height = math.floor(side * 0.78 + 0.5)
+        local y = math.floor((top + bottom - height) / 2 + 0.5)
+        -- The folder's tab, then its front over it, so the two make one shape.
+        tab_from[1], tab_from[2], tab_to[1], tab_to[2] = x, y, x + math.floor(side * 0.45 + 0.5), y + math.floor(height * 0.4 + 0.5)
+        front_from[1], front_from[2], front_to[1], front_to[2] = x, y + math.floor(height * 0.22 + 0.5), x + side, y + height
+        local ink = require('ui.theme').u32(look and look.text or { 1, 1, 1, 1 })
+        local list = gui.GetWindowDrawList()
+        list:AddRectFilled(tab_from, tab_to, ink, 1)
+        list:AddRectFilled(front_from, front_to, ink, 1)
+    end
+    return clicked
+end
+
 return controls

@@ -1,21 +1,16 @@
--- One finder on Filters serves every per-effect setting of a panel: Show only, Hide here, Pin first, My order, Rename it and
--- its color. Each list line shows while it has entries, says the effect's name, and takes it off again. What they write is
--- what the panel draws by.
+-- One effect list on Filters serves every per-effect setting of a panel: Show only, Hide here, Pin first, My order, Rename
+-- it and its color. Each list line shows while it has entries, says the effect's name, and takes it off again. My order's line is
+-- under Sort on Show. What they write is what the panel draws by.
 local h = require('panel_fixture')();
 local hud = require('ui.hud');
-local FIND, EFFECT, RENAME = '##frame_Find an effect', '##frame_Effect', '##frame_Rename it';
-local function find(name, id)
-    h.type(FIND, name);
-    h.pick(EFFECT, name .. '##' .. id);
-end;
+local RENAME = '##frame_Rename it';
+local find = h.choose;
 
 h.fresh(function(s) s.panels.self_buffs.mode = 'bars'; end);
 h.on('self_buffs', 'filters');
 local p = h.s.panels.self_buffs;
-h.type(FIND, 'no such effect');
 assert(not h.called('Button', 'Add to My order##frame') and not h.called('Checkbox', 'Pin first##frame') and not h.called('InputText', RENAME),
-    'With nothing found there is nothing to tick.');
-assert(h.says('No matching effects. Try a different name.'), 'It says so.');
+    'With nothing picked there is nothing to tick.');
 for _, line in ipairs({ 'Hidden here', 'Pinned first', 'My order', 'Renamed', 'Colored' }) do
     assert(not h.says(line), 'A list line shows only while it has entries: ' .. line);
 end;
@@ -26,10 +21,17 @@ h.draw('Add to My order##frame');
 h.draw();
 p = h.s.panels.self_buffs;
 assert(#p.order == 1 and p.order[1] == 33 and p.sort == 'fixed', 'Add to My order lists it and sorts by it.');
-assert(h.says('My order') and h.says('Haste'), 'The line lists it by name.');
+assert(not h.says('My order'), 'Its line is not on Filters.');
+h.on('self_buffs', 'show');
+assert(h.says('My order') and h.says('Haste'), 'The line under Sort lists it by name.');
+h.on('self_buffs', 'filters');
 h.draw('Add to My order##frame');
 h.draw();
 assert(#h.s.panels.self_buffs.order == 1, 'An effect is on the list once.');
+h.s.panels.self_buffs.sort = 'longest';
+h.draw('Add to My order##frame');
+h.draw();
+assert(#h.s.panels.self_buffs.order == 1 and h.s.panels.self_buffs.sort == 'fixed', 'One already listed still sorts by it.');
 find('Protect', 40);
 h.draw('Add to My order##frame');
 h.draw();
@@ -38,6 +40,7 @@ h.draw('Add to My order##frame');
 h.draw();
 p = h.s.panels.self_buffs;
 assert(table.concat(p.order, ',') == '33,40,42', 'Each goes on the end.');
+h.on('self_buffs', 'show');
 assert(#h.calls('Button', 'Up##order') == 3 and #h.calls('Button', 'Down##order') == 3, 'Each line has its Up and Down.');
 -- The mock clicks the first Up it meets, which has no way up, and the first Down, which moves that line down.
 h.draw('Down##order');
@@ -77,12 +80,23 @@ h.draw();
 h.imgui.Button = real_button;
 h.draw();
 assert(removed and table.concat(h.s.panels.self_buffs.order, ',') == '33,42', 'Remove goes by its line.');
+h.on('self_buffs', 'filters');
 
 -- Rename: the panel calls it that, the line says both names, and blank goes back to the game's name.
 find('Haste', 33);
 h.type(RENAME, 'Speed');
 p = h.s.panels.self_buffs;
 assert(p.labels[33] == 'Speed' and h.says('Haste as Speed'), 'Renamed lists it with both names.');
+-- A long line wraps where its Remove still fits beside it, so Remove stays in the window at a big text size.
+MOCK.content_width = 300;
+h.draw();
+MOCK.content_width = nil;
+local wrap, wrapped;
+for _, call in ipairs(MOCK.imgui_calls) do
+    if call[1] == 'PushTextWrapPos' then wrap = call[2]; elseif call[1] == 'PopTextWrapPos' then wrap = nil;
+    elseif call[1] == 'TextUnformatted' and call[2] == 'Haste as Speed' then wrapped = wrap or false; break; end;
+end;
+assert(wrapped and wrapped + #'Remove' * 8 + 16 <= 14 + 300, 'A line on a list wraps where its Remove still fits: ' .. tostring(wrapped));
 local row = { effect = 33, name = 'Haste', domain = 'status', status = 'known' };
 local shown = {};
 for _, entry in ipairs(hud.entries(row, p, h.s.style, 0)) do shown[#shown + 1] = tostring(entry.text); end;
@@ -105,10 +119,10 @@ h.draw('Hide here##frame');
 h.draw('Pin first##frame');
 h.draw();
 assert(h.says('Hidden here') and h.says('Pinned first'), 'Each has its line.');
-h.draw("Clear this display's filters##frame");
+h.draw("Reset this tab##frame");
 h.draw();
 p = h.s.panels.self_buffs;
-assert(next(p.include) == nil and next(p.exclude) == nil and p.filter == '', 'Clear takes off what filters the panel.');
+assert(next(p.include) == nil and next(p.exclude) == nil and p.filter == '', 'Reset this tab takes off what filters the panel.');
 
 -- A recast panel's list is of recasts, and a kept id the game has no name for says so in words.
 h.fresh(function(s)
@@ -116,13 +130,14 @@ h.fresh(function(s)
     panel_kept.order = { 60000 };
     panel_kept.labels[60000] = 'Mine';
 end);
-h.on('self_buffs', 'filters');
-assert(h.says('An effect with no name') and h.says('An effect with no name as Mine'), 'An effect with no name goes by those words.');
-for _, call in ipairs(MOCK.imgui_calls) do
-    assert(not tostring(call[2]):find('Status 60000', 1, true) and not tostring(call[2]):find('Effect 60000', 1, true), 'No id is on show.');
+for _, tab in ipairs({ 'filters', 'show' }) do
+    h.on('self_buffs', tab);
+    assert(h.says(tab == 'show' and 'An effect with no name' or 'An effect with no name as Mine'), 'An effect with no name goes by those words: ' .. tab);
+    for _, call in ipairs(MOCK.imgui_calls) do
+        assert(not tostring(call[2]):find('Status 60000', 1, true) and not tostring(call[2]):find('Effect 60000', 1, true), 'No id is on show.');
+    end;
 end;
 h.on('spell_recasts', 'filters');
-h.type(FIND, 'Cure');
-assert(h.says('No recasts are known yet.'), 'The finder of a recast panel goes by the recasts known.');
+assert(h.says('No recasts are known yet.'), 'The list of a recast panel goes by the recasts known.');
 MOCK.fire('unload');
 return 'My order, Rename and the effect lists write what the panel draws by, by name';

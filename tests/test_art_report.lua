@@ -59,5 +59,40 @@ VANTAGE_TEST_MODE = false
 local ok, shipped = pcall(function() return assert(loadfile(ADDON_DIR .. '/ui/action_icons.lua'))() end)
 VANTAGE_TEST_MODE = true
 assert(ok and type(shipped.reason) == 'function', 'The shipped action icons give their last reason.')
+
+-- The whole report goes through without_folders: a path under the game's, Ashita's or your user folder starts from its
+-- mark, matched with either slash in any case and in keys too. A folder only matches whole, other text is kept, and
+-- the tables given are left as they are.
+local getenv = os.getenv
+os.getenv = function(name) if name == 'USERPROFILE' then return 'D:\\Profiles\\Someone' end return getenv(name) end
+local given = { 'C:\\GAME\\ROM\\1\\2.dat', ['c:/ashita/addons/x'] = 'C:/Games/other', 3,
+    nested = { 'Error at C:/Ashita/addons/vantage/vantage.lua:12: no', 'C:/Gamer/x', 'd:/profiles/someone/Documents/a' } }
+local marked = assets.without_folders(given)
+assert(marked[1] == '<game>\\ROM\\1\\2.dat' and marked['<Ashita>/addons/x'] == 'C:/Games/other' and marked[2] == 3,
+    'A path starts from its folder\'s mark, in keys too.')
+assert(marked.nested[1] == 'Error at <Ashita>/addons/vantage/vantage.lua:12: no' and marked.nested[2] == 'C:/Gamer/x'
+    and marked.nested[3] == '<user folder>/Documents/a', 'A folder matches whole, inside other text.')
+assert(given[1] == 'C:\\GAME\\ROM\\1\\2.dat' and given['c:/ashita/addons/x'] and given.nested[3]:find('someone', 1, true),
+    'The tables given are left as they are.')
+-- A game inside Ashita's folder is named from the game's, and a folder too short to be a path is never matched.
+assets._set_platform_for_tests({ game_root = function() return 'C:/Play/Game/' end, ashita_root = function() return '.' end })
+marked = assets.without_folders({ 'C:/Play/Game/ROM/1.dat', 'a.b ./x' })
+assert(marked[1] == '<game>/ROM/1.dat' and marked[2] == 'a.b ./x', 'The longest folder is matched first.')
+assets._set_platform_for_tests({ game_root = function() return 'C:/Play/Game' end, ashita_root = function() return 'C:/Play' end })
+marked = assets.without_folders({ 'C:/Play/Game/ROM/1.dat', 'C:/Play/addons' })
+assert(marked[1] == '<game>/ROM/1.dat' and marked[2] == '<Ashita>/addons', 'A game inside Ashita\'s folder starts from the game\'s.')
+-- LuaJIT shortens a long file name in an error to ... and its last 56 characters, which can start inside a folder.
+-- That tail starts from the mark too, in a traceback line as well, and other dots are kept.
+local ashita = 'C:\\Players\\Bob\\Documents\\PhoenixXI\\Ashita'
+assets._set_platform_for_tests({ game_root = function() return 'C:/Play/Game' end, ashita_root = function() return ashita end })
+local chunk = assert(loadstring('local t; return t.x', '@' .. ashita .. '\\addons\\vantage\\ui\\hud.lua'))
+local _, why = pcall(chunk)
+assert(why:sub(1, 3) == '...' and why:find('Bob', 1, true), 'Fixture: the error shortens the name inside the folders: ' .. why)
+marked = assets.without_folders({ why, 'stack traceback:\n\t' .. why, 'Loading... done', '(...ashita/addons/a.lua)' })
+assert(marked[1]:find('^<Ashita>\\addons\\vantage\\ui\\hud%.lua:1:') and not marked[1]:find('Bob', 1, true)
+    and marked[2]:find('\n\t<Ashita>\\addons', 1, true) and not marked[2]:find('Bob', 1, true),
+    'A shortened file name starts from its folder\'s mark: ' .. marked[1])
+assert(marked[3] == 'Loading... done' and marked[4] == '(<Ashita>/addons/a.lua)', 'Other dots are kept: ' .. marked[3])
+os.getenv = getenv
 assets.clear()
 return 'The art and fonts section of /vg report'

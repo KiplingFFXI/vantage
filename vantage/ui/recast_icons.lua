@@ -75,13 +75,14 @@ function icons.effect(row)
     return found
 end
 
--- Observations from one packet. Only the player's own job abilities teach anything.
+-- Observations from one packet. Only the player's own job abilities teach anything, and only an effect the game
+-- reported: one taken from what the action did (guessed) may never have gone on.
 function icons.learn(observations, snapshot)
     local self_id = type(snapshot) == 'table' and snapshot.id
     if not self_id or type(observations) ~= 'table' then return end
     for _, seen in ipairs(observations) do
         local action, effect = seen.spell, seen.effect
-        if seen.kind == 'apply' and seen.action_category == 6 and seen.source == self_id and not seen.exact
+        if seen.kind == 'apply' and seen.action_category == 6 and seen.source == self_id and not seen.exact and not seen.guessed
             and type(action) == 'number' and action >= 0 and action <= 1023 and type(effect) == 'number' then
             if learned[action] == nil then learned[action] = effect
             elseif learned[action] ~= effect then learned[action] = false end
@@ -106,8 +107,10 @@ function icons.draw(list, row, artwork, x, y, size, opacity, status_art)
         end
     end
     if row.kind == 'item' then
-        local texture = items.texture(row.item_id or row.recast_id)
-        if not texture then return false end
+        -- A picture waiting for a later Present's upload counts as drawn, as an action icon does, so nothing is put in
+        -- its place meanwhile.
+        local texture, waiting = items.texture(row.item_id or row.recast_id)
+        if not texture then return waiting == true end
         image(list, texture, x, y, size, opacity)
         return true
     elseif row.kind == 'spell' then
@@ -139,7 +142,7 @@ end
 
 -- The buff icon artwork a recast draws its status with, or nil for action icons.
 function icons.status_art(style)
-    if style.recast_icon_source ~= 'action' then return style.icon_art or 'Client' end
+    if style.recast_icon_source ~= 'action' then return style.icon_art or 'Original FFXI' end
 end
 
 if VANTAGE_TEST_MODE then

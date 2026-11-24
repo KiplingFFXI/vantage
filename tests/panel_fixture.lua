@@ -31,6 +31,14 @@ return function()
         box[1], h.slid[label] = h.slid[label], nil;
         return true;
     end;
+    -- The find box at the top of an effect picker's list types the same way.
+    local with_hint = imgui.InputTextWithHint;
+    imgui.InputTextWithHint = function(label, hint, box, ...)
+        with_hint(label, hint, box, ...);
+        if h.typed[label] == nil then return false; end;
+        box[1], h.typed[label] = h.typed[label], nil;
+        return true;
+    end;
 
     -- h.s is the live save: Reset and Undo put a new table in its place.
     function h.draw(click)
@@ -65,6 +73,15 @@ return function()
         h.draw(choice);
         h.combo = nil;
         h.draw();
+    end;
+    -- Picks name, with its id, from an effect picker: the one captioned Effect unless label names another.
+    function h.choose(name, id, label) h.pick('##' .. (label or 'Effect'), name .. '##effect_' .. id); end;
+    -- Whether an effect picker, opened, lists name with its id.
+    function h.lists(name, id, label)
+        h.combo = '##' .. (label or 'Effect');
+        h.draw();
+        h.combo = nil;
+        return h.called('Selectable', name .. '##effect_' .. id);
     end;
     function h.type(label, text) h.typed[label] = text; h.draw(); h.draw(); end;
     function h.slide(label, value) h.slid[label] = value; h.draw(); h.draw(); end;

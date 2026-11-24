@@ -1,4 +1,4 @@
--- Buffs and debuffs, Buffs only, Debuffs only and None for the party list buffs: four picks over effects.kind on their
+-- Buffs and debuffs, Buffs only, Debuffs only and None for Party list: four picks over effects.kind on their
 -- Show tab, each change one Undo step. An effect that is neither a buff nor a debuff, such as Level Sync, shows only under
 -- Buffs and debuffs, and the tooltip says so. None shows no effect, and the rows that only shape effects go with it. The
 -- sample displays follow the choice, and the whole-setup code and a skin keep it.
@@ -146,7 +146,7 @@ assert(app.state.settings.party_ui.effects.kind == 'debuff', 'Undo brings Debuff
 
 -- Search finds them by every old name, and the tooltip says what happens to the rest.
 local party = require('ui.search_index').controls.Display;
-assert(party['Show buffs or debuffs']:find('such as Level Sync, show only under Buffs and debuffs', 1, true), 'The tooltip says what happens to the rest.');
+assert(party['Show buffs or debuffs']:find('Level Sync and others that are neither a buff nor a debuff show only under Buffs and debuffs', 1, true), 'The tooltip says what happens to the rest.');
 for _, name in ipairs({ 'Party buffs only', 'Party debuffs only', 'Party buffs and debuffs', 'Effect types' }) do
     local found = false;
     for _, result in ipairs(window.search(name)) do found = found or result.label == 'Show buffs or debuffs'; end;
@@ -175,7 +175,7 @@ steps = history();
 assert(s.party_ui.effects.kind == 'none' and steps.undo == 1 and steps.undo_label == 'Show buffs or debuffs', 'None: one Undo step.');
 effect_rows_are(false);
 draw('Display', 'show');
-assert(on_page('##frame_Your own row'), 'Your own row stays with None.');
+assert(on_page('##frame_Include me'), 'Include me stays with None.');
 for _, name in ipairs({ 'Countdowns', 'Countdown size', 'Most per member', 'Effect sorting', 'Icons fill', 'Light up debuffs you can remove' }) do
     local led = false;
     for _, result in ipairs(window.search(name)) do led = led or result.label == 'Show buffs or debuffs'; end;
@@ -206,21 +206,21 @@ for _, setup in ipairs({ function(p) p.enabled = false; end, function(p) p.strip
     assert(not on_page(here_too) and not on_page('Change on Party cooldowns##frame'), 'Nothing claims they show here.');
 end;
 
--- Countdowns sits above Your own row, alone on its line.
+-- Countdowns sits above Include me, alone on its line.
 s = fresh();
 draw('Display', 'show');
 local countdown_switch, step;
 for index, call in ipairs(MOCK.imgui_calls) do
     if call[1] == 'Checkbox' and call[2] == 'Countdowns##frame' then countdown_switch = index; end;
-    if call[1] == 'TextUnformatted' and call[2] == 'Your own row' then step = index; end;
+    if call[1] == 'TextUnformatted' and call[2] == 'Include me' then step = index; end;
 end;
-assert(countdown_switch and step and countdown_switch < step, 'Countdowns above Your own row.');
+assert(countdown_switch and step and countdown_switch < step, 'Countdowns above Include me.');
 for index = countdown_switch + 1, step do
     assert(MOCK.imgui_calls[index][1] ~= 'SameLine', 'Countdowns has its line to itself.');
 end;
 -- Countdowns says what it does in plain words.
 local timers_help = 'Shows the time left on each party buff icon. It is off unless you turn it on. Beside the game\'s party'
-    .. ' list the time sits inside the icon.';
+    .. ' rows the time sits inside the icon. A stack or a panel of its own puts it where Countdown position says.';
 assert((party['Countdowns'] or ''):find(timers_help, 1, true), 'The Countdowns tooltip.');
 assert(require('ui.search_index').controls.Home['Party countdowns'] == nil, 'The main page has no copy of it.');
 assert(#MOCK.commands == 0, 'Nothing is sent to the game.');

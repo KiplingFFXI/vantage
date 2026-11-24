@@ -1,9 +1,10 @@
 -- The game for the pet tests: the real addon takes the packets the server sends, over a client that shows your job,
 -- skill, gear, own effects and pet as game holds them. A test sets game, sends packets and calls step, then reads what
 -- came out with rows and row, and what the pet display drew with draw.
--- game.pet is { index, id, name, flags, hpp }; with away set the client's unit for it has gone, and with no_index its
--- pet index too. game.buffs is your own effects, each { effect, ends }, with ends on the test's clock.
-return function()
+-- game.pet is { index, id, name, flags, hpp, x, y, z }. With away set the client's unit for it has gone, and with
+-- no_index its pet index too. game.buffs is your own effects, each { effect, ends }, with ends on the test's clock. setup(game), if
+-- given, changes the game before the addon loads, for a test where Vantage starts with a pet already out.
+return function(setup)
     local game = { id = 1001, index = 0x400, zone = 102, name = 'Tester', job = 9, level = 75, sub = 0, sub_level = 0, skill = 0,
         chr = 60, chr_bonus = 10, items = {}, buffs = {}, members = {}, units = {} };
     local icons, timers = {}, {};
@@ -30,6 +31,10 @@ return function()
         GetPetTargetIndex = function(_, index) return index == game.index and game.pet and not game.pet.no_index and game.pet.index or 0; end,
         GetStatus = function() return 0; end, GetDistance = function() return 5; end, GetRenderFlags0 = function() return 0x200; end,
         GetActorPointer = function() return 0; end, GetType = function() return 0; end,
+        -- A unit's place, when the test gives it x, y and z.
+        GetLocalPositionX = function(_, index) local found = unit(index); return found and found.x or nil; end,
+        GetLocalPositionY = function(_, index) local found = unit(index); return found and found.y or nil; end,
+        GetLocalPositionZ = function(_, index) local found = unit(index); return found and found.z or nil; end,
     };
     local skill = { GetSkill = function() return game.skill; end };
     local player = {
@@ -61,6 +66,7 @@ return function()
     AshitaCore.GetMemoryManager = function() return memory; end;
     GetPlayerEntity = function() return { Name = game.name, ServerId = game.id, Status = 0, StatusServer = 0, ZoneId = game.zone }; end;
 
+    if setup then setup(game); end
     local app = dofile(ADDON_DIR .. '/vantage.lua');
     MOCK.now = 10;
     MOCK.fire('load');
@@ -73,22 +79,11 @@ return function()
         MOCK.now = MOCK.now + (seconds or 0.1);
         app.refresh(MOCK.now);
     end
-    local function putbits(bytes, offset, length, value)
-        for i = 0, length - 1 do
-            local at = offset + i;
-            if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-        end
-    end
     -- A 0x028: its actor, category and id, and for each target { id, message, param }.
     function fx.action(actor, category, id, targets)
-        local bytes, at = MOCK.bytes(2048), 150;
-        putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-        for _, row in ipairs(targets) do
-            putbits(bytes, at, 32, row[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-            putbits(bytes, at + 27, 17, row[3] or 0); putbits(bytes, at + 44, 10, row[2]); at = at + 87;
-        end
-        bytes.n = math.ceil(at / 8);
-        MOCK.fire('packet_in', MOCK.packet(0x028, bytes));
+        local rows = {};
+        for i, row in ipairs(targets) do rows[i] = { id = row[1], rows = { { message = row[2], param = row[3] } } }; end
+        MOCK.fire('packet_in', MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, rows)));
     end
     -- A 0x029 battle message: actor, target, param and message.
     function fx.message(actor, target, param, number)

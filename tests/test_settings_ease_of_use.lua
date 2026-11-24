@@ -74,6 +74,13 @@ local function clicked(page, clicks, label, before)
     draw(page, clicks);
     assert(#labels == 1 and labels[1] == label, 'Undo names the edit: ' .. label .. ' (got ' .. tostring(labels[1]) .. ')');
 end;
+-- An effect picked from the list on a Filters tab.
+local function choose(name, id)
+    combo = '##Effect';
+    draw('Display', { name .. '##effect_' .. id });
+    combo = nil;
+    draw('Display');
+end;
 
 -- 4.1 Search that finds the control.
 -- Every page drawn once, so the index holds what each page marks.
@@ -94,7 +101,7 @@ imgui.InputTextWithHint = function(label, hint, value, ...)
 end;
 draw('Home');
 imgui.InputTextWithHint = function(label, hint, value, ...) real.InputTextWithHint(label, hint, value, ...); return typed(label, value); end;
-local marked = require('ui.search_index').controls.Display['Clear this display\'s filters'] and require('ui.search_index').controls.Display.WAR;
+local marked = require('ui.search_index').controls.Display['Reset this tab'] and require('ui.search_index').controls.Display.WAR;
 assert(marked, 'Fixture: the labels with an ID were marked.');
 for page, entries in pairs(require('ui.search_index').controls) do
     for label in pairs(entries) do
@@ -107,7 +114,7 @@ for page, entries in pairs(require('ui.search_index').controls) do
 end;
 local edits = {};
 for _, result in ipairs(window.search('edit')) do if result.tab == 'Home' then edits[result.label] = true; end; end;
-for _, name in ipairs({ 'Self buffs', 'Self debuffs', 'Target timers', "Party members' timers", 'Watched enemy timers', 'Party list buffs' }) do
+for _, name in ipairs({ 'Self buffs', 'Self debuffs', 'Target timers', 'Watched enemy timers', 'Party buffs', 'Party cooldowns' }) do
     assert(edits['Edit ' .. name], 'The main page\'s Edit links are found by the display they open: ' .. name);
 end;
 for _, query in ipairs({ 'font', 'size', 'lock', 'edit', 'party', 'sound', 'icon size' }) do
@@ -123,7 +130,7 @@ for position, result in ipairs(window.search('font')) do
     if result.tab == 'Home' and result.label == 'Font' then font_rank = font_rank or position; end;
 end;
 assert(font_rank and font_rank <= 3, 'Home Font is near the top for font: ' .. tostring(font_rank));
--- The results box shows up to eight rows.
+-- The results box shows up to eight rows, each a line of the Settings text size, 17, and the space under it.
 local function results_height(query)
     MOCK.imgui_calls = {};
     imgui.InputTextWithHint = function(label, hint, value, ...)
@@ -144,19 +151,24 @@ local function results_height(query)
     return found and found[3][2], #window.search(query);
 end;
 local height, count = results_height('size');
-assert(count > 8 and height == 8 * 23 + 6, 'A long result list shows eight rows: ' .. tostring(height));
+assert(count > 8 and height == 8 * 21 + 6, 'A long result list shows eight rows: ' .. tostring(height));
 height, count = results_height('bust chance');
-assert(count < 8 and height == count * 23 + 6, 'A short list shows only its rows.');
+assert(count < 8 and height == count * 21 + 6, 'A short list shows only its rows.');
+-- At a big Settings text size its rows are taller, and the box grows with them: 41 pixels a row at 36.
+imgui.GetTextLineHeightWithSpacing = function() return 41; end;
+height, count = results_height('bust chance');
+imgui.GetTextLineHeightWithSpacing = nil;
+assert(height == count * 41 + 6, 'The results box fits its rows at a big text size: ' .. tostring(height));
 
--- The timer Filters tab's three ticks show once an effect is picked, Find an effect leads to them before that, and Undo names
--- them.
+-- The timer Filters tab's three ticks show once an effect is picked, Choose an effect leads to them before that, and Undo
+-- names them.
 for _, label in ipairs({ 'Include in this panel', 'Hide in this panel', 'Pin above other effects' }) do
     local found = false;
-    for _, result in ipairs(window.search(label)) do found = found or result.tab == 'Display' and result.label == 'Find an effect'; end;
+    for _, result in ipairs(window.search(label)) do found = found or result.tab == 'Display' and result.label == 'Choose an effect'; end;
     assert(found, 'Search finds what shows ' .. label);
 end;
 on('self_buffs', 'filters');
-inputs['##frame_Find an effect'] = 'Haste'; draw('Display'); draw('Display');
+choose('Haste', 33);
 clicked('Display', { 'Show only##frame_effect' }, 'Show this effect only');
 assert(s.panels.self_buffs.include[33] == true, 'Fixture: Haste is included.');
 clicked('Display', { 'Hide here##frame' }, 'Hide here');
@@ -167,7 +179,7 @@ inputs['##frame_Rename it'] = 'Speed';
 clicked('Display', nil, 'Rename it');
 clicked('Display', { 'Add to My order##frame' }, 'Add to My order');
 clicked('Display', { 'Remove##effect' }, 'Remove from Show only');
-clicked('Display', { "Clear this display's filters##frame" }, "Clear this display's filters");
+clicked('Display', { "Reset this tab##frame" }, "Reset this tab");
 draw('Display');
 clicked('Display', { 'Buffs##filter_Buffs' }, 'Show kind: Buffs');
 s.panels.party.members = {};
@@ -176,24 +188,28 @@ clicked('Display', { 'Tester##member_1001' }, 'Members');
 s.panels.self_buffs.mode = 'bars';
 on('self_buffs', 'look');
 s.panels.self_buffs.field_colors.name = { 1, 0, 0, 1 };
-clicked('Display', { 'frame_back_Color_part' }, 'Use the shared color: Part color');
+clicked('Display', { 'frame_back_Color_part' }, 'Use the main page\'s color: Part color');
 clicked('Display', { 'Put the row text back as it started##frame' }, 'Put the row text back as it started');
 s.panels.self_buffs.colors.background = { 0, 0, 0, 1 };
-clicked('Display', { 'frame_back_Background color' }, 'Use the shared color: Background color');
+clicked('Display', { 'frame_back_Background color' }, 'Use the main page\'s color: Background color');
+-- A bar with no color of its own goes by its effect's kind, and its button says so.
+s.panels.self_buffs.colors.fill_start = { 0, 0, 0, 1 };
+clicked('Display', { 'frame_back_Bar color' }, 'Color by kind: Bar color');
+assert(s.panels.self_buffs.colors.fill_start == nil, 'Color by kind takes the bar color off.');
 s.panels.self_buffs.colors.background = { 0, 0, 0, 1 };
 draw('Display');
-clicked('Display', { "Back to the skin's colors##frame" }, "Back to the skin's colors");
+clicked('Display', { "Use the main page's look##frame" }, "Use the main page's look");
 on('self_buffs', 'place');
 clicked('Display', { 'Put it back where it started##frame' }, 'Put Self buffs back');
 on('notices', 'show');
 clicked('Display', { 'New alert##frame' }, 'Add alert: ' .. defaults.rule().name);
 combo = '##Effect';
-clicked('Display', { 'Haste##effect_33' }, 'Rule effect');
+clicked('Display', { 'Haste##effect_33' }, 'Alert effect');
 combo = nil;
 s.alerts.rules[1].event = 'remaining';
 inputs['##thresholds'] = '20, 5';
 clicked('Display', nil, 'Thresholds');
-clicked('Display', { 'Delete##alert' }, 'Delete rule');
+clicked('Display', { 'Delete##alert' }, 'Delete alert');
 
 -- 4.2 One name per setting, on every page that shows it.
 s = defaults.make();
@@ -205,7 +221,7 @@ assert(#calls('Button', 'Edit##main_self_buffs') == 1 and #calls('Button', 'More
     and #calls('Button', 'Grid and snapping ...') == 0 and #calls('Button', 'More display settings ...') == 0
     and #calls('Button', 'More placement settings ...') == 0 and #calls('Button', 'Placement guides and snapping ...') == 0,
     'The main page says Edit beside what it opens.');
-assert(#calls('Checkbox', 'Grid mode##main_grid_mode') == 1, 'The main page calls it Grid mode.');
+assert(#calls('Checkbox', 'Snap while moving##main_grid_mode') == 1, 'The main page calls it Snap while moving.');
 assert(#calls('Checkbox', 'Hold Shift to see through this window##main_peek') == 1, 'The main page calls peek Hold Shift to see through this window.');
 assert(#calls('Button', 'End samples##main') == 1, 'While samples show, the main page ends them.');
 for _, label in ipairs({ '##main_icon_size', '##main_scale' }) do
@@ -249,22 +265,22 @@ s.panels.self_buffs.anchor.to = 'chat';
 on('self_buffs', 'place');
 assert(preview('##frame_Side') == 'Below' and preview('##frame_Line up') == 'Start');
 s.panels.self_buffs.anchor.to = anchor_to;
--- Panel colors have readable names, and each Shared lines up.
+-- Panel colors have readable names, and each Shared or By kind lines up.
 on('self_buffs', 'look');
 -- The fill's end draws only with Shaded bars, so its row shows only then.
-assert(#calls('ColorEdit4', 'Bar fill end color##frame') == 0, 'A row that would change nothing is left out.');
+assert(#calls('ColorEdit4', 'Shaded bars end color##frame') == 0, 'A row that would change nothing is left out.');
 for _, panel in pairs(s.panels) do panel.gradient = true; end;
 on('self_buffs', 'look');
 for _, panel in pairs(s.panels) do panel.gradient = false; end;
 for _, name in ipairs({ 'Background color', 'Border color', 'Bar track color', 'Title color', 'Name color', 'Countdown color',
-    'Detail text color', 'Bar fill start color', 'Bar fill end color', 'Ending soon color' }) do
+    'Detail text color', 'Bar color', 'Shaded bars end color', 'Ending soon color' }) do
     assert(#calls('ColorEdit4', name .. '##frame') == 1, 'Panel color named for what it paints: ' .. name);
 end;
-local column, inherits;
-inherits = 0;
+local column, inherits, by_kind;
+inherits, by_kind = 0, 0;
 for index, call in ipairs(MOCK.imgui_calls) do
-    if call[1] == 'TextUnformatted' and call[2] == 'Shared' then
-        inherits = inherits + 1;
+    if call[1] == 'TextUnformatted' and (call[2] == 'From the main page' or call[2] == 'By kind') then
+        if call[2] == 'From the main page' then inherits = inherits + 1; else by_kind = by_kind + 1; end;
         local before;
         for back = index - 1, 1, -1 do
             local call = MOCK.imgui_calls[back];
@@ -276,7 +292,8 @@ for index, call in ipairs(MOCK.imgui_calls) do
         assert(before[2] == column, 'Every Shared lines up.');
     end;
 end;
-assert(inherits == 11, 'Every color that can go back says it is shared: ' .. inherits);
+assert(inherits == 9 and by_kind == 2, 'Every color that can go back says it is shared, and a bar color with none of its own goes by kind: '
+    .. inherits .. ', ' .. by_kind);
 -- Values that stand for something say what.
 s.style.title_size, s.panels.self_buffs.row_height, s.alerts.notice_x, s.alerts.notice_height = 0, 0, -1, 0;
 local function format(label)
@@ -284,7 +301,7 @@ local function format(label)
     return found and found[6];
 end;
 on('self_buffs', 'place');
-assert(format('##frame_Row height') == ('Shared (%.0f)'):format(s.style.bar_height), 'Row height says the shared height it uses.');
+assert(format('##frame_Row height') == ('From the main page (%.0f)'):format(s.style.bar_height), 'Row height says the shared height it uses.');
 s.style.font_size = 16;
 draw('Home');
 for label, text in pairs({ ['##main_title_size'] = 'Same as Text size', ['##main_text_size'] = '%.0f' }) do
@@ -298,10 +315,10 @@ on('notices', 'show');
 assert(format('##frame_Volume') == 'Same as Sound volume');
 on('notices', 'place');
 assert(format('##frame_Across_notices') == 'Centered');
-assert(format('##frame_Tallest') == 'Fit');
+assert(format('##frame_Height') == 'Fit');
 s.panels.self_buffs.mode = 'icons';
 on('self_buffs', 'place');
-assert(format('##frame_Size_countdown') == 'Automatic');
+assert(format('##frame_Countdown size_countdown') == 'Automatic');
 -- Every countdown has the one time format, so recast and status panels have no Time format pick.
 s.panels.spell_recasts.mode, s.panels.self_buffs.mode = 'bars', 'bars';
 for _, id in ipairs({ 'spell_recasts', 'self_buffs' }) do
@@ -310,12 +327,11 @@ for _, id in ipairs({ 'spell_recasts', 'self_buffs' }) do
         assert(#calls('BeginCombo', '##frame_Time format') == 0, 'No Time format pick: ' .. id .. ' ' .. which);
     end;
 end;
--- Hidden everywhere: an effect goes on the list by name, and the list gives it its Remove.
+-- The Hide list: an effect goes on the list by name, and the list gives it its Remove.
 s.effect_filters.rules = {};
 on('hidden', 'show');
 assert(#calls('Button', 'Remove##effect') == 0, 'Nothing is listed.');
-inputs['##frame_Find an effect'] = 'Level Sync';
-draw('Display');
+choose('Level Sync', 269);
 draw('Display', { 'Hide it everywhere##frame' });
 assert(#s.effect_filters.rules == 1 and s.effect_filters.rules[1].effect == 269, 'Fixture: Level Sync is hidden.');
 draw('Display');
@@ -345,7 +361,7 @@ local MOVES, RESIZES = 'Unlocked: hold Shift and drag a group to move it.', 'Unl
 s.party_ui.locked = false; on('party_ui', 'show');
 assert(shown('TextWrapped', MOVES) and not shown('TextWrapped', RESIZES), 'Groups beside the game\'s party list only move.');
 local lock_help = false;
-for _, result in ipairs(window.search('Unlock first, then hold Shift and drag a group to move it. A group in a panel of its own also resizes from its edges and corners.')) do
+for _, result in ipairs(window.search('Unlocked, hold Shift and drag a group to move it, and a group\'s own panel resizes from its edges.')) do
     lock_help = lock_help or result.panel == 'party_ui' and result.label == 'Locked';
 end;
 assert(lock_help, 'The lock\'s help says a group moves and a panel of its own also resizes.');
@@ -353,13 +369,15 @@ s.party_ui.groups[1].native_detached = true; draw('Display');
 assert(shown('TextWrapped', RESIZES), 'A panel of its own also resizes.');
 s.party_ui.groups[1].native_detached, s.party_ui.locked = false, true;
 draw('Help');
-assert(text_like('Shift + left-drag any edge or corner to resize; a group beside the game\'s party list only moves.')
+assert(text_like('or an edge or corner to resize it. A group beside the game\'s party list only moves.')
     and not text_like('detaches it'), 'Help says a group beside the game\'s party list only moves.');
 assert(text_like('outlines every display at once: pick one, then hold Shift and drag it or nudge it'), 'Help says edit mode moves a display with Shift held.');
 -- The header names the panel on every tab, with no Editing line.
 for _, key in ipairs({ 'show', 'place' }) do
     on('party_ui', key);
-    assert(not text_like('Editing:') and shown('TextColored', 'Party list buffs'), 'The heading and no Editing line: ' .. key);
+    local named = false;
+    for _, call in ipairs(MOCK.imgui_calls) do named = named or call[1] == 'BeginCombo' and call[2] == '##frame_switch' and call[3] == 'Party list'; end;
+    assert(not text_like('Editing:') and named, 'The heading and no Editing line: ' .. key);
 end;
 -- Headers open as ImGui opens them, so a section with nothing saved shows its default.
 local real_set, real_header, open_next = imgui.SetNextItemOpen, imgui.CollapsingHeader, nil;
@@ -367,7 +385,7 @@ imgui.SetNextItemOpen = function(value, ...) open_next = value; return real_set(
 imgui.CollapsingHeader = function(label, ...) real_header(label, ...); return open_next == true; end;
 s.window.sections = {};
 draw('Durations');
-assert(#calls('Button', 'Add duration override') == 1, 'Duration overrides opens by default.');
+assert(#calls('BeginCombo', '##What to override') == 1, 'Duration overrides opens by default.');
 imgui.SetNextItemOpen, imgui.CollapsingHeader = real_set, real_header;
 s.window.sections = all_open;
 -- No page has a preview pane. Samples show on the displays themselves.
@@ -417,7 +435,7 @@ on('notices', 'place');
 low, high = slider('##frame_Across_notices'); assert(low == -1 and high == 1600);
 low, high = slider('##frame_Down_notices'); assert(high == 900);
 on('notices', 'place');
-low, high = slider('##frame_Tallest'); assert(high == 900);
+low, high = slider('##frame_Height'); assert(high == 900);
 MOCK.screen = { 0, 0 };
 on('self_buffs', 'place'); low, high = slider('##frame_Across'); assert(high == 40, 'A first frame with no screen size still draws a slider.');
 MOCK.screen = nil;

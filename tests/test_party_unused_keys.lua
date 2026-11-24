@@ -1,4 +1,4 @@
--- What nothing reads: what the party list buffs have no use for, as they draw icons only, in one time format and in the
+-- What nothing reads: what Party list has no use for, as it draws icons only, in one time format and in the
 -- timer panels' look, each group's own look, and each display's time format, as every countdown has one. Fresh settings
 -- hold none of them. An export, Add and Replace alike, for Party & alliance, a timer panel, the overhead icons,
 -- Phantom Roll, the pet display and a whole profile brings none of them, the string's own values land as they are, and

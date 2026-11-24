@@ -32,25 +32,13 @@ local function frames(count)
         if leak and i % 10 == 0 then made = {}; end
     end
 end
-local function measure(count)
-    jit.off(); jit.flush();
-    frames(60);
-    collectgarbage('collect'); collectgarbage('collect');
-    collectgarbage('stop');
-    frames(6);
-    local before = collectgarbage('count');
-    frames(count);
-    local each = (collectgarbage('count') - before) / count;
-    collectgarbage('restart');
-    jit.on();
-    return each;
-end
+local alloc = require('alloc_fixture');
 frames(1);
 assert(lines == 3, 'Fixture: a dragged corner draws its two edges, and a dragged side its one: ' .. lines .. ' lines.');
 frames(600);
-local each = measure(600);
+local each = alloc.measure(frames, 600);
 assert(each < 0.002, ('Resize hints, size labels and a lock note make %.4f KB a frame; nothing expected'):format(each));
 leak = true;
-each = measure(600);
+each = alloc.measure(frames, 600);
 leak = false;
 assert(each >= 0.002 and made, ('A table made every tenth frame shows as %.4f KB'):format(each));

@@ -65,7 +65,7 @@ for _,size in ipairs({'minimal','minimal_1_5x','minimal_2x'})do
     assert(equal(candidate,expected),'Current skin applies the selected setup.');
     protected(s,candidate);
     assert(candidate.style.scale==scales[size]);
-    -- The party list buffs wear the timer panels' look, with icon art and opacity of their own.
+    -- Party list wears the timer panels' look, with icon art and opacity of its own.
     local own=0;for _ in pairs(candidate.party_ui.style)do own=own+1;end;
     assert(candidate.party_ui.style.icon_art=='Original FFXI' and own==2 and candidate.party_ui.groups[2].style==nil,
         'Full setup clears old per-display visual overrides using the current skin defaults.');
@@ -133,6 +133,8 @@ local function party_draw()
 end;
 s.window.open, s.window.tab = true, 'Display';
 before=copy(s);party_draw();
+-- The test's headers always open, so the folds save that. It is the window's state, not a preset.
+before.window.sections=s.window.sections;
 assert(equal(s,before),'Opening the panel never applies a preset.');
 -- The icon size is for a panel of its own, so the party is in one here.
 s.party_ui.groups[1].native_detached=true;

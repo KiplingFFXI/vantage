@@ -1,4 +1,4 @@
--- Countdown text has one home, More look on the main page. A search for it leads there, and a click on a result opens
+-- Countdown text has one home, Text effects on the main page. A search for it leads there, and a click on a result opens
 -- the fold and changes nothing. Where a countdown sits on an icon stays with the panel, on its Size and place tab.
 local defaults, window, hud = require('ui.defaults'), require('ui.settings_window'), require('ui.hud');
 local custom = require('core.customization');
@@ -59,7 +59,7 @@ draw('Clear search');
 s.window.tab, s.panels.self_buffs.mode = 'Display', 'icons';
 panels.open('self_buffs', 'place');
 draw(); draw();
-assert(calls('BeginCombo', '##frame_Position_countdown') == 1 and calls('Checkbox', 'Countdown text outline') == 0
+assert(calls('BeginCombo', '##frame_Countdown position_countdown') == 1 and calls('Checkbox', 'Countdown text outline') == 0
     and calls('Checkbox', 'Bold countdowns') == 0, 'The panel sets where the countdown sits and not how its text looks.');
 assert(s.style.font == 'XI View' and s.panels.self_buffs.locked and s.party_ui.locked);
 assert(#MOCK.commands == 0);

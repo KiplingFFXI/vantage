@@ -1,4 +1,4 @@
--- Always show: Copy Image and Third Eye have a tick of their own on Overhead icons and Party list buffs. Ticked shows the
+-- Always show: Copy Image and Third Eye have a tick of their own on Overhead icons and Party list. Ticked shows the
 -- effect whoever cast it, whatever Show says. Unticked hides it, unless it's on Show only, where the other filters decide
 -- as for any effect. Hide here still hides it, Show only stays an only, and other players and pets, whose would never
 -- change, have no tick and treat these effects like any other. Copy Image is one effect, 66, at every count, with the
@@ -90,7 +90,7 @@ do
     s = defaults.tidy(s);
     assert(s.overhead.types.party.show_copy_image == true and s.overhead.types.mob.show_third_eye == false, 'A save keeps the ticks.');
     assert(s.overhead.types.other.show_copy_image == nil, 'Other players can\'t hold one.');
-    assert(s.party_ui.effects.show_copy_image == false, 'A save keeps Party list buffs\' tick.');
+    assert(s.party_ui.effects.show_copy_image == false, 'A save keeps Party list\' tick.');
     s.overhead.types.party.show_copy_image, s.overhead.types.mob.show_copy_image = nil, nil;
     s.overhead.types.alliance.show_copy_image, s.overhead.types.alliance.show_third_eye = nil, nil;
     s.party_ui.effects.show_copy_image, s.party_ui.effects.show_third_eye = nil, nil;
@@ -98,13 +98,13 @@ do
     assert(s.overhead.types.party.show_copy_image == false and s.overhead.types.mob.show_copy_image == true
         and s.overhead.types.alliance.show_copy_image == false and s.overhead.types.alliance.show_third_eye == false,
         'A save from before the ticks takes how they start.');
-    assert(s.party_ui.effects.show_copy_image == true and s.party_ui.effects.show_third_eye == true, 'So does Party list buffs.');
+    assert(s.party_ui.effects.show_copy_image == true and s.party_ui.effects.show_third_eye == true, 'So does Party list.');
 end;
 
--- Party list buffs: the same rule over Show, Hide here and Show only.
+-- Party list: the same rule over Show, Hide here and Show only.
 do
     local base = defaults.tidy(defaults.make()).party_ui.effects;
-    assert(base.show_copy_image == true and base.show_third_eye == true, 'Party list buffs starts ticked, as it shows them now.');
+    assert(base.show_copy_image == true and base.show_third_eye == true, 'Party list starts ticked, as it shows them now.');
     -- Two copies of Copy Image, at one shadow and at three, each drawn by its icon.
     local list = { { effect = 66, kind = 'buff', key = 'a', present = true }, { effect = 66, icon = 445, kind = 'buff', key = 'b', present = true },
         { effect = 67, kind = 'buff', key = 'c', present = true }, { effect = 33, kind = 'buff', key = 'd', present = true },
@@ -202,10 +202,10 @@ do
         assert(limit and not swapped, 'Buffs only has one side, ticked or not, on ' .. layout);
     end;
 
-    -- Party list buffs: on Filters, gone with None, and the tick writes.
+    -- Party list: on Filters, gone with None, and the tick writes.
     h.fresh(function(s) s.party_ui.enabled = true; end);
     h.on('party_ui', 'filters');
-    assert(h.says('Always show') and tick_shown('Copy Image') and tick_shown('Third Eye'), 'Party list buffs has the line on Filters.');
+    assert(h.says('Always show') and tick_shown('Copy Image') and tick_shown('Third Eye'), 'Party list has the line on Filters.');
     local function result(text, label)
         for _, entry in ipairs(h.window.search(text)) do
             if entry.panel == 'party_ui' and entry.label == label then return true; end;
@@ -213,7 +213,7 @@ do
         return false;
     end;
     for _, entry in ipairs({ { 'Always show', 'Always show' }, { 'Copy Image', 'Copy Image' }, { 'utsusemi', 'Copy Image' }, { 'samurai', 'Third Eye' } }) do
-        assert(result(entry[1], entry[2]), 'Search for ' .. entry[1] .. ' finds it on Party list buffs.');
+        assert(result(entry[1], entry[2]), 'Search for ' .. entry[1] .. ' finds it on Party list.');
     end;
     h.draw('Third Eye##frame');
     assert(h.s.party_ui.effects.show_third_eye == false, 'The tick writes.');

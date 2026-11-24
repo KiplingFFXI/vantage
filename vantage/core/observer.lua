@@ -6,18 +6,33 @@ local bit = require('bit');
 local packets = { [0x00A]=true, [0x00B]=true, [0x00E]=true, [0x028]=true, [0x029]=true, [0x037]=true, [0x044]=true, [0x063]=true,
     [0x068]=true, [0x076]=true, [0x08C]=true };
 local wanted = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [6] = true, [11] = true, [13] = true };
+-- A move being readied (7) and a spell being cast (8) are read only from your own pet, for the pet display. own_pet is
+-- its id while a 0x028 is decoded. What your pet finishes that the display names: a ranged attack, a weapon skill, a
+-- spell, a monster skill and a pet ability. A start's action id is a four letter code (src/map/enums/four_cc.h
+-- :28-53): its low half is "ca" as a move or a spell of any kind begins and "sp", STOPPED, as it is stopped.
+local starts = { [7] = true, [8] = true };
+local finishes = { [2] = true, [3] = true, [4] = true, [11] = true, [13] = true };
+local STOPPED = 0x7073;
+local own_pet;
 local sources = { [4] = 'spells', [6] = 'abilities', [11] = 'skills', [13] = 'pacts' };
+-- Absorb-STR to Absorb-CHR that took say so with 329 to 335 and name the Down they put on (Phoenix
+-- globals/spells/absorb_spell.lua :70, :79).
 local landed = { [127] = true, [186] = true, [230] = true, [236] = true, [237] = true, [242] = true,
     [243] = true, [266] = true, [267] = true, [268] = true, [271] = true, [277] = true, [278] = true,
-    [319] = true, [320] = true };
+    [319] = true, [320] = true, [329] = true, [330] = true, [331] = true, [332] = true, [333] = true,
+    [334] = true, [335] = true };
 local ability_message = { [127] = true, [277] = true, [319] = true, [320] = true };
 -- Job abilities name the buff they give in the param (Phoenix CCharEntity::OnAbility). These messages say
 -- the target gained it: Berserk and Last Resort, Warcry and Boost, Defender, Aggressor, Focus, Dodge, the
--- circles on their user and on others, and Warcry on a party member. One with no message of its own is
--- sent as 'uses' (100), which only counts for a buff on its user.
+-- circles on their user and on others, Warcry on a party member, Mantra on its user and on others, and Flee (126,
+-- which Chocobo Jig sends too, but it came after Phoenix's era, sql/abilities.sql :62, :216, :389). One
+-- with no message of its own and one target is sent as 'uses' (100), which only counts for a buff on its user.
+-- One that reaches everyone around its user keeps 0 on every row (src/map/entities/char_entity.cpp :2038-2075,
+-- :2099-2101). That counts on its user's row, and on the others' only for one that puts itself on each of them
+-- (core/catalog.lua).
 local ability_buffs = { [115] = true, [116] = true, [117] = true, [118] = true, [120] = true, [121] = true,
     [131] = true, [134] = true, [148] = true, [150] = true, [149] = true, [151] = true, [285] = true,
-    [286] = true, [287] = true };
+    [286] = true, [287] = true, [421] = true, [441] = true, [126] = true };
 local removed = { [83] = true, [123] = true, [159] = true, [168] = true, [321] = true, [341] = true,
     [343] = true, [378] = true };
 local damage = { [1] = true, [2] = true, [67] = true, [110] = true, [163] = true, [185] = true,
@@ -67,8 +82,11 @@ local SPIKE_EFFECTS = { [34] = true, [35] = true, [38] = true, [173] = true, [31
 -- ranged 352, 353, 576 and 577, Barrage 157 and Sange 77, a weapon skill 185, and a counter (battle_entity.cpp :3265-3270,
 -- :3686-3698, weaponskills.lua :150-158, :864). A deflected swing reads as a hit for nothing (battle_entity.cpp
 -- :3681-3683). A Sneak or Trick Attack round goes through shadows, as may a weapon skill's first hit (:3686-3698,
--- weaponskills.lua :677), until the user's next melee round drops both (battle_entity.cpp :3965-3969).
-local COPY_IMAGE, SHADOWS, NI, NINJA = 66, { [338] = 3, [339] = 4, [340] = 5 }, 339, 13;
+-- weaponskills.lua :677), until the user's next melee round drops both (battle_entity.cpp :3965-3969). A mob's or an
+-- alliance member's Blink is counted too. It gives 2 (globals/spells/enhancing_spell.lua :70), or 4 from Zephyr Mantle
+-- (actions/spells/blue/zephyr_mantle.lua :24), and goes with the last one the same way (battleutils.cpp :3142-3143),
+-- but a fifth of hits get past it (:3106-3114), so one that lands says nothing of it.
+local COPY_IMAGE, SHADOWS, NI, NINJA = 66, { [53] = 2, [338] = 3, [339] = 4, [340] = 5, [647] = 4 }, 339, 13;
 local NOT_NIN = { ['Ark Angel HM'] = true, ['Shikaree X'] = true };
 -- Whether Ni gives this caster one shadow less. An alliance member's main job is the client's; while it has none they
 -- count as a NIN, and a shadow too many goes at the next hit that lands.
@@ -93,10 +111,14 @@ observer.wear_off = 'Observed wearoff';
 -- Raise, Raise II, Raise III and Arise, and the raise level each gives (Phoenix raise*.lua and arise.lua,
 -- sendRaise). They finish with message 309, 'casts ... on'.
 local raises = { [12] = 1, [13] = 2, [140] = 3, [494] = 4 };
--- The two-hours and key job abilities the party cooldown watch counts (data/party_cooldowns.lua). A job ability
+-- The two-hours, key job abilities and spells the party cooldown watch counts (data/party_cooldowns.lua). A job ability
 -- finishes as category 6 with its ability id (Phoenix CCharEntity::OnAbility, char_entity.cpp :2014-2016); one with
--- its own category names it there, with the messages that tell it from what else has its id.
+-- its own category names it there, with the messages that tell it from what else has its id. A spell finishes as
+-- category 4 with its spell id and the recast the game gave it. One stopped by Paralysis (84) or Intimidate (106) also
+-- sends 2 seconds, which the game never puts on the caster (src/map/action/interrupts.cpp :299-370,
+-- src/map/ai/states/magic_state.cpp :264-289), so it isn't a cast.
 local watched = require('core.party_cooldowns').WATCHED;
+local watched_spells = require('core.party_cooldowns').SPELLS;
 local WILD_CARD = require('core.party_cooldowns').WILD_CARD;
 -- A Phantom Roll or Double-Up from you or a party member, for the Phantom Roll display (core/rolls.lua). The Corsair is
 -- the first target and keeps the roll's own message: 420 a roll, 424 a Double-Up, 426 a bust. The others get 421, or
@@ -127,17 +149,24 @@ local function u32(data, pos) return u16(data, pos) + u16(data, pos + 2) * 65536
 -- The 0x028 being decoded and the bit reader, held for one decode so read makes no closure.
 local raw, unpack;
 local function read(at, length) return unpack(raw, 0, at, length); end
+-- The action a decode hands back, its list of results and the rows they are read into, made once and filled again by
+-- each decode. observer.read reads them within the packet's callback and keeps none of them.
+local decoded, result_rows = { rows = {} }, {};
 
 -- Bounds are checked before every native read. Nothing is emitted from a partial action.
--- 0x028 is read by bit: actor at 40, target count at 72, category at 82, action id at 86, first target at 150. A target
--- is a 32 bit id and a 4 bit result count. A result is 85 bits, param at +27 and message at +44, then an added effect
--- block of 37 bits and a reaction block of 34, each behind a 1 bit flag.
+-- 0x028 is read by bit: actor at 40, target count at 72, category at 82, action id at 86, recast at 118, first target
+-- at 150. A target is a 32 bit id and a 4 bit result count. A result is 85 bits, param at +27 and message at +44, then
+-- an added effect block of 37 bits and a reaction block of 34, each behind a 1 bit flag. The recast is in seconds and
+-- only a finished spell sends one (src/map/packets/s2c/0x028_battle2.cpp :40-46, src/map/action/action.cpp :103-107).
 local function decode_action(total)
     local category = read(82, 4);
-    if not wanted[category] then return nil; end
+    if not wanted[category] and not (starts[category] and own_pet and read(40, 32) == own_pet) then return nil; end
     local count = read(72, 6);
     if count < 1 or count > 15 then return nil; end
-    local action = { actor = read(40, 32), id = read(86, 32), category = category, rows = {} };
+    local action, used = decoded, 0;
+    for i = #action.rows, 1, -1 do action.rows[i] = nil; end
+    action.actor, action.id, action.category, action.recast = read(40, 32), read(86, 32), category, nil;
+    if category == 4 then action.recast = read(118, 32); end
     local at = 150;
     for _ = 1, count do
         if at + 36 > total then return nil; end
@@ -147,7 +176,12 @@ local function decode_action(total)
         for _ = 1, results do
             local start = at;
             if at + 86 > total then return nil; end
-            local row = { target = target, param = read(start + 27, 17), message = read(start + 44, 10) };
+            used = used + 1;
+            local row = result_rows[used];
+            if not row then row = {}; result_rows[used] = row; end
+            row.target, row.param, row.message = target, read(start + 27, 17), read(start + 44, 10);
+            -- What the last packet read into this row, which this one may not have.
+            row.added, row.added_param, row.reaction_param, row.reaction, row.reaction_kind = nil, nil, nil, nil, nil;
             at = at + 85;
             local added = read(at, 1) == 1;
             at = at + 1;
@@ -161,7 +195,7 @@ local function decode_action(total)
             at = at + 1;
             if reaction then
                 if at + 34 > total then return nil; end
-                row.reaction_param, row.reaction = read(at + 10, 14), read(at + 24, 10);
+                row.reaction_param, row.reaction, row.reaction_kind = read(at + 10, 14), read(at + 24, 10), read(at, 6);
                 at = at + 34;
             end
             action.rows[#action.rows + 1] = row;
@@ -210,6 +244,113 @@ local function spiked(snapshot, id)
     return false;
 end
 
+-- A status the game never reports. A player's weapon skill, a pet's move and a few spells, abilities, pacts and items
+-- put a status on a monster with no word of it: the server sends the action's own result and nothing else (Phoenix
+-- scripts/globals/weaponskills.lua handleWeaponskillEffect :1108-1118 is a bare addStatusEffect). data/effects.lua says
+-- what each such action may put on and by what in its result (infer): 'damage' is a hit for more than 0, 'success' one
+-- of the row's messages. A resist or an immune monster looks the same, so each is a guess (guessed), which the tracker
+-- never lets renew what a monster already shows or go on over what keeps it off (core/tracker.lua refused).
+-- The table a player's action is looked up in, by its category.
+local GUESS_KINDS = { [4] = 'spells', [5] = 'items', [6] = 'abilities', [13] = 'pacts' };
+-- The job that has each merit two of them need, by the name the data gives the merit (Phoenix data/merits.yaml
+-- :454, :510).
+local MERIT_JOBS = { tomahawk = 1, penance = 2 };
+-- A melee swing that connects.
+local CONNECTS = { [1] = true, [67] = true, [352] = true, [353] = true };
+-- A player's finishing move with one of these messages is a job ability, as Jump and Shield Bash are, and any other a
+-- weapon skill: the two that say an ability did damage (Phoenix src/map/enums/msg_basic.h :101, :182) beside the ones
+-- that name its effect, and the one that says only that an ability was used (:96), which an ability with no message of
+-- its own gets (src/map/entities/char_entity.cpp :2099-2102), as Tomahawk does. A weapon skill's id can be an ability's
+-- too.
+local ABILITY_RESULT = { [100] = true, [110] = true, [317] = true };
+-- Who has an effect that goes on with their next melee hit, as Feint does (data/effects.lua reactive), and until when.
+local armed, armed_count = {}, 0;
+
+-- Whether your own listing shows an effect, or with id another player's. A party member's is read as spiked() reads it,
+-- once core/client.lua has one for them (valid). With no listing to read, as for a stranger or an alliance member, it is
+-- taken as there.
+local function holds(snapshot, effect, id)
+    local effects;
+    if id == nil or id == snapshot.id then
+        effects = snapshot.self_known and (snapshot.self_effects or NONE);
+    else
+        for _, member in ipairs(snapshot.party or NONE) do
+            if member.id == id then effects = member.valid and member.effects; break; end
+        end
+    end
+    if not effects then return true; end
+    for _, status in ipairs(effects) do
+        if status.effect == effect then return true; end
+    end
+    return false;
+end
+
+-- Whether your automaton has an attachment on, by the byte the 0x044 gives for it (core/client.lua). With none read yet,
+-- it is taken as there.
+local function fitted(snapshot, attachment)
+    local parts = snapshot.pet and snapshot.pet.automaton and snapshot.pet.automaton.attachments;
+    if not parts then return true; end
+    for _, part in ipairs(parts) do
+        if part == attachment then return true; end
+    end
+    return false;
+end
+
+-- The two forms of a drain's result that the damage list above leaves out: a draining spell's magic burst, and a
+-- draining move on its targets after the first (Phoenix src/map/spell.cpp :218, src/map/utils/messageutils.h :42).
+local DRAINED = { [274] = true, [281] = true };
+
+-- Whether a result says the action's unreported status went on.
+local function unsaid(info, row)
+    if info.infer == 'damage' then return (wakes[row.message] == true or DRAINED[row.message] == true) and row.param > 0; end
+    if info.infer == 'success' then
+        for _, message in ipairs(info.success_messages or NONE) do
+            if row.message == message then return true; end
+        end
+    end
+    return false;
+end
+
+-- What a guess needs that can be checked: the user's own effect for their action, your merit for yours, and your effect
+-- for your pet's, with the Hammermill your automaton needs to slow with Shield Bash.
+local function may(info, snapshot, action, my_pet)
+    local mine = action.actor == snapshot.id;
+    if info.requires_effect and not holds(snapshot, info.requires_effect, action.actor) then return false; end
+    if mine and info.requires_merit then
+        local rule, job = catalog.kind('merits')[info.requires_merit], MERIT_JOBS[info.requires_merit];
+        local on, level = snapshot.job, snapshot.level;
+        local read = type(on) == 'number' and on > 0 and type(level) == 'number' and level > 0;
+        -- A merit does nothing on another job or under level 75. With your job or level not read, it is taken as there.
+        if rule and job and read and (on ~= job or level < 75 or client.merit(rule.id) == 0) then return false; end
+    end
+    if my_pet and info.requires_owner_effect and not holds(snapshot, info.requires_owner_effect) then return false; end
+    local auto = pets.automaton;
+    if my_pet and action.id == auto.bash_skill and info.effect == auto.bash_slow.effect and not fitted(snapshot, auto.bash_slow.hammermill) then
+        return false;
+    end
+    return true;
+end
+
+-- The table that says what an action may put on with no word of it, or nil. A player's finishing move that isn't an
+-- ability is a weapon skill. A monster counts only as someone's pet: one the game made for its owner (its id ends
+-- 0x800 or over) has the automatons' and the jug pets' moves, and any owned one a charmed monster's.
+local function guess_kind(action, from_pet, now)
+    local actor, category = action.actor, action.category;
+    if actor < 0x1000000 then
+        if category == 3 then
+            local message = action.rows[1].message;
+            return (ability_message[message] or ABILITY_RESULT[message]) and 'abilities' or 'weaponskills';
+        end
+        return GUESS_KINDS[category];
+    end
+    if category == 13 then return 'pacts'; end
+    if category ~= 3 and category ~= 11 then return nil; end
+    local made = actor % 0x1000 >= 0x800;
+    local kind = made and (catalog.action('automatons', action.id) and 'automatons' or catalog.action('pet_moves', action.id) and 'pet_moves')
+        or catalog.action('charmed_skills', action.id) and 'charmed_skills' or nil;
+    if kind and (from_pet or client.pet_owner(actor, now)) then return kind; end
+end
+
 local function event(snapshot, kind, id, effect, actor)
     local entity = identity(snapshot, id);
     local from = actor and identity(snapshot, actor);
@@ -231,50 +372,155 @@ local function ward_seconds(ward, skill, level)
     return math.min(ward.top, ward.base + ward.per * math.max(skill - cap, 0));
 end
 
+-- What the action_events call under way is reading, for the helpers below, so a call makes no closure: the action, the
+-- snapshot, whether your pet did it, what it found (out), each unit it hit (struck) and your gear and merits, sampled once
+-- for it when a time needs them (sample). out and struck are made once and emptied at the start of each call. out is the
+-- list observer.read hands back for an action, so a caller reads it before the next packet and keeps only its entries.
+local reading = { out = {}, struck = {} };
+function reading.apply(row, effect, rule, action_id)
+    if not status(effect) or row.target == 0 then return; end
+    local action, snapshot, out = reading.action, reading.snapshot, reading.out;
+    -- Capture once in this packet callback, only when a duration needs it.
+    if reading.sample==nil and action.actor==snapshot.id then reading.sample=client.sample_modifiers(snapshot); end;
+    local sample = reading.sample;
+    local entry = event(snapshot, 'apply', row.target, effect, action.actor);
+    entry.action_category, entry.spell = action.category, action_id;
+    -- The kind of action that put it on, which Only effects from job abilities goes by.
+    entry.action_kind = rule;
+    if sample then sample.target_self = row.target == snapshot.id; end
+    entry.duration, entry.duration_min, entry.basis, entry.metadata = catalog.duration(rule, action_id, effect, sample);
+    -- Another player's song counts the range their instrument can give (core/catalog.lua). A monster's is its base.
+    if rule == 'spells' and action.actor ~= snapshot.id and action.actor < 0x1000000 and entry.duration then
+        local upper, lower, basis = catalog.song_range(action_id, action.actor, snapshot, entry.duration);
+        if upper then entry.duration, entry.duration_min, entry.basis = upper, lower, basis; end
+    end
+    entry.tier = entry.metadata and entry.metadata.tier;
+    -- A pact's Nightmare is tier 4, which a hit ends. Only a mob's isn't.
+    entry.deep = rule == 'skills' and entry.metadata and entry.metadata.deep or nil;
+    -- A length that never changes, as Third Eye's and Seigan's (core/catalog.lua), ends when its time is up.
+    entry.exact = entry.metadata and entry.metadata.exact or nil;
+    entry.metadata = nil;
+    entry.by_pet = reading.from_pet or nil;
+    entry.drops = catalog.drops(effect);
+    local definition = catalog.get(effect);
+    entry.group, entry.category = definition.group, definition.kind;
+    if definition.group == 'Songs' and rule == 'spells' and definition.kind ~= 'debuff' then
+        entry.stackable, entry.instance_hint = true, tostring(action.actor) .. ':' .. tostring(action_id);
+    end
+    out[#out + 1] = entry;
+    return entry;
+end
+function reading.remove(row, effect)
+    if status(effect) and row.target ~= 0 then
+        local entry = event(reading.snapshot, 'remove', row.target, effect);
+        entry.reason = 'Observed removal';
+        local out = reading.out;
+        out[#out + 1] = entry;
+    end
+end
+-- A status taken as put on a monster with no word of it (see GUESS_KINDS above), by actor. Its time is the action's
+-- own, with your merits and gear in it for an action of yours, as for one the game reports.
+function reading.possible(target, effect, rule, id, actor)
+    if target < 0x1000000 or not status(effect) then return; end
+    local action, snapshot, out = reading.action, reading.snapshot, reading.out;
+    local own = actor == snapshot.id and actor == action.actor;
+    if own and reading.sample == nil then reading.sample = client.sample_modifiers(snapshot); end
+    local entry = event(snapshot, 'apply', target, effect, actor);
+    entry.action_category, entry.spell, entry.action_kind, entry.guessed = action.category, id, rule, true;
+    entry.duration, entry.duration_min = catalog.duration(rule, id, effect, own and reading.sample or nil);
+    entry.basis = 'Taken from what the action did. The game sends no word of this effect, so a resist looks the same.';
+    entry.by_pet = actor == action.actor and reading.from_pet or nil;
+    entry.drops = catalog.drops(effect);
+    local definition = catalog.get(effect);
+    entry.group, entry.category = definition.group, definition.kind;
+    out[#out + 1] = entry;
+end
+-- A mob, your pet or an alliance member that took damage: the tracker takes off what Phoenix takes off at a hit. A
+-- mob's and a pet's ids start at 0x1000000. The player's and the party's own effects are read from their listings, and
+-- a stranger's aren't followed. It comes before anything the same row puts on, as Phoenix deals the damage first, and
+-- once for each one an action hits, saying whether a hit got through their shadows, whether a melee swing landed,
+-- whether damage that Stoneskin soaks first got through and whether spikes were all that hurt it.
+function reading.hit(id, from, through, melee, unsoaked, spikes)
+    local struck = reading.struck;
+    local entry = struck[id];
+    if not entry then
+        local snapshot, out = reading.snapshot, reading.out;
+        if id < 0x1000000 and not ally(snapshot, id) then return; end
+        entry = event(snapshot, 'damage', id, nil, from);
+        if entry.scope ~= 'enemy' and entry.scope ~= 'pet' and entry.scope ~= 'alliance' then return; end
+        struck[id], out[#out + 1] = entry, entry;
+        entry.spikes_only = spikes or nil;
+    elseif not spikes then
+        entry.spikes_only = nil;
+    end
+    if through then entry.through = true; end
+    if melee then entry.melee = true; end
+    if unsoaked then entry.unsoaked = true; end
+end
+-- Shadows a mob or an alliance member lost.
+function reading.lost(id, count)
+    local snapshot, out = reading.snapshot, reading.out;
+    if count <= 0 or id < 0x1000000 and not ally(snapshot, id) then return; end
+    local entry = event(snapshot, 'shadows', id);
+    if entry.scope == 'enemy' or entry.scope == 'alliance' then entry.lost = count; out[#out + 1] = entry; end
+end
+-- A monster's move that takes every erasable effect off its user, or off each mob Benediction reaches (core/catalog.lua).
+-- Phoenix sends each one's wear-off only to whoever put it on (status_effect_container.cpp :657-669), so the move is all
+-- that says a party member's has gone.
+function reading.erase_all(action, snapshot)
+    local reach, effects = catalog.erases_all(action.id);
+    if not reach then return; end
+    local out = reading.out;
+    for i = 1, reach == 'targets' and #action.rows or 1 do
+        local entry = event(snapshot, 'cure', reach == 'targets' and action.rows[i].target or action.actor);
+        entry.effects, entry.reason = effects, 'A monster\'s move took it off.';
+        out[#out + 1] = entry;
+    end
+end
+
 local function action_events(action, snapshot, now)
-    local out, sample = {}, nil;
+    local out, struck = reading.out, reading.struck;
+    for i = #out, 1, -1 do out[i] = nil; end
+    for id in pairs(struck) do struck[id] = nil; end
+    local apply, remove, possible, hit, lost = reading.apply, reading.remove, reading.possible, reading.hit, reading.lost;
     local source = sources[action.category];
     if action.category == 3 then source = ability_message[action.rows[1].message] and 'abilities' or 'skills'; end
     local roll = action.category == 6 and catalog.roll(action.id);
     local pet = snapshot.pet;
     local from_pet = pet ~= nil and action.actor == pet.id;
-    local function apply(row, effect, rule, action_id)
-        if not status(effect) or row.target == 0 then return; end
-        -- Capture once in this packet callback, only when a duration needs it.
-        if sample==nil and action.actor==snapshot.id then sample=client.sample_modifiers(snapshot); end;
-        local entry = event(snapshot, 'apply', row.target, effect, action.actor);
-        entry.action_category, entry.spell = action.category, action_id;
-        -- The kind of action that put it on, which Only effects from job abilities goes by.
-        entry.action_kind = rule;
-        if sample then sample.target_self = row.target == snapshot.id; end
-        entry.duration, entry.duration_min, entry.basis, entry.metadata = catalog.duration(rule, action_id, effect, sample);
-        entry.tier = entry.metadata and entry.metadata.tier;
-        -- A pact's Nightmare is tier 4, which a hit ends; only a mob's isn't.
-        entry.deep = rule == 'skills' and entry.metadata and entry.metadata.deep or nil;
-        -- A length that never changes, as Third Eye's and Seigan's (core/catalog.lua), ends when its time is up.
-        entry.exact = entry.metadata and entry.metadata.exact or nil;
-        entry.metadata = nil;
-        entry.by_pet = from_pet or nil;
-        entry.drops = catalog.drops(effect);
-        local definition = catalog.get(effect);
-        entry.group, entry.category = definition.group, definition.kind;
-        if definition.group == 'Songs' and rule == 'spells' and definition.kind ~= 'debuff' then
-            entry.stackable, entry.instance_hint = true, tostring(action.actor) .. ':' .. tostring(action_id);
-        end
-        out[#out + 1] = entry;
-        return entry;
-    end
-    local function remove(row, effect)
-        if status(effect) and row.target ~= 0 then
-            local entry = event(snapshot, 'remove', row.target, effect);
-            entry.reason = 'Observed removal';
-            out[#out + 1] = entry;
+    reading.action, reading.snapshot, reading.from_pet, reading.sample = action, snapshot, from_pet, nil;
+    -- What your pet starts and finishes, for the pet display. A start names the move or spell in its first result, and
+    -- its own id says whether it began or was stopped (src/map/ai/states/magic_state.cpp, mobskill_state.cpp,
+    -- src/map/action/interrupts.cpp). Nothing else is learned from a start.
+    if from_pet then
+        local first = action.rows[1];
+        if starts[action.category] then
+            return { { kind = 'pet_start', entity_id = pet.id, category = action.category, id = first.param, target = first.target,
+                stopped = action.id % 0x10000 == STOPPED or nil, message = first.message } };
+        elseif action.category == 4 and (action.id == 0 or first.message == 84 or first.message == 106) then
+            -- What failed comes as category 4 too, so it isn't taken for a finish: a swing, a pact, a breath or a move with
+            -- no action id (Paralysis 84, Intimidate 106, out of reach 328 or 78, no target in its area 76), and a spell
+            -- with its id and 84 or 106 (src/map/action/interrupts.cpp :39-128, :193-233, :299-422). It ends what the
+            -- pet was readying, as a move that failed for range sends no stop of its own
+            -- (src/map/ai/states/mobskill_state.cpp :244-256).
+            out[#out + 1] = { kind = 'pet_start', entity_id = pet.id, category = action.category, stopped = true };
+        elseif finishes[action.category] then
+            out[#out + 1] = { kind = 'pet_action', entity_id = pet.id, category = action.category, id = action.id, target = first.target,
+                amount = damage[first.message] and first.param or nil, message = first.message };
         end
     end
     -- A party or alliance member's use of a watched ability, for the party cooldown watch. Only players, whose ids are
     -- below 0x1000000, and not you: your own recasts are read from the client. A Wild Card from you or a member also
     -- resets what each member it lands on has, by its roll (the param, corsair.lua useWildCard :920-933).
     local info = (action.category == 6 or action.category == 3) and watched[action.id];
+    local spell = action.category == 4 and watched_spells[action.id];
+    if spell and action.rows[1].message ~= 84 and action.rows[1].message ~= 106 then
+        local actor = action.actor;
+        if actor ~= snapshot.id and actor < 0x1000000 then
+            local entry = event(snapshot, 'cooldown', actor);
+            if entry.scope == 'party' or entry.scope == 'alliance' then entry.ability, entry.recast = spell.id, action.recast; out[#out + 1] = entry; end
+        end
+    end
     if info and (info.category or 6) == action.category and (not info.messages or info.messages[action.rows[1].message]) then
         local actor = action.actor;
         if actor ~= snapshot.id and actor < 0x1000000 then
@@ -288,6 +534,17 @@ local function action_events(action, snapshot, now)
                     if reset.scope == 'party' or reset.scope == 'alliance' then reset.roll = row.param; out[#out + 1] = reset; end
                 end
             end
+        end
+    end
+    -- A member's Dismiss or Deactivate with the pet at full HP resets their Call Wyvern or Activate (data/pets.lua). Only
+    -- the pet's HP percent as the client has it says so, and Phoenix rounds that down, so 100 is full. With it unread, the
+    -- estimate stays.
+    local resets = action.category == 6 and action.actor ~= snapshot.id and action.actor < 0x1000000 and pets.full_hp_resets[action.id];
+    if resets then
+        local entry = event(snapshot, 'cooldown_reset', action.actor);
+        if (entry.scope == 'party' or entry.scope == 'alliance') and client.member_pet_hpp(snapshot, action.actor) == 100 then
+            entry.ability = resets;
+            out[#out + 1] = entry;
         end
     end
     -- A roll from you or a party member: its total, whether it was a Double-Up or a bust, and what each target's row
@@ -315,42 +572,16 @@ local function action_events(action, snapshot, now)
     if action.actor == snapshot.id and action.category == 6 and (action.id == CHARM or action.id == FAMILIAR) then
         for _, row in ipairs(action.rows) do
             if row.target ~= 0 and (action.id == FAMILIAR or row.message == CHARMED) then
-                if sample == nil then sample = client.sample_modifiers(snapshot); end
+                if reading.sample == nil then reading.sample = client.sample_modifiers(snapshot); end
                 local entry = event(snapshot, action.id == CHARM and 'charm' or 'familiar', row.target);
-                entry.items = sample and sample.items;
+                entry.items = reading.sample and reading.sample.items;
                 out[#out + 1] = entry;
                 break;
             end
         end
     end
-    -- A mob, your pet or an alliance member that took damage: the tracker takes off what Phoenix takes off at a hit. A
-    -- mob's and a pet's ids start at 0x1000000; the player's and the party's own effects are read from their listings, and
-    -- a stranger's aren't followed. It comes before anything the same row puts on, as Phoenix deals the damage first, and
-    -- once for each one an action hits, saying whether a hit got through their shadows, whether a melee swing landed,
-    -- whether damage that Stoneskin soaks first got through and whether spikes were all that hurt it.
-    local struck;
-    local function hit(id, from, through, melee, unsoaked, spikes)
-        local entry = struck and struck[id];
-        if not entry then
-            if id < 0x1000000 and not ally(snapshot, id) then return; end
-            entry = event(snapshot, 'damage', id, nil, from);
-            if entry.scope ~= 'enemy' and entry.scope ~= 'pet' and entry.scope ~= 'alliance' then return; end
-            struck = struck or {};
-            struck[id], out[#out + 1] = entry, entry;
-            entry.spikes_only = spikes or nil;
-        elseif not spikes then
-            entry.spikes_only = nil;
-        end
-        if through then entry.through = true; end
-        if melee then entry.melee = true; end
-        if unsoaked then entry.unsoaked = true; end
-    end
-    -- Shadows a mob or an alliance member lost.
-    local function lost(id, count)
-        if count <= 0 or id < 0x1000000 and not ally(snapshot, id) then return; end
-        local entry = event(snapshot, 'shadows', id);
-        if entry.scope == 'enemy' or entry.scope == 'alliance' then entry.lost = count; out[#out + 1] = entry; end
-    end
+    -- A monster's move that takes every erasable effect off, before what it puts on.
+    if action.category == 11 and action.actor >= 0x1000000 then reading.erase_all(action, snapshot); end
     -- Whether the actor's Sneak or Trick Attack may still be up, which their next melee round uses.
     local sneak = sneaking[action.actor] == true;
     if action.category == 1 then sneaking[action.actor] = nil; end
@@ -385,15 +616,19 @@ local function action_events(action, snapshot, now)
             -- A Double-Up renews the roll to its full time too (scripts/globals/job_utils/corsair.lua :544-551).
             local entry = apply(row, roll, 'rolls', action.id);
             if entry then
-                entry.duration, entry.duration_min = catalog.roll_duration(sample);
+                entry.duration, entry.duration_min = catalog.roll_duration(reading.sample);
                 entry.basis = 'Phoenix roll duration; other bonuses may change it';
+                -- An alliance member has no listing to read, so their rows go by how many of one Corsair's rolls Phoenix
+                -- keeps on them (core/tracker.lua): 2 for a COR main and 1 for a COR sub. A Corsair the client has no job
+                -- for counts as a COR main.
+                if entry.scope == 'alliance' then entry.roll_cap = (client.member_job(snapshot, action.actor) or 17) == 17 and 2 or 1; end
             end
         elseif roll and (message == 426 or message == 427) then
             remove(row, roll);
             if row.target == action.actor then
                 local entry = apply(row, 309, nil, action.id);
                 if entry then
-                    entry.duration, entry.duration_min = catalog.bust_duration(sample);
+                    entry.duration, entry.duration_min = catalog.bust_duration(reading.sample);
                     entry.basis = 'Bust duration depends on merits';
                     entry.action_kind = 'rolls';
                 end
@@ -404,14 +639,33 @@ local function action_events(action, snapshot, now)
             out[#out + 1] = entry;
         elseif action.category == 13 and several[message] and pets.ward_effects[action.id] then
             for _, effect in ipairs(pets.ward_effects[action.id]) do apply(row, effect, source, action.id); end
-        elseif landed[message] or message == 101 and action.category == 11 and row.target == action.actor then
-            local entry = apply(row, param, source, action.id);
-            if entry and (entry.scope == 'enemy' or entry.scope == 'alliance') and action.category == 4 and param == COPY_IMAGE
+        elseif landed[message] or message == 101 and action.category == 11 and row.target == action.actor
+            -- Reraise, Reraise II and Reraise III have no message of their own, so they finish with 0 and name the Reraise
+            -- they put on (sql/spell_list.sql :304, :310, :311, actions/spells/white/reraise.lua). One weaker than the
+            -- Reraise already on says the same and changes nothing, which can't be told apart.
+            or message == 0 and action.category == 4 and param > 0 and (catalog.action(source, action.id) or NONE).effect == param then
+            -- A move whose result names another status than it put on shows as the one it put on (core/catalog.lua).
+            local entry = apply(row, catalog.applied(source, action.id, param), source, action.id);
+            -- Blink names 36.
+            if entry and (entry.scope == 'enemy' or entry.scope == 'alliance') and action.category == 4 and (param == COPY_IMAGE or param == 36)
                 and SHADOWS[action.id] then
                 entry.shadows = SHADOWS[action.id] - (action.id == NI and short_of_ni(entry, snapshot) and 1 or 0);
             end
-        elseif action.category == 6 and (ability_buffs[message] or message == 100 and row.target == action.actor)
-            and status(param) and catalog.get(param).kind == 'buff' then
+            -- Another player's own copy of a blue magic buff cast under Diffusion lasts longer by their merits, which
+            -- Vantage can't read (core/catalog.lua), so it gets no time. Yours goes by the game's timer.
+            if entry and row.target == action.actor and action.actor ~= snapshot.id and catalog.diffused(action, snapshot) then
+                entry.duration, entry.duration_min, entry.basis = nil, nil, 'No duration for this action';
+            end
+            -- Nightmare's sleep comes with a Bio of its own (data/pets.lua), which takes the place of a Bio row and drops a
+            -- Dia, as any Bio does. At tier 11 it keeps out every Dia and Bio cast after it (core/tracker.lua).
+            local bio = entry and action.category == 13 and action.id == pets.nightmare.pact
+                and apply(row, pets.nightmare.effect, source, action.id);
+            if bio then
+                bio.duration, bio.duration_min, bio.tier = entry.duration, entry.duration_min, pets.nightmare.tier;
+                bio.basis = 'Nightmare put it on with its sleep, for the same time. A hit that ends the sleep leaves it on, and no Dia or Bio goes on over it.';
+            end
+        elseif action.category == 6 and (ability_buffs[message] or (message == 100 or message == 0) and row.target == action.actor
+            or message == 0 and (catalog.action(source, action.id) or NONE).everyone) and status(param) and catalog.get(param).kind == 'buff' then
             apply(row, param, 'abilities', action.id);
         elseif removed[message] then
             remove(row, param);
@@ -433,18 +687,93 @@ local function action_events(action, snapshot, now)
             entry.basis = 'Status spikes reported without a duration';
             out[#out + 1] = entry;
         end
+        -- Spikes that hurt the monster that hit them may put their status on it too, with no word of it: Ice Spikes'
+        -- Paralysis, by the kind of spikes the reaction names. It is the spiked player's.
+        local spikes = row.reaction and (SPIKES[row.reaction] or row.reaction == 383) and row.target < 0x1000000
+            and catalog.action('spikes', row.reaction_kind);
+        if spikes and spikes.infer == 'reaction' then possible(action.actor, spikes.effect, 'spikes', row.reaction_kind, row.target); end
+    end
+    -- What the action may have put on a monster with no word of it, after what its results did say.
+    -- Only an action that reaches a monster is looked up, as finding a pet's owner goes through the players' places.
+    local reaches = false;
+    for _, row in ipairs(action.rows) do
+        if row.target >= 0x1000000 then reaches = true; break; end
+    end
+    local kind = reaches and guess_kind(action, from_pet, now);
+    local unreported = kind and catalog.action(kind, action.id);
+    if unreported then
+        for _, row in ipairs(action.rows) do
+            -- An effect the result itself names, as Angon's does, was put on above.
+            local named = landed[row.message] and row.param or nil;
+            if unreported.by_effect then
+                for effect, part in pairs(unreported.by_effect) do
+                    if effect ~= named and unsaid(part, row) and may(part, snapshot, action, from_pet) then
+                        possible(row.target, effect, kind, action.id, action.actor);
+                    end
+                end
+            elseif unreported.effect and unreported.effect ~= named and unsaid(unreported, row) and may(unreported, snapshot, action, from_pet) then
+                possible(row.target, unreported.effect, kind, action.id, action.actor);
+            end
+        end
+    end
+    -- An automaton's Shield Bash Slow lasts by its owner's Earth Maneuvers (data/pets.lua), which are counted only for
+    -- yours. Anyone else's, and yours before your listing is read, gets the range from one of them to three.
+    local slow = kind == 'automatons' and action.id == pets.automaton.bash_skill and pets.automaton.bash_slow;
+    if slow then
+        local count, overdrive = 0, false;
+        for _, held in ipairs(from_pet and snapshot.self_known and snapshot.self_effects or NONE) do
+            if held.effect == slow.maneuver then count = count + 1; elseif held.effect == pets.automaton.overdrive then overdrive = true; end
+        end
+        local seconds = slow.seconds[count > 0 and overdrive and 3 or math.min(count, 3)];
+        for _, entry in ipairs(out) do
+            if entry.kind == 'apply' and entry.guessed and entry.effect == slow.effect then
+                entry.duration, entry.duration_min = seconds or slow.seconds[3], seconds or slow.seconds[1];
+            end
+        end
+    end
+    -- An effect a player armed with an ability goes on with their next melee hit that connects, once: Feint's Evasion
+    -- Down. It is armed by the ability's own result and lasts as long as the data says.
+    if action.actor < 0x1000000 then
+        for key, info in pairs(catalog.kind('reactive')) do
+            if action.category == 6 and action.id == info.arm_ability then
+                for _, message in ipairs(info.arm_messages or NONE) do
+                    if action.rows[1].message == message then
+                        if not armed[action.actor] then
+                            if armed_count >= 64 then armed, armed_count = {}, 0; end
+                            armed_count = armed_count + 1;
+                        end
+                        armed[action.actor] = { key = key, ends = now + (info.arm_seconds or 60) };
+                    end
+                end
+            elseif action.category == 1 and armed[action.actor] and armed[action.actor].key == key then
+                if armed[action.actor].ends <= now then
+                    armed[action.actor], armed_count = nil, armed_count - 1;
+                else
+                    for _, row in ipairs(action.rows) do
+                        -- A swing the monster deflects reads as a hit for nothing, and leaves the effect armed
+                        -- (Phoenix src/map/entities/battle_entity.cpp :3681-3683, :3837).
+                        if row.target >= 0x1000000 and CONNECTS[row.message] and row.param > 0 then
+                            possible(row.target, info.effect, 'reactive', key, action.actor);
+                            if info.consume then armed[action.actor], armed_count = nil, armed_count - 1; break; end
+                        end
+                    end
+                end
+            end
+        end
     end
     if from_pet and action.category == 13 then
-        local ward, slowga = pets.wards[action.id], action.id == pets.slowga.pact and pets.slowga;
-        if ward or slowga then
+        local ward, debuff = pets.wards[action.id], pets.skill_debuffs[action.id];
+        if ward or debuff then
             -- Your skill is all that counts here. Your gear stays out of what else your pet does.
-            local skill = client.sample_modifiers(snapshot).summoning_skill;
-            if slowga then
-                local seconds = slowga.base + math.max(0, math.min(slowga.most, (skill or 0) - slowga.from));
+            if reading.sample == nil then reading.sample = client.sample_modifiers(snapshot); end
+            local skill = reading.sample.summoning_skill;
+            if debuff then
+                local seconds = debuff.base + math.max(0, math.min(debuff.most, (skill or 0) - debuff.from));
                 for _, entry in ipairs(out) do
                     if entry.kind == 'apply' and entry.spell == action.id then
                         entry.duration, entry.duration_min = seconds, seconds;
-                        entry.basis = 'Phoenix\'s length at your summoning skill. A resist can shorten it.';
+                        -- Lunar Cry's effects are guesses, and keep the note that says a resist looks the same.
+                        if not entry.guessed then entry.basis = 'Phoenix\'s length at your summoning skill. A resist can shorten it.'; end
                     end
                 end
             else
@@ -480,7 +809,8 @@ local function action_events(action, snapshot, now)
         if row.target == (own.on_you and snapshot.id or pet.id) then target = row; break; end
     end
     if target then
-        if sample == nil then sample = client.sample_modifiers(snapshot); end
+        if reading.sample == nil then reading.sample = client.sample_modifiers(snapshot); end
+        local sample = reading.sample;
         local function cure(list, count)
             local entry = event(snapshot, 'cure', pet.id);
             entry.effects, entry.count = list, count;
@@ -544,16 +874,25 @@ local function action_events(action, snapshot, now)
     end
     -- Your Call Beast, with the jug it took from your ammo slot, for the pet display's clock.
     if action.category == 6 and action.actor == snapshot.id and action.id == pets.call_beast then
-        if sample == nil then sample = client.sample_modifiers(snapshot); end
+        if reading.sample == nil then reading.sample = client.sample_modifiers(snapshot); end
         local entry = event(snapshot, 'call_beast', snapshot.id);
-        entry.item = sample.items[3] or snapshot.ammo;
+        entry.item = reading.sample.items[3] or snapshot.ammo;
         out[#out + 1] = entry;
     end
     -- Your own job ability, which starts a cooldown the client didn't list before (core/recasts.lua). Jump, Steal, Shield
     -- Bash and a few others finish as category 3, as weapon skills do. A weapon skill's id can match an ability's, but
-    -- it never starts a cooldown.
+    -- it never starts a cooldown. A Double-Up comes with the id of the roll it doubles (Phoenix
+    -- modules/era/lua/globals/job_utils/corsair.lua :349), and only a Double-Up gives your own row 424, or 426 on a
+    -- bust. Its cooldown is Double-Up's own, timer 194 (src/map/entities/char_entity.cpp :2130,
+    -- sql/abilities.sql :143), so it is a use of Double-Up, ability 123.
     if action.actor == snapshot.id and (action.category == 6 or action.category == 3) then
-        out[#out + 1] = { kind = 'used', ability = action.id };
+        local ability = action.id;
+        if action.category == 6 and in_era_rolls[ability] then
+            for _, row in ipairs(action.rows) do
+                if row.target == action.actor and (row.message == 424 or row.message == 426) then ability = 123; break; end
+            end
+        end
+        out[#out + 1] = { kind = 'used', ability = ability };
     end
     -- Your avatar's pact going off is a use of it too. Phoenix starts a pact's cooldown when the move goes off, not
     -- when you use the pact (scripts/globals/job_utils/summoner.lua onUseBloodPact), and the move has the pact's own id
@@ -581,6 +920,12 @@ end
 -- listing read after a later 0x063 already shows it, and a wear-off sent with a recast from one sent with
 -- the status packets of an expiry. Anyone else's carries the 0x076 count: a listing that came before it
 -- (another member's tick sends everyone's icons) can't show it yet.
+-- The effects no unit can act under (the same list as STOPS in core/tracker.lua), and the mobs and pets seen to take
+-- one, whose next finished action says it is over (acting, below). A unit that dies or leaves view is forgotten, and
+-- a zone change forgets them all. At most 64: past that they are all forgotten, and the ones still under an effect keep
+-- it on the displays until it is too old, as before this.
+local STOPS = { [2] = true, [19] = true, [193] = true, [7] = true, [10] = true, [28] = true };
+local halted, halted_count = {}, 0;
 local function stamp(out, snapshot)
     local count, listing = client.self_timer_revision(), client.party_revision();
     for _, entry in ipairs(out) do
@@ -588,12 +933,40 @@ local function stamp(out, snapshot)
             if entry.entity_id == snapshot.id then entry.timer_revision = count;
             else entry.party_revision = listing; end
         end
+        if entry.kind == 'apply' and STOPS[entry.effect] and entry.entity_id >= 0x1000000 and not halted[entry.entity_id] then
+            if halted_count >= 64 then halted, halted_count = {}, 0; end
+            halted[entry.entity_id], halted_count = true, halted_count + 1;
+        end
     end
     return out;
 end
 
+-- A mob or a pet that finishes an action has nothing on it that stops a unit acting (Phoenix HasPreventActionEffect,
+-- src/map/status_effect_container.cpp :2176-2186), which core/tracker.lua takes off. The game sends no wear-off for
+-- what a monster put on your pet, so its next swing, spell or move is the sign. A start isn't read for this: a unit
+-- put to sleep in the middle of one sends the same packet as it is cut short. Players go by their listings.
+-- Only a unit seen to take such an effect is read for it (halted, kept by stamp), so every other action costs one
+-- lookup.
+local function unhalt(id)
+    if halted[id] then halted[id], halted_count = nil, halted_count - 1; end
+end
+-- Three packets come from a unit that still can't act, and count for nothing: a cast begun before the effect landed
+-- can end in "is paralyzed" (84) or "is intimidated" (106), as those rolls come before the check for it (Phoenix
+-- src/map/ai/states/magic_state.cpp :264-293), and a mob's script sends packets of its own with no message, whatever
+-- the mob's state (CLuaBaseEntity::injectActionPacket, as Promyvion's Wailers do).
+local STILL = { [0] = true, [84] = true, [106] = true };
+local function acting(action, snapshot)
+    if not halted[action.actor] or not wanted[action.category] or STILL[action.rows[1].message] then return nil; end
+    local entry = event(snapshot, 'acted', action.actor);
+    if entry.scope ~= 'enemy' and entry.scope ~= 'pet' then return nil; end
+    -- Forgotten only once the tracker is told.
+    unhalt(action.actor);
+    return entry;
+end
+
 -- Ashita hands it userdata, the tests a table. size and data are the packet's, when the caller has read them already.
--- A packet with nothing to report gives NONE, which callers only read.
+-- A packet with nothing to report gives NONE, which callers only read. An action's list is one table, emptied for the
+-- next action (reading, above), so callers read it before the next packet and keep only its entries.
 function observer.read(e, now, snapshot, size, data)
     local kind = type(e);
     if kind ~= 'userdata' and kind ~= 'table' or e.injected == true or e.blocked == true then return NONE; end
@@ -602,12 +975,21 @@ function observer.read(e, now, snapshot, size, data)
     client.accept(e, now, snapshot, size, data);
     if id == 0x00A and size >= 50 then
         sneaking = {};
+        halted, halted_count = {}, 0;
         return { { kind = 'reset', reason = 'Zone changed' } };
     end
     if not snapshot or not snapshot.valid then return NONE; end
     if id == 0x028 then
+        own_pet = snapshot.pet and snapshot.pet.id or nil;
         local action = observer.decode(e, size);
-        if action then return stamp(action_events(action, snapshot, now), snapshot); end
+        own_pet = nil;
+        if action then
+            local out = action_events(action, snapshot, now);
+            -- Before what the action itself did, so an effect it put on its own user stays.
+            local awake = acting(action, snapshot);
+            if awake then table.insert(out, 1, awake); end
+            return stamp(out, snapshot);
+        end
     elseif id == 0x029 and size >= 26 then
         local actor, target, param, message = u32(data, 4), u32(data, 8), u32(data, 12), bit.band(u16(data, 24), 0x7FFF);
         if target == 0 then return NONE; end
@@ -632,12 +1014,18 @@ function observer.read(e, now, snapshot, size, data)
         elseif message == 6 or message == 20 or message == 97 then
             -- 97 is a player defeated by the actor (Phoenix CCharEntity::Die), 20 one with no attacker.
             local entry = event(snapshot, 'death', target, nil, actor); entry.reason = 'Observed defeat';
+            unhalt(target);
+            -- Phoenix takes Feint off at a KO with no word of it (src/map/ai/states/death_state.cpp :55,
+            -- data/status_effects.yaml :3299-3303), so an armed one goes too.
+            if armed[target] then armed[target], armed_count = nil, armed_count - 1; end
             return { entry };
         end
     elseif id == 0x00E and size >= 11 and bit.band(data:byte(11), 0x20) ~= 0 then
         local target = u32(data, 4);
         if target > 0 then
-            local entry = event(snapshot, 'despawn', target); entry.reason = 'Entity left view'; return { entry };
+            local entry = event(snapshot, 'despawn', target); entry.reason = 'Entity left view';
+            unhalt(target);
+            return { entry };
         end
     elseif id == 0x068 and size >= 0x0E and u32(data, 8) == snapshot.id and u16(data, 0x0C) == 0 then
         -- The server says your pet has gone.

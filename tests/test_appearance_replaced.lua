@@ -36,7 +36,7 @@ s.panels.self_buffs.colors={background={1,0,0,1}};
 kept=presets.build(s,{skin='keep',size='minimal',matching=false,window_type=s.style.window_type});
 assert(labels(appearance.replaced(s,kept))=='Self buffs','Only the replaced Self buffs look is named.');
 
--- The party list buffs wear the timer panels' look, so only a change to their own icons names them.
+-- Party list wears the timer panels' look, so only a change to its own icons names it.
 s=fresh();
 s.party_ui.style.icon_art='XI View';
 _,differences=appearance.describe(s);
@@ -54,7 +54,7 @@ result=copy(s);
 result.style.background=true;
 s.panels.self_buffs.colors.background[1]=0.1995;
 _,differences=appearance.describe(s);
-assert(labels(differences):find('Self buffs',1,true) and labels(differences):find('Shared timer appearance',1,true),
+assert(labels(differences):find('Self buffs',1,true) and labels(differences):find('The main page\'s look',1,true),
     'Fixture: Self buffs and the timer panels are listed.');
 assert(#appearance.replaced(s,result)==0,'Unset frame values and rounded colors are not a replaced look.');
 result.panels.self_buffs.colors.background={1,0,0,1};

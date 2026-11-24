@@ -124,14 +124,14 @@ assert(look.outline(s) == 'mixed', 'Fixture: Mixed.');
 assert(look.changes_outline(s, 'every') == 'Recasts, Overhead icons', 'Named: ' .. look.changes_outline(s, 'every'));
 s.panels.item_recasts.countdown_outline = true;
 assert(look.changes_outline(s, 'every') == 'Spell recasts, Ability recasts, Recasts (one panel), Overhead icons', 'Not every recast panel: each by name.');
-assert(look.changes_outline(s, 'none') == 'Self buffs, Self debuffs, Target timers, Party members\' timers, Watched enemy timers, Item recasts, Party list buffs, Phantom Roll, Pet',
+assert(look.changes_outline(s, 'none') == 'Self buffs, Self debuffs, Target timers, Party members\' timers, Watched enemy timers, Item recasts, Party list, Phantom Roll, Pet',
     'None names what has one: ' .. look.changes_outline(s, 'none'));
 s = fresh();
 s.overhead.countdown_bold = true;
 assert(look.changes_bold(s, false) == 'Overhead icons', 'Named: ' .. look.changes_bold(s, false));
 s = fresh();
 s.overhead.blink_icons = false;
-assert(look.changes_blink(s, false) == 'Self buffs, Self debuffs, Target timers, Party members\' timers, Watched enemy timers, Party list buffs, Pet', 'Only displays that blink are named.');
+assert(look.changes_blink(s, false) == 'Self buffs, Self debuffs, Target timers, Party members\' timers, Watched enemy timers, Party list, Pet', 'Only displays that blink are named.');
 assert(look.changes_blink(s, true) == 'Overhead icons', 'Named: ' .. look.changes_blink(s, true));
 s.panels.watch.blink_seconds = 20;
 assert(look.changes_blink_seconds(s, 20) ~= '' and look.changes_blink_seconds(s, 15) == 'Watched enemy timers', 'When blinking starts is named too.');
@@ -166,7 +166,7 @@ local function frame(click, opened)
 end;
 local function open(settings)
     settings.window.open, settings.window.tab = true, 'Home';
-    settings.window.sections['Home/More look'] = true;
+    settings.window.sections['Home/Text effects'] = true;
     app.state.settings = settings;
     frame();
     app.state.history, app.state.redo, app.state.transaction = {}, {}, nil;
@@ -180,12 +180,15 @@ local function asked()
         if call[1] == 'TextWrapped' and tostring(call[2]):find('^This changes ') then return call[2]; end;
     end;
 end;
+-- Partly ticked is a square with sharp corners. The folder on Open icons folder has round ones.
 local function partly()
-    for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'draw:AddRectFilled' then return true; end; end;
+    for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'draw:AddRectFilled' and call[5] == 0 then return true; end; end;
     return false;
 end;
 local function history() return #app.state.history, (app.state.history[#app.state.history] or {}).label; end;
 local COMBO, CHANGE, CANCEL = '##main_countdown_outline', 'Change##look_main_shared', 'Cancel##look_main_shared';
+-- Blink asks under While playing, beside its own rows.
+local BLINK_CHANGE = 'Change##look_main_blink';
 
 -- Usual shows what it is, and a pick over one shared value writes at once in one step.
 open(fresh());
@@ -283,7 +286,7 @@ slid = { '##main_blink_seconds', 20 };
 frame();
 frame();
 assert(tostring(asked()):find('^This changes when blinking starts on: Self buffs') and #app.state.history == 0, 'A blink time over Mixed asks: ' .. tostring(asked()));
-frame(CHANGE);
+frame(BLINK_CHANGE);
 assert(look.blink_seconds(app.state.settings) == 20 and #app.state.history == 1, 'Change sets it.');
 s = fresh();
 open(s);
@@ -299,7 +302,7 @@ assert(partly(), 'Blink that differs draws partly ticked.');
 frame('Blink before an effect ends, starting at##main_blink');
 frame();
 assert(asked() == 'This changes blinking on: Overhead icons.', 'It names the display that changes: ' .. tostring(asked()));
-frame(CHANGE);
+frame(BLINK_CHANGE);
 frame();
 steps, label = history();
 assert(steps == 1 and label == 'Blink before an effect ends' and look.blink(app.state.settings) == true, 'Change is one step.');
@@ -320,7 +323,7 @@ frame();
 assert(asked(), 'Fixture: the question is up.');
 app.state.settings = fresh();
 app.state.settings.window.open, app.state.settings.window.tab = true, 'Home';
-app.state.settings.window.sections['Home/More look'] = true;
+app.state.settings.window.sections['Home/Text effects'] = true;
 frame();
 assert(not asked(), 'Other settings drop the question.');
 assert(#MOCK.commands == 0, 'The rows send no game commands.');

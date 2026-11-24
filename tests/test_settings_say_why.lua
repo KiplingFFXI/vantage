@@ -17,11 +17,11 @@ local function tabs()
     return out;
 end;
 
--- A ready pulse with no recast panel on says so on Recasts and the main page, and one click gives it a spot of its own.
+-- A ready pulse with no recast panel on says so on its editor and the main page, and one click gives it a spot of its own.
 local function pulsing(s) s.ready_pulse.enabled = true; end;
 local NO_ROW = 'No recast panel is on, so the pulse has no row to play on.';
-page('spell_recasts', 'show', pulsing);
-assert(h.says(NO_ROW), 'Recasts says the pulse has no row.');
+page('pulse', 'show', pulsing);
+assert(h.says(NO_ROW), 'The pulse says it has no row.');
 h.draw('Use a spot of its own##frame'); h.draw();
 assert(h.s.ready_pulse.spot == 'screen' and steps() == 1 and not h.says(NO_ROW), 'One Undo step gives it a spot, and the line goes.');
 home(pulsing);
@@ -48,24 +48,23 @@ assert(not h.says(NO_MOBS) and not h.called('Button', 'Watch my target##frame'),
 
 -- A group the Which groups show ticks leave out has no panel to put it in.
 local PARTY, ALLIANCE = 'Your party in a panel of its own', 'Alliance 1 in a panel of its own';
-page('party_ui', 'place', function(s) s.party_ui.enabled = true; end);
+page('party_ui', 'show', function(s) s.party_ui.enabled = true; end);
 assert(has(PARTY) and has(ALLIANCE), 'A group that shows has its tick.');
-page('party_ui', 'place', function(s) s.party_ui.enabled, s.party_ui.strips.alliance1 = true, false; end);
+page('party_ui', 'show', function(s) s.party_ui.enabled, s.party_ui.strips.alliance1 = true, false; end);
 assert(has(PARTY) and not has(ALLIANCE), 'One that doesn\'t has none.');
 
 -- Timer panels on Icons skip most of the look: the main page says which rows reach them.
-local ICONS = 'Your timer panels are all on Icons, so of these only Icon size and Space between rows change them.';
-local ALL_ICONS = 'Your timer panels are all on Icons, which don\'t use this. They go by Icon size, under More look.';
+local ICONS = 'Your timer panels are all on Icons, so of these only Space between rows changes them.';
 home();
-assert(h.says(ICONS) and h.says(ALL_ICONS), 'A fresh save is all Icons, and the main page says so.');
+assert(h.says(ICONS), 'A fresh save is all Icons, and the main page says so.');
 home(function(s) s.panels.target.mode = 'bars'; end);
-assert(not h.says(ICONS) and not h.says(ALL_ICONS), 'One panel on bars is reached by them all.');
+assert(not h.says(ICONS), 'One panel on bars is reached by them all.');
 
--- A paused Hidden everywhere list says so on every page that leans on it, with the way back.
-local PAUSED = 'The Hidden everywhere list is paused, so it hides nothing now.';
+-- A paused Hide list says so on every page that leans on it, with the way back.
+local PAUSED = 'The Hide list is paused, so it hides nothing now.';
 for _, id in ipairs({ 'self_buffs', 'overhead', 'pet', 'party_ui' }) do
     page(id, 'filters', function(s) s.effect_filters.enabled = false; end);
-    assert(h.says(PAUSED) and not h.says('Effects on the Hidden everywhere list are hidden here too.'), id .. ' says the list is paused.');
+    assert(h.says(PAUSED) and not h.says('Effects on the Hide list are hidden here too.'), id .. ' says the list is paused.');
     h.draw('Use it again##frame'); h.draw();
     assert(h.s.effect_filters.enabled and steps() == 1 and not h.says(PAUSED), id .. ': one Undo step puts it back.');
 end;
@@ -81,11 +80,12 @@ assert(h.says(NOWHERE), 'The main page says so.');
 h.draw('Show them in a list##main_cooldowns'); h.draw();
 assert(h.s.party_cooldowns.list.enabled and steps() == 1 and not h.says(NOWHERE), 'One Undo step turns on the list.');
 
--- Muted alerts say so on their page, with the way back.
+-- Muted alerts say so on their page. The way back is the top bar's Unmute alerts, so the line has no button of its own.
 local MUTED = 'Alerts are muted, so none of them fires.';
 page('notices', 'show', function(s) s.alerts.muted = true; end);
 assert(h.says(MUTED), 'The page says they are muted.');
-h.draw('Unmute##frame'); h.draw();
+assert(not h.called('Button', 'Unmute##frame'), 'The muted line has no Unmute of its own.');
+h.draw('Unmute alerts##settings_mute'); h.draw();
 assert(not h.s.alerts.muted and steps() == 1 and not h.says(MUTED), 'One Undo step unmutes them.');
 
 -- Buff side moves a group a drag has put on a side of its own too.
@@ -144,11 +144,11 @@ for _, row in ipairs({
         kinds('debuff')(s);
         s.overhead.types.mob.show_copy_image, s.overhead.types.mob.show_third_eye = false, false;
     end, kinds('debuff') },
-    { 'overhead', 'show', 'Show countdowns', function(s) s.overhead.size.max_px = 13; end, function(s) s.overhead.size.max_px = 14; end },
+    { 'overhead', 'show', 'Countdowns', function(s) s.overhead.size.max_px = 13; end, function(s) s.overhead.size.max_px = 14; end },
     { 'overhead', 'place', 'Countdowns go inside icons under', function(s) s.overhead.size.max_px = 13; end, function(s) s.overhead.size.max_px = 14; end },
     { 'overhead', 'show', 'Faded opacity', function(s) s.overhead.fade_start = s.overhead.distance_cap; end, nil },
-    { 'rolls', 'look', 'Not reached color', function(s) s.rolls.show_members = false; end, function(s) s.rolls.show_members = true; end },
-    { 'rolls', 'look', 'Show its heading', function(s) s.style.minimal = true; end, nil },
+    { 'rolls', 'show', 'Not reached color', function(s) s.rolls.show_members = false; end, function(s) s.rolls.show_members = true; end },
+    { 'rolls', 'show', 'Show its heading', function(s) s.style.minimal = true; end, nil },
     { 'cooldown_list', 'show', 'Locked', nil, function(s) s.party_cooldowns.enabled, s.party_cooldowns.list.enabled = true, true; end },
     { 'self_buffs', 'look', 'Between parts', with_mode('bars'), with_mode('bars', function(p) p.wrap = true; end) },
     { 'self_buffs', 'look', 'Divider before it', with_mode('bars'), with_mode('bars', function(p) p.wrap = true; end) },
@@ -157,9 +157,9 @@ for _, row in ipairs({
     { 'self_buffs', 'look', 'Between label and value', with_mode('bars', function(p) p.show_elapsed, p.label_position = true, 'hidden'; end),
         with_mode('bars', function(p) p.show_elapsed = true; end) },
     { 'self_buffs', 'place', 'Across', panel(function(p) p.anchor.to = 'screen'; end), panel(function(p) p.anchor.to = 'chat'; end) },
-    { 'self_buffs', 'place', 'Width', panel(function(p) p.mode, p.auto_width, p.dock_match_width, p.anchor.to = 'bars', false, true, 'chat'; end),
+    { 'self_buffs', 'place', 'Fixed width', panel(function(p) p.mode, p.auto_width, p.dock_match_width, p.anchor.to = 'bars', false, true, 'chat'; end),
         panel(function(p) p.mode, p.auto_width = 'bars', false; end) },
-    { 'spell_recasts', 'when', 'When the pulse plays', nil, pulsing },
+    { 'pulse', 'place', 'Across', pulsing, function(s) pulsing(s); s.ready_pulse.spot = 'screen'; end },
 }) do
     local name = row[1] .. ' / ' .. row[2] .. ' / ' .. row[3];
     overhead_page._selection.kind = 'mob';
@@ -171,7 +171,7 @@ end;
 
 -- A tab with nothing that can work goes, and a display left on it comes back to Show.
 page('cooldown_list', 'show');
-assert(not tabs()['Size and place'] and not tabs()['Filters'] and not tabs()['When to show'], 'Party cooldowns has only Show with the list off: ' .. table.concat((function()
+assert(not tabs()['Size and place'] and tabs()['Filters'] and not tabs()['When to show'], 'Party cooldowns has only Show and Filters, for its watch list, with the list off: ' .. table.concat((function()
     local out = {}; for name in pairs(tabs()) do out[#out + 1] = name; end; return out;
 end)(), ', '));
 local function list_on(s) s.party_cooldowns.enabled, s.party_cooldowns.list.enabled = true, true; end;
@@ -180,8 +180,10 @@ assert(tabs()['Size and place'] and tabs()['Filters'] and tabs()['When to show']
 h.s.party_cooldowns.list.enabled = false;
 h.bump(); h.draw(); h.draw();
 assert(not has('Moves with') and has('In a list'), 'Turning the list off leaves the tab it opened.');
-page('pet', 'look', function(s) s.pet.show_vitals = false; end);
-assert(not tabs()['Look'] and has('Show HP, MP and TP'), 'Pet has no Look tab with no bars to color.');
+page('pet', 'show', function(s) s.pet.show_vitals = false; end);
+assert(not tabs()['Look'] and has('Show HP, MP and TP') and not has('HP bar'), 'Pet has no Look tab, and no bar colors with no bars.');
+page('pet', 'show');
+assert(not tabs()['Look'] and has('HP bar') and has('TP bar'), 'The bar colors sit on Show with the bars.');
 
 -- With the list off its lock doesn't count, so the page has no Unlocked line for it.
 page('cooldown_list', 'show', function(s) s.party_cooldowns.list.locked = false; end);
@@ -191,9 +193,9 @@ assert(h.says('Unlocked'), 'With the list on it counts.');
 
 -- No boxes or headings takes every heading, and the page says why in the tick's place.
 local NO_HEADING = 'No boxes or headings is on, so this display has no heading.';
-page('rolls', 'look', function(s) s.style.minimal = true; end);
+page('rolls', 'show', function(s) s.style.minimal = true; end);
 assert(h.says(NO_HEADING), 'Phantom Roll says why.');
-page('rolls', 'look');
+page('rolls', 'show');
 assert(not h.says(NO_HEADING), 'Without it there is nothing to say.');
 
 -- Beside the party list and Over heads read off with the watch off, and ticking one turns the watch on.
@@ -237,21 +239,15 @@ do
     end;
 end;
 
--- With no saved profile picked the buttons say what's missing.
-for _, label in ipairs({ 'Load##profile_load', 'Overwrite##profile_overwrite', 'Delete##profile_delete' }) do
-    h.fresh();
-    h.s.window.tab = 'Profiles';
-    h.draw();
-    h.draw(label); h.draw();
-    assert(h.says('Choose a saved profile first.'), label .. ' says to pick one.');
-end;
+-- With no saved profile the page says so, and Link says what's missing.
+h.fresh();
+h.s.window.tab = 'Profiles';
+h.draw();
+assert(h.says('No saved profiles yet. Save as new, below, saves your settings as one.'), 'With none saved, the page says so.');
+h.draw('Link##profile_link'); h.draw();
+assert(h.says('Choose a saved profile first.'), 'Link says to pick one.');
 
 -- Lines that only hold in some states say nothing in the others.
-local CURSOR = 'While the cursor is out, "my target" means the unit under it';
-page('target', 'show', function(s) s.tracking.follow_subtarget = true; end);
-assert(h.says(CURSOR), 'With the tick on it says what the tick does.');
-page('target', 'show', function(s) s.tracking.follow_subtarget = false; end);
-assert(not h.says(CURSOR), 'With it off it says nothing.');
 page('self_buffs', 'show', function(s) s.style.hover = true; end);
 assert(h.says('Point at one for the rest.'), 'With details on, pointing shows the rest.');
 page('self_buffs', 'show', function(s) s.style.hover = false; end);

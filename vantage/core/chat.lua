@@ -26,13 +26,6 @@ local function u32(data, offset)
     return u16(data, offset) + u16(data, offset + 2) * 65536;
 end
 
-local function copy(value)
-    if type(value) ~= 'table' then return value; end
-    local result = {};
-    for key, item in pairs(value) do result[key] = copy(item); end
-    return result;
-end
-
 local function native_backend()
     local ok, ffi = pcall(require, 'ffi');
     local sized, pointer_size = false, nil;
@@ -112,12 +105,6 @@ function reader:load_scale()
     return true;
 end
 
-function reader:load()
-    local ok, why = self:load_table();
-    if not ok then return false, why; end
-    return self:load_scale();
-end
-
 function reader:snapshot()
     if not self.loaded then return nil, self.reason; end
     local pointers = self:bytes(self.chat_table, 8);
@@ -195,10 +182,6 @@ function reader:read(display_width, display_height)
     return result, reason;
 end
 
-function reader:status()
-    return { loaded = self.loaded, reason = self.reason, native = copy(self.last) };
-end
-
 function reader:describe()
     if not self.last then return self.reason or 'The chat window position and size are not available yet.'; end
     local parts = {};
@@ -228,7 +211,6 @@ function chat.load()
     return false, current.reason;
 end
 function chat.read(width, height) return current:read(width, height); end
-function chat.status() return current:status(); end
 function chat.describe() return current:describe(); end
 function chat.menu_dimensions()
     local snapshot, reason = current:snapshot();
@@ -249,6 +231,20 @@ if VANTAGE_TEST_MODE then
         current = chat.new(backend);
         for key in pairs(done) do done[key] = nil; end
     end
+
+    local copy = require('core.tables').copy;
+
+    function reader:load()
+        local ok, why = self:load_table();
+        if not ok then return false, why; end
+        return self:load_scale();
+    end
+
+    function reader:status()
+        return { loaded = self.loaded, reason = self.reason, native = copy(self.last) };
+    end
+
+    function chat.status() return current:status(); end
 end
 
 return chat;

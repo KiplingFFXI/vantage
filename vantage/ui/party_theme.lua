@@ -15,17 +15,20 @@ end
 local number = require('ui.numbers').clamp;
 
 -- out, when given, is filled and handed back in place of a new table.
-local NO_COLOR = {};
-local function rgba(value, fallback, out)
-    out = out or {};
-    value = type(value) == 'table' and value or NO_COLOR;
-    for i = 1, 4 do out[i] = number(value[i], 0, 1, fallback[i]); end
-    return out;
-end
+local rgba = require('ui.numbers').rgba;
 
 local function style(value)
     if type(value) ~= 'table' then return {}; end
     return type(value.style) == 'table' and value.style or value;
+end
+
+local function font_failed(font) return require('ui.fonts').failed(font); end
+
+-- Whether the game's font is there to draw with. theme.party asks each frame while its look waits on that font, so
+-- this makes no closure.
+local function font_ready(font)
+    local ok, failed = pcall(font_failed, font);
+    return ok and not failed;
 end
 
 function theme.colors(name, window_type)
@@ -54,7 +57,7 @@ function theme.resolve(config, globalstyle)
         window_type = math.floor(number(choose('window_type', 1), 1, 8, 1)),
         font = choose('font', 'Ashita'),
         gauge_art = gauge_art,
-        icon_art = choose('icon_art', 'Client'),
+        icon_art = choose('icon_art', 'Original FFXI'),
         font_size = number(choose('font_size', 14), 8, 48, 14),
         scale = number(choose('scale', 1), 0.5, 3, 1),
         opacity = number(choose('opacity', 1), 0.05, 1, 1),
@@ -67,9 +70,8 @@ function theme.resolve(config, globalstyle)
     local colors = theme.colors(name, result.window_type);
     local parchment = name == 'Original FFXI' and result.window_type == 7;
     if parchment and (result.font == 'Original FFXI' or result.font == 'XI View') then
-        result.waits_on_font = true;
-        local ok, available = pcall(function() return not require('ui.fonts').failed(result.font); end);
-        if ok and available then colors.text, colors.title = color('ffffff'), color('ffffff'); end
+        result.waits_on_font, result.font_ready = true, font_ready(result.font);
+        if result.font_ready then colors.text, colors.title = color('ffffff'), color('ffffff'); end
     end
     local custom_text = false;
     for _, key in ipairs(theme.color_keys) do
@@ -85,15 +87,15 @@ function theme.resolve(config, globalstyle)
     return result;
 end
 
--- The party list buffs' look: the timer panels' look (global_style, settings.style), with the icon art and opacity of
--- the party's own style (config.style). Given the settings revision, the look is made again only when that revision or
+-- Party list's look: the timer panels' look (global_style, settings.style), with the icon art and opacity of
+-- the party's own style (config.style). Given the look revision, the look is made again only when that revision or
 -- those settings change. On parchment the game's font decides the text color and no setting says when that font loads,
--- so a look that waits on it is always made again.
+-- so a look that waits on it is made again when the answer to whether that font is there changes.
 local kept_party = {};
 function theme.party(config, global_style, revision)
     local kept = kept_party;
     if revision ~= nil and kept.revision == revision and kept.config == config and kept.style == global_style
-        and not kept.look.waits_on_font then return kept.look; end
+        and (not kept.look.waits_on_font or font_ready(kept.look.font) == kept.look.font_ready) then return kept.look; end
     local look, own = theme.resolve(global_style), style(config);
     if own.icon_art ~= nil then look.icon_art = own.icon_art; end
     if own.opacity ~= nil then look.opacity = number(own.opacity, 0.05, 1, 1); end

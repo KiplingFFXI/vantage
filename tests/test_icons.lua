@@ -50,7 +50,7 @@ local observed = icons.artwork_status('XI View')
 assert(observed.available and observed.using == 'XI View' and observed.fallbacks == 1,
     'A missing record does not mark the entire artwork pack unavailable.')
 assert(observed.reason:find('Some effects use other artwork', 1, true) and not observed.reason:find('640', 1, true) and observed.reason:find('not present', 1, true)
-    and observed.reason:find('Using Client artwork', 1, true), 'Settings explain an observed missing-image fallback.')
+    and observed.reason:find("Using Ashita's artwork", 1, true), 'Settings explain an observed missing-image fallback.')
 local previous_requests, previous_loads = icon_requests, loads
 for _ = 1, 10 do assert(icons.reason('XI View') == observed.reason) end
 assert(icon_requests == previous_requests and loads == previous_loads,

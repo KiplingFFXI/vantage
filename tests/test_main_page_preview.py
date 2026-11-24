@@ -34,7 +34,7 @@ class MainPageInputTests(unittest.TestCase):
         click('Undo', 'PREVIEW.check_baseline()')
         click('Spells##main_recast_spell', 'PREVIEW.check_recast()')
         click('Undo', 'PREVIEW.check_baseline()')
-        click('Party list buffs##main_party_ui', 'PREVIEW.check_party()')
+        click('Beside the party list##main_party_ui', 'PREVIEW.check_party()')
         click('Edit##main_party_ui', "PREVIEW.check_page('Display'); PREVIEW.check_panel('party_ui/show')")
         click('Buffs only##frame_Show_kinds_buff', 'PREVIEW.check_kind()')
         click('Undo')
@@ -46,8 +46,8 @@ class MainPageInputTests(unittest.TestCase):
             {'frame': frame + 3, 'lua': 'PREVIEW.check_look_rows()'},
         ])
         frame += 4
-        click('More look', "PREVIEW.check_section('More look', true)")
-        click('More look', "PREVIEW.check_section('More look', false)")
+        click('Artwork', "PREVIEW.check_section('Artwork', true)")
+        click('Artwork', "PREVIEW.check_section('Artwork', false)")
         click('1.5x##main_size', 'PREVIEW.check_size()')
         click('Undo', 'PREVIEW.check_baseline()')
         click('Redo', 'PREVIEW.check_size()')
@@ -79,8 +79,9 @@ class MainPageInputTests(unittest.TestCase):
             self.assertIn('Main page switches, folds, Size and navigation passed.', result.stderr)
             self.assertTrue(output.is_file())
 
+    # Help, every fold open, fits a 960 pixel window this wide, and the way back needs a page that scrolled.
     def test_main_page_wide(self):
-        self.replay(1220)
+        self.replay(1220, height=640)
 
     def test_main_page_narrow(self):
         self.replay(660)

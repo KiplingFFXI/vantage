@@ -11,15 +11,17 @@ Vantage finds a few things in the client by byte patterns, as Ashita's ashita.me
                            cameras, for the camera check in /vg report
   core/game_buffs.lua      the game's own buff icons and + menu, for Replace the game's buff icons: where
                            each routine starts, and each routine whole as it was written for
+  core/game_pet_bar.lua    the game's own pet line above the party list, for Replace the game's pet bar: where
+                           its routine and the call to it are, and each whole as it was written for
 Item recasts load Ashita's ffxi.itemdata, which finds its own two patterns and the ones of the ffxi
 libraries it loads (ffxi.time). Those are checked too while the addon loads ffxi.itemdata.
 
 The patterns are read from those files, so this checks what the addon and libraries look for now. Each
 is counted in the whole client image, the range ashita.memory.find searches, and printed with where it
 was found. Exit codes: 0 every pattern found exactly once, 1 a pattern missing or found more than once,
-2 the client or a pattern file cannot be read. The client is only read; a DLL is decoded in memory with
-the research decoder in tests/out/native-solo-research. The libraries default to the addons/libs folder of
-the Ashita install the client is in, or else ASHITA_LIBS.
+2 the client or a pattern file cannot be read. The client is only read. A DLL is decoded in memory with
+the research decoder in research/native-solo-research, or in the folder VANTAGE_RESEARCH names. The
+libraries default to the addons/libs folder of the Ashita install the client is in, or else ASHITA_LIBS.
 """
 from pathlib import Path
 import argparse
@@ -33,7 +35,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT/'vantage'
-RESEARCH = ROOT/'tests/out/native-solo-research'
 # Matches past this many are counted as this many; one is all that may be found.
 CAP = 9
 HEX = r"'((?:[0-9A-F]{2}|\?\?)+)'"
@@ -42,6 +43,14 @@ REQUIRE = re.compile(r'''\brequire\s*(?:\(\s*|,\s*)?['"]([\w.]+)['"]''')
 
 class Unreadable(Exception):
     pass
+
+
+def research_folder():
+    """The research decoder's folder: VANTAGE_RESEARCH when it's set, or else research/native-solo-research, which
+    git ignores."""
+    if os.environ.get('VANTAGE_RESEARCH'):
+        return Path(os.environ['VANTAGE_RESEARCH'])
+    return ROOT/'research/native-solo-research'
 
 
 def sections(data):
@@ -85,7 +94,11 @@ def read_client(path):
               for index in range(struct.unpack_from('<H', raw, pe + 6)[0]))
     if len(raw) < end:
         raise Unreadable('the DLL is truncated')
-    sys.path[:0] = [str(RESEARCH), str(RESEARCH/'vendor')]
+    research = research_folder()
+    if not (research/'xi_core.py').is_file():
+        raise Unreadable("the research decoder isn't in %s. Put it there, or set VANTAGE_RESEARCH to its folder"
+                         % research)
+    sys.path[:0] = [str(research), str(research/'vendor')]
     try:
         from xi_core import load_and_decompress
         with contextlib.redirect_stdout(io.StringIO()):
@@ -189,6 +202,11 @@ def addon_patterns(addon=ADDON):
     where = 'core/game_buffs.lua'
     text = source(addon/where)
     for start, count, label in (('\nlocal patterns = {', 7, 'game buffs'), ('\nlocal bodies = {', 6, 'game buffs whole')):
+        for name, pattern in counted(re.findall(r"(\w+) = %s" % HEX, block(text, start, where)), count, where):
+            result.append((where, '%s %s' % (label, name.replace('_', ' ')), pattern))
+    where = 'core/game_pet_bar.lua'
+    text = source(addon/where)
+    for start, count, label in (('\nlocal patterns = {', 2, 'game pet bar'), ('\nlocal bodies = {', 2, 'game pet bar whole')):
         for name, pattern in counted(re.findall(r"(\w+) = %s" % HEX, block(text, start, where)), count, where):
             result.append((where, '%s %s' % (label, name.replace('_', ' ')), pattern))
     return result

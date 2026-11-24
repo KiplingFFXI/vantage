@@ -1,4 +1,5 @@
 local assets = {}
+local steady = require('core.steady')
 local MAX_FILE, MAX_CHUNKS, MAX_TEXTURE = 16 * 1024 * 1024, 4096, 4 * 1024 * 1024
 local aliases = { newtex = 'menu    newtex  ', hfr1 = 'menu    hfr1    ', corner = 'menu    corner  ',
     vfr1 = 'menu    vfr1    ', moji = 'font    moji    ',
@@ -34,10 +35,16 @@ end
 
 local load_deferred
 
-local function asset_group(kind, window_type)
+-- name is the texture asked for, if any. A first use for anything but the font's own moji lets moji's pixels go once
+-- the art is up, as the warmup does (ui/appearance.lua), since only a face reads them. A face made later reads them
+-- from the file again (assets.raw).
+local function asset_group(kind, window_type, name)
     if kind == 'window' then kind = window_key(window_type) end
     local held = state[kind]
-    if held and held.deferred then load_deferred() end
+    if held and held.deferred then
+        load_deferred()
+        if name ~= 'moji' and name ~= aliases.moji then assets.release_pixels(kind, 'moji') end
+    end
     return held
 end
 
@@ -154,16 +161,7 @@ function assets.parse(data, texture_names, layout_names)
     return result
 end
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key] end
-
-local function call(object, method, ...)
-    if not object then return nil end
-    local ok, fn = pcall(index_of, object, method)
-    if not ok or type(fn) ~= 'function' then return nil end
-    local success, value = pcall(fn, object, ...)
-    if success then return value end
-end
+local call = require('core.guard').call
 
 local function path(value)
     if type(value) ~= 'string' or value == '' or #value > 4096 or value:find('\0', 1, true) then return nil end
@@ -203,6 +201,7 @@ local function measure_native(api)
     end
     api.read = wrap('assets.read', api.read)
     api.upload = wrap('assets.upload', api.upload, true)
+    if api.upload_picture then api.upload_picture = wrap('assets.upload', api.upload_picture, true) end
     return api
 end
 
@@ -223,6 +222,10 @@ local function native()
             'int __stdcall GetFileTime(void*, void*, void*, void*);',
             'int __stdcall ReadFile(void*, void*, unsigned long, unsigned long*, void*);',
             'int __stdcall CloseHandle(void*);',
+            'typedef struct { unsigned long attributes; unsigned long times[6]; unsigned long size_high, size_low, reserved[2]; unsigned short name[260]; unsigned short short_name[14]; } vantage_find_data;',
+            'void* __stdcall FindFirstFileW(const unsigned short*, vantage_find_data*);',
+            'int __stdcall FindNextFileW(void*, vantage_find_data*);',
+            'int __stdcall FindClose(void*);',
         }) do pcall(ffi.cdef, declaration) end
         local loaded, value = pcall(ffi.load, 'kernel32')
         if loaded then kernel = value end
@@ -314,23 +317,61 @@ local function native()
         if not success then return nil, 'The asset read failed.' end
         return bytes, why
     end
-    api.upload = function(dds, width, height)
+    -- What a folder holds, each entry's name in UTF-8, whether it is a folder and its size in bytes. nil and why when
+    -- the folder can't be listed.
+    api.list = function(folder)
+        if not kernel then return nil, 'Direct Windows folder reads are unavailable.' end
+        local name = wide(path(folder) and path(folder) .. '/*')
+        if not name then return nil, 'The folder path is unavailable or could not be converted.' end
+        local found = ffi.new('vantage_find_data[1]')
+        local handle = kernel.FindFirstFileW(name, found)
+        if handle == nil or handle == ffi.NULL or tonumber(ffi.cast('intptr_t', handle)) == -1 then
+            return nil, 'The folder could not be opened.'
+        end
+        local out, utf8 = {}, ffi.new('char[1024]')
+        local success = pcall(function()
+            repeat
+                local entry = found[0]
+                local length = 0
+                while length < 260 and entry.name[length] ~= 0 do length = length + 1 end
+                local bytes = length > 0 and kernel.WideCharToMultiByte(65001, 0, entry.name, length, utf8, 1024, nil, nil) or 0
+                local text = bytes > 0 and ffi.string(utf8, bytes) or nil
+                if text and text ~= '.' and text ~= '..' then
+                    out[#out + 1] = { name = text, folder = require('bit').band(entry.attributes, 0x10) ~= 0,
+                        size = tonumber(entry.size_high) * 4294967296 + tonumber(entry.size_low) }
+                end
+            until #out >= 4096 or kernel.FindNextFileW(handle, found) == 0
+        end)
+        kernel.FindClose(handle)
+        if not success then return nil, 'The folder could not be read.' end
+        return out
+    end
+    -- bytes made into a width by height texture with levels mip levels (0 makes them all), scaled with filter (4 smooths,
+    -- 1 doesn't), with its own transparency and no color made transparent. failed says why when it can't be made.
+    local function make_texture(bytes, width, height, levels, filter, failed)
         if not ok then return nil, 'The texture interface is unavailable.' end
         local loaded, d3d = pcall(require, 'd3d8')
         if not loaded then return nil, 'The texture interface is unavailable.' end
         local device = d3d.get_device()
         if device == nil or device == ffi.NULL then return nil, 'The display device is not ready.' end
         local out = ffi.new('IDirect3DTexture8*[1]')
-        local result = ffi.C.D3DXCreateTextureFromFileInMemoryEx(device, dds, #dds, width, height, 1, 0,
-            ffi.C.D3DFMT_A8R8G8B8, ffi.C.D3DPOOL_MANAGED, 1, 1, 0, nil, nil, out)
+        local result = ffi.C.D3DXCreateTextureFromFileInMemoryEx(device, bytes, #bytes, width, height, levels, 0,
+            ffi.C.D3DFMT_A8R8G8B8, ffi.C.D3DPOOL_MANAGED, filter, filter, 0, nil, nil, out)
         if result ~= ffi.C.S_OK or out[0] == ffi.NULL then
             if out[0] ~= ffi.NULL then out[0]:Release() end
-            return nil, 'The client texture could not be uploaded.'
+            return nil, failed
         end
         local texture = out[0]
         return { id = tonumber(ffi.cast('uintptr_t', texture)), release = function()
             if texture ~= nil then texture:Release(); texture = nil end
         end }
+    end
+    -- A picture file made into a side px square texture, smoothed as it is scaled.
+    api.upload_picture = function(bytes, side, levels)
+        return make_texture(bytes, side, side, levels, 4, 'The picture could not be made into a texture.')
+    end
+    api.upload = function(dds, width, height)
+        return make_texture(dds, width, height, 1, 1, 'The client texture could not be uploaded.')
     end
     return measure_native(api)
 end
@@ -608,7 +649,7 @@ load_deferred = function()
         end
     end
     view_reader = nil
-    upload_pending(os.clock())
+    upload_pending(steady())
 end
 
 -- Where each kind's file is and what it holds, without reading any DAT. XI View's art waits here until it is used.
@@ -644,7 +685,7 @@ local function load_stock(kind)
     state[kind] = held
     load_kind(kind, held, kind == 'original_font' and stock_reader or source_reader(platform or native()))
     if kind == 'original_font' then stock_reader = nil end
-    upload_kind(kind, held, os.clock())
+    upload_kind(kind, held, steady())
     settle()
 end
 
@@ -661,7 +702,7 @@ local function load_view(kind)
     held.deferred = nil
     view_reader = view_reader or source_reader(platform or native())
     load_kind(kind, held, view_reader)
-    upload_kind(kind, held, os.clock())
+    upload_kind(kind, held, steady())
     settle()
     for other in pairs(deferred) do
         if state[other] and state[other].deferred then return end
@@ -719,7 +760,7 @@ function assets.prepare()
         load_stock('original_font')
     end
     if retry_at == nil then return ready end
-    local now = os.clock()
+    local now = steady()
     if now < retry_at then return ready end
     upload_pending(now)
     return ready
@@ -734,14 +775,14 @@ end
 function assets.retry()
     if not plan then return false end
     if retry_at == nil then return ready end
-    local now = os.clock()
+    local now = steady()
     if now < retry_at then return ready end
     upload_pending(now)
     return ready
 end
 
 function assets.cached_texture(kind, name, window_type)
-    local held = asset_group(kind, window_type)
+    local held = asset_group(kind, window_type, name)
     return held and held.textures[aliases[name] or name] or nil
 end
 
@@ -835,13 +876,13 @@ function assets.derived_texture(kind, name, dds, width, height)
             return nil, 'The countdown font source changed without a texture refresh.'
         end
         if cached.texture then return cached.texture end
-        if os.clock() < cached.retry_at then return nil, cached.reason end
+        if steady() < cached.retry_at then return nil, cached.reason end
     else cached = { dds=dds }; held.derived[name] = cached end
     local ok, uploaded, why = pcall((platform or native()).upload, dds, width, height, kind .. '.countdown')
     if not ok or type(uploaded) ~= 'table' or type(uploaded.id) ~= 'number' or uploaded.id <= 0
         or uploaded.id ~= uploaded.id or uploaded.id == math.huge then
         if type(uploaded) == 'table' and type(uploaded.release) == 'function' then pcall(uploaded.release) end
-        cached.reason, cached.retry_at = why or 'The countdown font atlas could not be uploaded.', os.clock() + 5
+        cached.reason, cached.retry_at = why or 'The countdown font atlas could not be uploaded.', steady() + 5
         return nil, cached.reason
     end
     local texture = { id=uploaded.id, width=width, height=height, format='A8R8G8B8' }
@@ -915,9 +956,9 @@ local function icon_record(data, base, bits, buffer, pixel_ffi)
 end
 
 -- Status records use their file index, matching GetStatusIconByIndex rather than the internal Id. Every record's
--- header is checked here, and bits holds the valid ones'; a record's pixels are made the first time records[id] is
--- read, so a pack costs only the icons drawn from it. Whole records count: a part record at the end is left out, and
--- so is any record past the 1024th.
+-- header is checked here, and bits holds the valid ones'. A record's pixels are made when records[id] is read and kept
+-- until its texture is made, so a pack costs only the icons being made from it. Whole records count: a part record at
+-- the end is left out, and so is any record past the 1024th.
 function assets.parse_icons(data)
     if type(data) ~= 'string' or #data < ICON_STRIDE or #data > MAX_FILE then
         return nil, 'Invalid or oversized status icon DAT file.'
@@ -1007,6 +1048,7 @@ function assets.icons_loaded(kind) return icon_sources ~= nil and icon_sources[k
 -- small texture took about 0.16 to 0.25 ms in the game, so a list that shows many new icons at once makes them over
 -- the next few Presents instead of stalling one, and draws each once it is made. icon_frame starts each Present's
 -- count; before the first Present nothing is counted.
+-- New item pictures (item_icons.lua) count too.
 local UPLOADS_PER_PRESENT = 8
 local present_uploads
 
@@ -1027,7 +1069,7 @@ function assets.icon_texture(kind, id)
     if held.textures[id] then return held.textures[id] end
     if not held.data.bits[id] then return nil, held.data.errors[id] or 'This status index is not present in the selected artwork.' end
     local failed = held.failures[id]
-    if failed and os.clock() < failed.retry_at then return nil, failed.reason end
+    if failed and steady() < failed.retry_at then return nil, failed.reason end
     if not assets.spend_upload() then return nil, nil, true end
     local raw = held.data.records[id]
     local api = platform or native()
@@ -1036,11 +1078,13 @@ function assets.icon_texture(kind, id)
         or uploaded.id ~= uploaded.id or uploaded.id == math.huge then
         if type(uploaded) == 'table' and type(uploaded.release) == 'function' then pcall(uploaded.release) end
         why = why or 'The status icon texture could not be uploaded.'
-        held.failures[id] = { retry_at = os.clock() + 5, reason = why }
+        held.failures[id] = { retry_at = steady() + 5, reason = why }
         return nil, why
     end
     held.textures[id] = { id = uploaded.id, width = 32, height = 32, path = held.path, source = held.source }
     held.releases[id], held.failures[id] = uploaded.release, nil
+    -- The texture holds the pixels now. A size made from them later makes them again from the file.
+    rawset(held.data.records, id, nil)
     return held.textures[id]
 end
 
@@ -1070,7 +1114,7 @@ end
 -- the frame that may still draw it. The report counts what was made.
 local SIZED_BUILDS, SIZED_KEPT, SIZED_WAIT, SIZED_RETRY = 4, 4, 0.25, 5
 local sized_present, sized_builds, sized_asked, sized_released = 0, 0, 0, {}
-local sized_counts, sized_timer = { made = 0, builds = 0, fallbacks = 0, slowest_ms = 0 }, nil
+local sized_counts = { made = 0, builds = 0, fallbacks = 0, slowest_ms = 0 }
 
 -- For a side of size px, each pixel's first source texel and how much of it and the ones after it the pixel covers.
 -- On one line a source texel is size long and a pixel 32, so each pixel's parts add up to 32.
@@ -1140,14 +1184,8 @@ local function sized_pixels(dds, size, side)
     return table.concat(rows)
 end
 
--- Milliseconds for the report's slowest build, from the frame timings' counter when it loads.
-local function sized_now()
-    if sized_timer == nil then
-        local ok, performance = pcall(require, 'core.performance')
-        sized_timer = ok and type(performance) == 'table' and performance.now or false
-    end
-    return sized_timer and sized_timer() or os.clock() * 1000
-end
+-- Milliseconds for the report's slowest build, from the steady clock.
+local function sized_now() return steady() * 1000 end
 
 -- Status icon id of kind made at size px, and the corner of its texture to draw (UV1), or nil until it is made, and
 -- the caller draws the 32 px texture until then. 32 itself and sizes past 128 always use that one.
@@ -1156,9 +1194,8 @@ function assets.icon_texture_at(kind, id, size)
         return nil
     end
     local held = icon_source(kind)
-    local raw = held and held.available and held.data.bits[id] and held.data.records[id]
-    if not raw then return nil end
-    local sizes, now = held.sized, os.clock()
+    if not (held and held.available and held.data.bits[id]) then return nil end
+    local sizes, now = held.sized, steady()
     if not sizes then sizes = {}; held.sized = sizes end
     local entry = sizes[size]
     if not entry then
@@ -1190,7 +1227,10 @@ function assets.icon_texture_at(kind, id, size)
     if failed and now < failed.retry_at then return nil end
     sized_builds, sized_counts.builds = sized_builds + 1, sized_counts.builds + 1
     local started, side = sized_now(), entry.side
+    -- The 32 px pixels are made again for this build only, and let go once it is done.
+    local raw = held.data.records[id]
     local made, pixels = pcall(sized_pixels, raw.dds, size, side)
+    rawset(held.data.records, id, nil)
     local ok, uploaded, why = false, nil, nil
     if made then
         local dds = 'DDS ' .. le32(124) .. le32(0x100F) .. le32(side) .. le32(side) .. le32(side * 4)
@@ -1425,7 +1465,7 @@ function assets.action_texture(kind, secondary, name, alpha)
     local key = name..':'..alpha
     if held.textures[key] then return held.textures[key] end
     local failed = held.failures[key]
-    if failed and os.clock() < failed.retry_at then return nil, failed.reason end
+    if failed and steady() < failed.retry_at then return nil, failed.reason end
     if not assets.spend_upload() then return nil, nil, true end
     raw.action_dds = raw.action_dds or {}
     local converted,problem = raw.action_dds[alpha]
@@ -1441,7 +1481,7 @@ function assets.action_texture(kind, secondary, name, alpha)
         or uploaded.id ~= uploaded.id or uploaded.id == math.huge then
         if type(uploaded) == 'table' and type(uploaded.release) == 'function' then pcall(uploaded.release) end
         why = why or 'The native action texture could not be uploaded.'
-        held.failures[key] = { retry_at = os.clock() + 30, reason = why }
+        held.failures[key] = { retry_at = steady() + 30, reason = why }
         return nil, why
     end
     -- The converted pixels are kept only for a retry. A device change reads the files again.
@@ -1499,6 +1539,91 @@ end
 
 local NOT_YET = 'Not needed yet.'
 
+-- The folders /vg report writes as a mark: the game's, Ashita's and your Windows user folder, longest first, so a path
+-- under one starts from its mark and a user name in the folder isn't written.
+local function report_folders()
+    local api = platform or native()
+    local found = {}
+    local function add(mark, lookup)
+        local ok, value = pcall(lookup)
+        value = ok and path(value)
+        if value and absolute(value) and #value >= 4 then found[#found + 1] = { mark = mark, key = value:lower() } end
+    end
+    add('<game>', api.game_root)
+    add('<Ashita>', api.ashita_root)
+    add('<user folder>', function() return os.getenv('USERPROFILE') end)
+    table.sort(found, function(a, b) return #a.key > #b.key end)
+    return found
+end
+
+-- Each whole folder in text, matched with either slash in any case, becomes its mark.
+local function mark_folder(text, key, mark)
+    local plain = text:gsub('\\', '/'):lower()
+    local parts, cursor, from = {}, 1, 1
+    while true do
+        local first, last = plain:find(key, from, true)
+        if not first then break end
+        local after = plain:sub(last + 1, last + 1)
+        if after == '' or after:find('[/%s"\'`:;,)%]>|]') then
+            parts[#parts + 1] = text:sub(cursor, first - 1)
+            parts[#parts + 1] = mark
+            cursor = last + 1
+        end
+        from = last + 1
+    end
+    if cursor == 1 then return text end
+    parts[#parts + 1] = text:sub(cursor)
+    return table.concat(parts)
+end
+
+-- LuaJIT writes a file name of 60 characters or more in an error as ... and its last 56, which can start inside a
+-- folder. A ... that starts a word, then the end of the folder and a slash, becomes its mark too.
+local function mark_shortened(text, key, mark)
+    local plain = text:gsub('\\', '/'):lower()
+    local parts, cursor, from = {}, 1, 1
+    while true do
+        local at = plain:find('...', from, true)
+        if not at then break end
+        from = at + 3
+        if at == 1 or plain:sub(at - 1, at - 1):find('[%s"\'(]') then
+            for cut = 2, #key do
+                local tail = key:sub(cut)
+                local stop = at + 2 + #tail
+                if plain:sub(at + 3, stop) == tail and plain:sub(stop + 1, stop + 1) == '/' then
+                    parts[#parts + 1] = text:sub(cursor, at - 1)
+                    parts[#parts + 1] = mark
+                    cursor, from = stop + 1, stop + 1
+                    break
+                end
+            end
+        end
+    end
+    if cursor == 1 then return text end
+    parts[#parts + 1] = text:sub(cursor)
+    return table.concat(parts)
+end
+
+-- A copy of value for /vg report with every path under the game's, Ashita's or your user folder starting from its
+-- mark, in keys too. The tables given are left as they are.
+function assets.without_folders(value)
+    local folders, copies = report_folders(), {}
+    local function copy(item)
+        if type(item) == 'string' then
+            for _, folder in ipairs(folders) do
+                item = mark_shortened(mark_folder(item, folder.key, folder.mark), folder.key, folder.mark)
+            end
+            return item
+        end
+        if type(item) ~= 'table' then return item end
+        if copies[item] then return copies[item] end
+        local out = {}
+        copies[item] = out
+        for key, child in pairs(item) do out[copy(key)] = copy(child) end
+        return out
+    end
+    return copy(value)
+end
+
 -- What the art loaded from and why any part of it isn't in use, for /vg report: each kind, the status icons of each
 -- artwork and each action pack's files. It reads and uploads nothing, so a part not needed yet says so.
 function assets.report()
@@ -1528,6 +1653,33 @@ function assets.report()
         out.actions[kind] = files
     end
     return out
+end
+
+-- Files you add, for ui/icon_packs.lua: a folder's entries, a file's bytes up to limit and a picture made into a
+-- texture, each nil and why when it can't be done.
+function assets.list_folder(folder)
+    local api = platform or native()
+    if type(api.list) ~= 'function' then return nil, 'Folders can\'t be listed here.' end
+    local ok, entries, why = pcall(api.list, folder)
+    if not ok or type(entries) ~= 'table' then return nil, ok and why or 'The folder could not be read.' end
+    return entries
+end
+
+function assets.read_file(filename, limit)
+    return read(platform or native(), path(filename), limit)
+end
+
+-- name says what the texture is for the frame timings, as a DAT upload's does.
+function assets.upload_picture(bytes, side, levels, name)
+    local api = platform or native()
+    if type(api.upload_picture) ~= 'function' then return nil, 'The texture interface is unavailable.' end
+    local ok, uploaded, why = pcall(api.upload_picture, bytes, side, levels, name)
+    if not ok or type(uploaded) ~= 'table' or type(uploaded.id) ~= 'number' or uploaded.id <= 0 or uploaded.id ~= uploaded.id
+        or uploaded.id == math.huge then
+        if ok and type(uploaded) == 'table' and type(uploaded.release) == 'function' then pcall(uploaded.release) end
+        return nil, ok and why or 'The picture could not be made into a texture.'
+    end
+    return uploaded
 end
 
 -- Call after the last draw that uses these textures, such as addon unload.

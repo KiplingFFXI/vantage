@@ -15,9 +15,8 @@ CLIENT = Path(os.environ['ASHITA_LIBS']).resolve().parent.parent / 'SquareEnix' 
 @unittest.skipUnless(CLIENT.is_dir(), 'Local client files are unavailable')
 class MainPageDragTests(unittest.TestCase):
     def drag(self, width, height):
-        # More look open and the page at its end, where the slider shows.
-        actions = [{'frame': 1, 'lua': "settings.window.sections['Home/More look'] = true"},
-                   {'frame': 3, 'mouse': [100 + width * 0.6, 80 + height * 0.6], 'wheel': -40},
+        # The page at its end, where the slider shows under This window.
+        actions = [{'frame': 3, 'mouse': [100 + width * 0.6, 80 + height * 0.6], 'wheel': -40},
                    {'frame': 6, 'target': '##main_window_text', 'point': [0.38, 0.5]}, {'frame': 7, 'down': True}]
         # Six pixels a frame to the right, as a player drags, for long enough to reach the largest size.
         actions += [{'frame': 8 + step, 'delta': [6, 0]} for step in range(90)]

@@ -56,27 +56,43 @@ local function called(kind, label)
 end;
 local function opened() return opens[#opens] or {}; end;
 local function fresh() s = defaults.make(); changes, sections = {}, {}; return s; end;
+-- How it looks's folds, open, but Colors.
+local function open_look() for _, name in ipairs({ 'Artwork', 'Sizes', 'Boxes', 'Text effects' }) do sections[name] = true; end; end;
+-- What the page writes with TextUnformatted, in order.
+local function lines()
+    local out = {};
+    for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'TextUnformatted' then out[#out + 1] = call[2]; end; end;
+    return out;
+end;
+local function in_order(list, wanted)
+    local at = 1;
+    for _, value in ipairs(list) do if value == wanted[at] then at = at + 1; end; end;
+    return at > #wanted;
+end;
 local function one(label, save)
     local last = changes[#changes];
     return #changes == 1 and last.label == label and (save == nil or last.save == save);
 end;
 
--- A fresh install: the three parts in order, with More look closed.
+-- A fresh install: the three parts in order, How it looks's folds closed.
 fresh();
 local before = copy(s);
 draw();
 assert(equal(s, before) and #changes == 0, 'Opening the page writes nothing.');
-assert(table.concat(headers, '|') == 'What to show|How it looks|More look|Moving', 'The parts in order: ' .. table.concat(headers, '|'));
+assert(table.concat(headers, '|') == 'What to show|Chat line colors|How it looks|Artwork|Sizes|Boxes|Text effects|Colors|Moving', 'The parts in order: ' .. table.concat(headers, '|'));
 assert(called('BeginCombo', '##main_skin') and called('BeginCombo', '##main_font') and called('Checkbox', 'Self buffs##main_self_buffs')
-    and not called('BeginCombo', '##main_icon_art') and not called('SliderFloat', '##main_opacity'), 'More look stays closed at first.');
-for _, text in ipairs({ 'Timer panels are paused.', 'The Hidden everywhere list is paused.', 'Edit mode is on.', 'Vantage displays are hidden (/vg hide).' }) do
+    and not called('BeginCombo', '##main_icon_art') and not called('SliderFloat', '##main_opacity'), 'The folds stay closed at first.');
+-- What to show goes in groups, then While playing, and This window comes last on the page.
+assert(in_order(lines(), { 'On you', 'Target and enemies', 'Party', 'Alerts', 'While playing', 'This window' }), 'The captions in order: ' .. table.concat(lines(), '|'));
+assert(not called('Button', 'Edit##main_hidden') and not texts['Hidden everywhere: nothing yet'], 'The Hide list is on the top bar, not in What to show.');
+for _, text in ipairs({ 'Timer panels are paused.', 'The Hide list is paused.', 'Arrange on screen is on.', 'Vantage displays are hidden (/vg hide).' }) do
     assert(not texts[text], 'A fresh install shows no attention line: ' .. text);
 end;
 assert(not called('Button', 'End samples##main') and not called('Button', 'Resume##main_resume'), 'And no button for one.');
 
 -- Rows that depend on a mode stay hidden until that mode is on.
 fresh();
-sections['More look'] = true;
+open_look();
 draw();
 assert(called('BeginCombo', '##main_window_type'), 'Fresh: Window frame shows.');
 appearance.apply(s, 'Mint');
@@ -85,12 +101,17 @@ assert(not called('BeginCombo', '##main_window_type'), 'Window frame shows only 
 appearance.apply(s, 'XI View');
 draw();
 assert(called('BeginCombo', '##main_window_type'), 'XI View offers it.');
--- Every row of What to show is a tick and Edit. What the party list buffs show is on their Show tab.
+-- Every row of What to show is a tick and Edit. Party buffs and Party cooldowns have a tick for each place they show,
+-- and what Party list shows is on its Show tab.
 s.party_ui.enabled = true;
 draw();
-assert(called('Checkbox', 'Party list buffs##main_party_ui') and called('Button', 'Edit##main_party_ui')
+assert(called('Checkbox', 'In a list##main_party') and called('Checkbox', 'Beside the party list##main_party_ui')
+    and called('Checkbox', 'Over heads##main_party_heads') and called('Button', 'Edit##main_party_ui')
+    and called('Checkbox', 'In a list##main_cooldowns_list') and called('Checkbox', 'Beside the party list##main_cooldowns_strips')
+    and called('Checkbox', 'Over heads##main_cooldowns_heads') and called('Button', 'Edit##main_party_cooldowns')
+    and called('Checkbox', 'Show the distance to each member##main_distance')
     and not called('Checkbox', 'Your party##main_group_party') and not called('RadioButton', 'Buffs only##main_kind_buff')
-    and not called('Checkbox', 'Light up debuffs you can remove##main_party_light'), 'The party list buffs on: still one tick and Edit.');
+    and not called('Checkbox', 'Light up debuffs you can remove##main_party_light'), 'Party list on: still its places and Edit.');
 
 -- Two columns in a wide window, one in a narrow one.
 MOCK.content_width = 1000;
@@ -108,6 +129,10 @@ fresh();
 draw({ ['Mint##Mint'] = true }, '##main_skin');
 assert(appearance.candidate(s) == 'Mint' and require('ui.party_theme').party(s.party_ui, s.style).theme == 'Mint' and one('Skin: Mint', true),
     'Skin applies when picked, in one step.');
+-- The list shows the Minimal skin as Frameless, so Undo calls it that too.
+fresh();
+draw({ ['Frameless##Minimal'] = true }, '##main_skin');
+assert(s.style.minimal == true and one('Skin: Frameless', true), 'Undo names the Frameless skin as the list does: ' .. tostring((changes[1] or {}).label));
 fresh();
 s.party_ui.native.width, s.party_ui.native.gap = 319, 11;
 s.party_ui.groups[2].native_detached, s.party_ui.groups[2].detached_width, s.party_ui.groups[2].detached_height = true, 447, 531;
@@ -124,7 +149,7 @@ end;
 assert(equal(layout(s.party_ui), layout(unskinned.party_ui)) and s.party_ui.native.width == 319
     and s.party_ui.groups[2].detached_width == 447, 'A skin pick leaves the custom strip sizes alone.');
 fresh();
-sections['More look'] = true;
+open_look();
 for _, slider in ipairs({
     { '##main_text_size', 30.4, function() return s.style.font_size == 30; end, 'Text size' },
     { '##main_scale', 1.25, function() return s.style.scale == 1.25; end, 'Size' },
@@ -159,7 +184,7 @@ s.style.text_outline = false;
 draw();
 assert(not called('ColorEdit4', 'Outline color##main_text_color'), 'And not with it off.');
 fresh();
-sections['More look'] = true;
+open_look();
 draw({ ['Window Type 3##3'] = true }, '##main_window_type');
 assert(s.style.window_type == 3 and require('ui.theme').window(s).window_type == 3 and one('Window frame', true), 'Window frame writes the type for every display and this window.');
 -- Art picks each write their own key, and Colors puts the skin's colors back as one step.
@@ -187,24 +212,29 @@ assert(s.enabled and s.panels.self_debuffs.enabled, 'Paused, the tick reads off 
 changes = {};
 draw({ ['Self debuffs##main_self_debuffs'] = true });
 assert(s.enabled and not s.panels.self_debuffs.enabled and s.panels.self_buffs.enabled, 'Turning a timer off leaves the others and doesn\'t pause them.');
-for _, id in ipairs({ { 'Party members\' timers##main_party', 'party' }, { 'Watched enemy timers##main_watch', 'watch' }, { 'Target timers##main_target', 'target' } }) do
+for _, id in ipairs({ { 'In a list##main_party', 'party' }, { 'Watched enemy timers##main_watch', 'watch' }, { 'Target timers##main_target', 'target' } }) do
     s.panels[id[2]].enabled = false;
     draw({ [id[1]] = true });
     assert(s.panels[id[2]].enabled, 'Timer switch: ' .. id[1]);
 end;
+-- Turning one off ends its own samples, so with Show samples off it comes back live.
+for _, id in ipairs({ { 'In a list##main_party', 'party' }, { 'Target timers##main_target', 'target' } }) do
+    s.panels[id[2]].preview = true;
+    draw({ [id[1]] = true });
+    assert(not s.panels[id[2]].enabled and not s.panels[id[2]].preview, 'Turning it off ends its samples: ' .. id[1]);
+end;
 s.party_ui.enabled, s.party_ui.preview = false, true;
 for key in pairs(s.party_ui.strips) do s.party_ui.strips[key] = false; end;
-draw({ ['Party list buffs##main_party_ui'] = true });
+draw({ ['Beside the party list##main_party_ui'] = true });
 assert(s.party_ui.enabled and s.party_ui.strips.party and not s.party_ui.strips.alliance1,
-    'Turning the party list buffs on gives them a group to show.');
-draw({ ['Party list buffs##main_party_ui'] = true });
-assert(not s.party_ui.enabled and not s.party_ui.preview, 'Turning them off ends their samples.');
+    'Turning Party list on gives it a group to show.');
+draw({ ['Beside the party list##main_party_ui'] = true });
+assert(not s.party_ui.enabled and not s.party_ui.preview, 'Turning it off ends its samples.');
 for _, link in ipairs({
-    { 'Edit##main_self_buffs', 'Display', 'self_buffs' }, { 'Edit##main_self_debuffs', 'Display', 'self_debuffs' }, { 'Edit##main_party', 'Display', 'party' },
+    { 'Edit##main_self_buffs', 'Display', 'self_buffs' }, { 'Edit##main_self_debuffs', 'Display', 'self_debuffs' },
     { 'Edit##main_watch', 'Display', 'watch' }, { 'Edit##main_target', 'Display', 'target' }, { 'Edit##main_recasts', 'Display', 'recasts' },
-    { 'Edit##main_pulse', 'Display', 'recasts', 'Ready pulse' }, { 'Edit##main_party_ui', 'Display', 'party_ui' }, { 'Edit##main_overhead', 'Display', 'overhead' },
+    { 'Edit##main_pulse', 'Display', 'pulse' }, { 'Edit##main_party_ui', 'Display', 'party_ui' }, { 'Edit##main_overhead', 'Display', 'overhead' },
     { 'Edit##main_party_cooldowns', 'Display', 'cooldown_list' }, { 'Edit##main_rolls', 'Display', 'rolls' }, { 'Edit##main_pet', 'Display', 'pet' }, { 'Edit##main_alerts', 'Display', 'notices' },
-    { 'Edit##main_hidden', 'Display', 'hidden' },
 }) do
     changes = {};
     draw({ [link[1]] = true });
@@ -243,6 +273,13 @@ draw();
 assert(not partly(), 'All the same, no mark.');
 draw({ ['Hide timer panels while I type##main_hide_typing'] = true, ['Show details when I point at a timer##main_hover'] = true });
 assert(s.visibility.hide_typing == true and s.style.hover == false, 'The other two write their keys.');
+-- Follow the cursor sits under While playing too and writes the tracking key as one Undo step.
+local FOLLOW = 'Follow the cursor while I am choosing a target##main_follow_subtarget';
+changes = {};
+draw({ [FOLLOW] = true });
+assert(s.tracking.follow_subtarget == false and one('Follow the cursor while I am choosing a target', true), 'Follow the cursor writes its key.');
+draw({ [FOLLOW] = true });
+assert(s.tracking.follow_subtarget == true, 'A second click turns it back on.');
 -- Short ticks share a line while the window has the room, and a narrow one gives each its own.
 local function one_line(first, second)
     local beside, seen = false, false;
@@ -253,21 +290,14 @@ local function one_line(first, second)
     end;
 end;
 local TYPING, HOVER = 'Hide timer panels while I type##main_hide_typing', 'Show details when I point at a timer##main_hover';
-local PEEK, GRID = 'Hold Shift to see through this window##main_peek', 'Grid mode##main_grid_mode';
+-- The two ticks that replace something the game draws share a line too.
+local REPLACE_TICK, PET_BAR = 'Replace the game\'s buff icons##main_replace_buffs', 'Replace the game\'s pet bar##main_replace_pet_bar';
 draw();
-assert(one_line(TYPING, HOVER) and one_line(PEEK, GRID), 'With room they share a line.');
+assert(one_line(TYPING, HOVER) and one_line(REPLACE_TICK, PET_BAR), 'With room they share a line.');
 MOCK.content_width = 400;
 draw();
-assert(not one_line(TYPING, HOVER) and not one_line(PEEK, GRID), 'Narrow, each has its own.');
+assert(not one_line(TYPING, HOVER) and not one_line(REPLACE_TICK, PET_BAR), 'Narrow, each has its own.');
 MOCK.content_width = nil;
--- Replace the game's buff icons shares that line too while all three fit, so the page is no taller for it.
-local REPLACE_TICK = 'Replace the game\'s buff icons##main_replace_buffs';
-MOCK.content_width = 900;
-draw();
-assert(one_line(TYPING, HOVER) and one_line(HOVER, REPLACE_TICK), 'With room the third shares the line.');
-MOCK.content_width = nil;
-draw();
-assert(one_line(TYPING, HOVER) and not one_line(HOVER, REPLACE_TICK), 'With room for two only, the third has its own line.');
 -- Replace the game's buff icons: a tick that starts off and writes its own key as one Undo step. Ticked but not in
 -- effect, a line under it says why, from the settings first and then from the game side (core/game_buffs.lua).
 fresh();
@@ -288,11 +318,12 @@ assert(not texts[NEEDS] and not texts[SAMPLES] and not texts[CLIENT], 'In effect
 said = CLIENT;
 draw();
 assert(texts[CLIENT], 'What the game side says shows under it.');
-for _, case in ipairs({ { 'Self buffs off', function(on) s.panels.self_buffs.enabled = on; end }, { 'Self debuffs off', function(on) s.panels.self_debuffs.enabled = on; end },
-    { 'the timer panels paused', function(on) s.enabled = on; end } }) do
+local PAUSED = 'While the timer panels are paused, the game draws its own buff icons.';
+for _, case in ipairs({ { 'Self buffs off', function(on) s.panels.self_buffs.enabled = on; end, NEEDS }, { 'Self debuffs off', function(on) s.panels.self_debuffs.enabled = on; end, NEEDS },
+    { 'the timer panels paused', function(on) s.enabled = on; end, PAUSED } }) do
     case[2](false);
     draw();
-    assert(texts[NEEDS] and not texts[CLIENT] and not texts[SAMPLES], case[1] .. ' comes first.');
+    assert(texts[case[3]] and not texts[case[3] == NEEDS and PAUSED or NEEDS] and not texts[CLIENT] and not texts[SAMPLES], case[1] .. ' comes first, with its own line.');
     case[2](true);
 end;
 s.preview = true;
@@ -301,37 +332,28 @@ assert(texts[SAMPLES] and not texts[CLIENT] and not texts[NEEDS], 'Samples say s
 s.preview, said = false, nil;
 draw({ [REPLACE] = true });
 assert(s.replace_game_buffs == false, 'A click turns it off again.');
--- Hidden everywhere names the effects hidden, by what the player knows them as.
+-- Replace the game's pet bar sits beside it, writes its own key as one step, and says why while it isn't in effect.
 fresh();
+local PET_NEEDS = 'This needs the Pet display on with Show HP, MP and TP. Until then the game draws its own pet bar.';
 draw();
-assert(texts['Hidden everywhere: nothing yet'], 'Nothing hidden yet.');
-s.effect_filters.rules = { { enabled = true, effect = 253, kind = 'all', name = '', job = 0, scope = 'all' },
-    { enabled = false, effect = 33, kind = 'all', name = '', job = 0, scope = 'all' },
-    { enabled = true, effect = 33, kind = 'all', name = '', job = 0, scope = 'self' } };
+assert(s.replace_game_pet_bar == false and not texts[PET_NEEDS], 'It starts off, and off it says nothing.');
+changes = {};
+draw({ [PET_BAR] = true });
+assert(s.replace_game_pet_bar == true and one('Replace the game\'s pet bar', true), 'A click turns it on as one step.');
+s.pet.enabled = false;
 draw();
-assert(texts['Hidden everywhere: Signet and 1 other rule'], 'Only rules that are on and hide an effect everywhere are named, and the rest are counted.');
-s.effect_filters.rules[1].enabled = false;
-draw();
-assert(texts['Hidden everywhere: 1 rule'], 'A rule that hides by who or what still counts.');
-s.effect_filters.rules[2].enabled = true;
-draw();
-assert(texts['Hidden everywhere: Haste and 1 other rule'], 'A rule that\'s off is left out.');
-s.effect_filters.rules[#s.effect_filters.rules + 1] = { enabled = true, effect = 0, kind = 'buff', name = '', job = 0, scope = 'all' };
-draw();
-assert(texts['Hidden everywhere: Haste and 2 other rules'], 'Two or more take the plural.');
--- An effect the game has no name for is still on the Hidden everywhere list, so it counts with the other rules.
-s.effect_filters.rules = { { enabled = true, effect = 1000, kind = 'all', name = '', job = 0, scope = 'all' } };
-draw();
-assert(texts['Hidden everywhere: 1 rule'], 'A hidden effect with no name counts as a rule.');
-s.effect_filters.rules[2] = { enabled = true, effect = 253, kind = 'all', name = '', job = 0, scope = 'all' };
-draw();
-assert(texts['Hidden everywhere: Signet and 1 other rule'], 'Beside one with a name, it is the other rule.');
+assert(texts[PET_NEEDS], 'With the Pet display off, a line says so.');
+draw({ [PET_BAR] = true });
+assert(s.replace_game_pet_bar == false, 'A click turns it off again.');
 
 -- Recasts. In separate panels a tick is that panel's switch, and resumes timer panels.
 fresh();
 s.enabled, s.panels.spell_recasts.enabled = false, false;
 draw({ ['Spells##main_recast_spell'] = true });
 assert(s.panels.spell_recasts.enabled and s.enabled and one('Spell recasts', true), 'A recast tick resumes timer panels.');
+s.panels.spell_recasts.preview = true;
+draw({ ['Spells##main_recast_spell'] = true });
+assert(not s.panels.spell_recasts.enabled and not s.panels.spell_recasts.preview, 'A recast tick turned off ends its samples.');
 -- With one combined panel a tick is that panel's kind.
 fresh();
 s.recast_display, s.panels.recasts.enabled = 'combined', true;
@@ -339,11 +361,19 @@ s.panels.recasts.recast_categories = { spell = true, ability = true, item = true
 draw({ ['Items##main_recast_item'] = true });
 assert(s.panels.recasts.recast_categories.item == false and s.panels.recasts.enabled and not s.panels.spell_recasts.enabled == not defaults.make().panels.spell_recasts.enabled,
     'Kinds change only the combined panel.');
+s.panels.recasts.preview = true;
 draw({ ['Abilities##main_recast_ability'] = true, ['Spells##main_recast_spell'] = true });
-assert(not s.panels.recasts.enabled, 'With no kind left the combined panel is off.');
+assert(not s.panels.recasts.enabled and not s.panels.recasts.preview, 'With no kind left the combined panel is off, and its samples end.');
 draw({ ['Spells##main_recast_spell'] = true });
 assert(s.panels.recasts.enabled and s.panels.recasts.recast_categories.spell and not s.panels.recasts.recast_categories.ability,
     'A tick on a panel that was off brings only its kind.');
+-- Paused, a tick on the combined panel resumes with the other kinds as they were, as separate panels do.
+fresh();
+s.recast_display, s.enabled, s.panels.recasts.enabled = 'combined', false, true;
+s.panels.recasts.recast_categories = { spell = true, ability = true, item = false };
+draw({ ['Items##main_recast_item'] = true });
+assert(s.enabled and s.panels.recasts.enabled and s.panels.recasts.recast_categories.item and s.panels.recasts.recast_categories.spell
+    and s.panels.recasts.recast_categories.ability, 'Paused, ticking Items on resumes with Spells and Abilities as they were.');
 fresh();
 changes = {};
 draw({ ['Ready pulse##main_pulse'] = true });
@@ -370,7 +400,7 @@ local function line_for(words) for text in pairs(texts) do if text:find(words, 1
 fresh();
 s.party_ui.enabled, s.party_ui.locked = true, false;
 draw();
-assert(texts['Unlocked: Party list buffs. Hold Shift and drag one to move it.'], 'The line names the unlocked displays: ' .. tostring(line_for('nlocked')));
+assert(texts['Unlocked: Party list. Hold Shift and drag one to move it.'], 'The line names the unlocked displays: ' .. tostring(line_for('nlocked')));
 s.party_ui.enabled = false;
 draw();
 assert(texts['Every display is locked.'], 'A display that is off doesn\'t count.');
@@ -393,40 +423,27 @@ for _, action in ipairs({ { 'Unlock all', false, 'Lock all' }, { 'Lock all', tru
         'One step locks or unlocks every display.');
 end;
 edits = {};
-draw({ ['Edit mode##main'] = true });
-assert(edits[1] == true and #changes == 1, 'Edit mode starts edit mode and changes no setting.');
+draw({ ['Arrange on screen##main'] = true });
+assert(edits[1] == true and #changes == 1, 'Arrange on screen starts it and changes no setting.');
 assert(s.window.peek, 'Hold Shift to see through this window starts on.');
 draw({ ['Hold Shift to see through this window##main_peek'] = true });
 assert(s.window.peek == false, 'It writes its key.');
--- Grid mode: a tick that starts off, with nothing under it. On, as one step that saves, the fold Grid and snapping shows
--- under it, with the ticks and the grid's controls; off, the fold goes.
-local function folded() for _, label in ipairs(headers) do if label == 'Grid and snapping' then return true; end; end; return false; end;
+-- Snap while moving: one tick that starts off, the rest of snapping in Arrange on screen's bar. Turned on with no
+-- display ticked to snap, it ticks every one, in the same step that saves.
+local snap, SNAP = require('ui.snap'), 'Snap while moving##main_grid_mode';
 fresh();
 draw();
-assert(called('Checkbox', 'Grid mode##main_grid_mode') and s.edit_mode.grid_mode == false and not folded(),
-    'Grid mode starts off, and no fold while it is off.');
+assert(called('Checkbox', SNAP) and s.edit_mode.grid_mode == false and #s.edit_mode.grid_displays == 0, 'It starts off with nothing ticked.');
+assert(not called('SliderFloat', '##main_grid_size') and not called('Checkbox', 'Self buffs##grid_tick_self_buffs'), 'Home holds no grid controls.');
 changes = {};
-draw({ ['Grid mode##main_grid_mode'] = true });
-assert(s.edit_mode.grid_mode == true and one('Grid mode', true), 'The tick turns Grid mode on, as one step that saves.');
-draw();
-assert(folded() and not called('SliderFloat', '##main_grid_size'), 'The fold shows, and a closed fold draws nothing.');
-sections['Grid and snapping'] = true;
-draw();
-assert(called('Checkbox', 'Self buffs##grid_tick_self_buffs') and called('SliderFloat', '##main_grid_size') and called('Checkbox', 'Show the grid##main_show_grid')
-    and called('Checkbox', 'Snap to the chat log##main_snap_chat') and called('SliderFloat', '##main_snap_distance'), 'Open, it holds the ticks and the grid\'s controls.');
--- Each writes the edit mode key it always did. Ticks are one step that saves, and sliders don't save until you let go.
-changes = {};
-draw({ ['Self buffs##grid_tick_self_buffs'] = true });
-assert(require('ui.snap').ticked(s, 'self_buffs') and one('Tick Self buffs for Grid mode', true), 'A display\'s tick is one step that saves.');
-changes = {};
-draw({ ['Snap to the chat log##main_snap_chat'] = true });
-assert(s.edit_mode.snap_chat == not defaults.make().edit_mode.snap_chat and one('Snap to the chat log', true), 'A snap tick writes its key.');
-sliders['##main_grid_size'], sliders['##main_snap_distance'] = 24, 9;
-draw();
-assert(s.edit_mode.grid == 24 and s.edit_mode.snap_distance == 9, 'The sliders write their keys.');
-draw({ ['Grid mode##main_grid_mode'] = true });
-draw();
-assert(s.edit_mode.grid_mode == false and not folded() and not called('SliderFloat', '##main_grid_size'), 'Turned off, the fold goes.');
+draw({ [SNAP] = true });
+assert(s.edit_mode.grid_mode == true and one('Snap while moving', true), 'The tick turns it on, as one step that saves.');
+for _, element in ipairs(require('ui.elements').movable) do assert(snap.ticked(s, element.id), 'The first time, every display snaps: ' .. element.id); end;
+-- Turned off and on again, the ticks stay as they were.
+snap.tick(s, 'self_buffs', false);
+draw({ [SNAP] = true });
+draw({ [SNAP] = true });
+assert(s.edit_mode.grid_mode == true and not snap.ticked(s, 'self_buffs') and snap.ticked(s, 'target'), 'Later, the ticks stay as they are.');
 
 -- Show samples turns samples on only on the displays that are on, and End samples turns them all off.
 fresh();
@@ -446,7 +463,7 @@ fresh();
 s.enabled, s.overhead.enabled, s.party_ui.enabled, s.rolls.enabled, s.pet.enabled, s.party_cooldowns.enabled = false, false, false, false, false, false;
 notes = {};
 draw({ ['Show samples##main'] = true });
-assert(not s.preview and notes[1] == 'Samples show on the timer panels, Party list buffs, Overhead icons, the Party cooldowns list, Phantom Roll and Pet. Turn one on first.', 'With nothing on it says so.');
+assert(not s.preview and notes[1] == 'Samples show on the timer panels, Party list, Overhead icons, the Party cooldowns list, Phantom Roll and Pet. Turn one on first.', 'With nothing on it says so.');
 
 -- The attention lines show only while something needs a hand, one fix per line.
 fresh();
@@ -455,7 +472,7 @@ draw({ ['Resume##main_resume'] = true });
 assert(texts['Timer panels are paused.'] and s.enabled and one('Resume timer panels', true), 'Paused timers get a line and Resume.');
 s.effect_filters.enabled, changes = false, {};
 draw({ ['Use it again##main_use_list'] = true });
-assert(texts['The Hidden everywhere list is paused.'] and s.effect_filters.enabled and one('Use the Hidden everywhere list', true), 'A paused list gets a line and Use it again.');
+assert(texts['The Hide list is paused.'] and s.effect_filters.enabled and one('Use the Hide list', true), 'A paused list gets a line and Use it again.');
 hidden, changes = true, {};
 draw({ ['Show##main_show'] = true });
 assert(texts['Vantage displays are hidden (/vg hide).'] and shows == 1 and #changes == 0, 'Hidden displays get a line; Show saves nothing.');
@@ -464,12 +481,30 @@ local edit_mode = require('ui.edit_mode');
 local active = edit_mode.active;
 edit_mode.active = function() return true; end;
 edits = {};
-draw({ ['End edit mode##main_edit_end'] = true });
-assert(texts['Edit mode is on.'] and edits[1] == false, 'Edit mode gets a line and its way out.');
+draw({ ['Done arranging##main_edit_end'] = true });
+assert(texts['Arrange on screen is on.'] and edits[1] == false, 'Arrange on screen gets a line and its way out.');
 edit_mode.active = active;
 draw();
 assert(not called('Button', 'Resume##main_resume') and not called('Button', 'Use it again##main_use_list') and not called('Button', 'Show##main_show')
-    and not called('Button', 'End edit mode##main_edit_end'), 'Each line shows only while its condition holds.');
+    and not called('Button', 'Done arranging##main_edit_end'), 'Each line shows only while its condition holds.');
+
+-- Chat line colors, under While playing: the game's color numbers, stepping past 10 and 13, and a sample line.
+fresh();
+sections['Chat line colors'] = true;
+draw();
+assert(called('SliderFloat', '##main_chat_brackets') and called('SliderFloat', '##main_chat_name') and called('SliderFloat', '##main_chat_message'),
+    'The fold has the three colors.');
+sliders['##main_chat_name'] = 10;
+draw();
+assert(s.chat_colors.tag_word == 11 and one('Chat name color', false), 'A slide up to 10 steps past it: ' .. tostring(s.chat_colors.tag_word));
+changes = {};
+sliders['##main_chat_message'] = 13;
+draw();
+assert(s.chat_colors.replies == 12, 'A slide down to 13 steps past it: ' .. tostring(s.chat_colors.replies));
+local samples = 0;
+helper.call = function(name) if name == 'chat_sample' then samples = samples + 1; end; return true; end;
+draw({ ['Print a sample line##main_chat_sample'] = true });
+assert(samples == 1, 'Print a sample line prints one.');
 
 -- A frame makes no closures: the search marks run only while there is a search, and every label on the page is one the
 -- index holds, marked in some state while searching.
@@ -478,7 +513,8 @@ fresh();
 draw();
 assert(next(marks) == nil, 'With no search nothing is marked.');
 helper.search[1] = 'zzzz';
-sections['More look'], sections.Colors, sections['Grid and snapping'] = true, true, true;
+open_look();
+sections.Colors, sections['Chat line colors'] = true, true;
 s.enabled, s.effect_filters.enabled, s.party_ui.enabled, s.alerts.muted, s.style.text_outline, s.preview = false, false, true, true, true, true;
 s.edit_mode.grid_mode = true;
 s.party_cooldowns.enabled, s.party_cooldowns.list.enabled, s.party_cooldowns.strips, s.party_cooldowns.overhead = true, false, false, false;
@@ -486,10 +522,6 @@ s.ready_pulse.enabled = true;
 for _, id in ipairs({ 'recasts', 'spell_recasts', 'ability_recasts', 'item_recasts' }) do s.panels[id].enabled = false; end;
 hidden = true;
 edit_mode.active = function() return true; end;
--- A display's tick for Grid mode shows only while that display is on.
-local elements = require('ui.elements');
-local on = elements.on;
-elements.on = function() return true; end;
 draw();
 -- Paused, no timer panel has samples to end.
 s.enabled = true;
@@ -497,7 +529,7 @@ draw();
 -- Lock all takes over from Unlock all while a display is unlocked.
 s.panels.self_buffs.locked = false;
 draw();
-elements.on, edit_mode.active, hidden = on, active, false;
+edit_mode.active, hidden = active, false;
 s.style.minimal = false;
 
 -- A drag changes the settings every frame, so while the mouse is held the page's lines wait for it to come up. Settings
@@ -506,19 +538,19 @@ local revision = 1;
 cb.settings_revision = function() return revision; end;
 local held = fresh();
 draw();
-assert(texts['Hidden everywhere: nothing yet'], 'Fixture: nothing hidden.');
+assert(texts['Every display is locked.'], 'Fixture: every display locked.');
 MOCK.mouse_down = true;
-s.effect_filters.rules = { { enabled = true, effect = 253, kind = 'all', name = '', job = 0, scope = 'all' } };
+s.panels.self_buffs.locked = false;
 revision = 2;
 draw();
-assert(texts['Hidden everywhere: nothing yet'], 'While the mouse is held, the line waits.');
+assert(texts['Every display is locked.'], 'While the mouse is held, the line waits.');
 MOCK.mouse_down = false;
 draw();
-assert(texts['Hidden everywhere: Signet'], 'Let go, it catches up.');
+assert(texts['Unlocked: Self buffs. Hold Shift and drag one to move it.'], 'Let go, it catches up.');
 MOCK.mouse_down = true;
 fresh();
 draw();
-assert(texts['Hidden everywhere: nothing yet'] and s ~= held, 'Settings put in their place are read at once, held or not.');
+assert(texts['Every display is locked.'] and s ~= held, 'Settings put in their place are read at once, held or not.');
 MOCK.mouse_down, cb.settings_revision = false, nil;
 local labels = 0;
 for _, entry in ipairs(page.labels) do

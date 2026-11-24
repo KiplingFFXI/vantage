@@ -204,6 +204,21 @@ local failures = warmup.report().failed;
 assert(#failures == 2 and failures[1].name == 'broken1' and failures[1].problem == 'one' and failures[2].name == 'broken2'
     and failures[2].problem == 'two', 'The report keeps both steps and why.');
 
+-- A group the displays don't wait for, as the alert sounds, runs again too, but the report's restarts count only the
+-- groups they wait for: what a new graphics device makes again.
+ran = {};
+warmup.start({ { group = 'assets', steps = { step('p', 1) } },
+    { group = 'sounds', deferred = true, displays = false, steps = { step('s1', 1), step('s2', 1) } } }, say);
+warmup.asked();
+warmup.want('sounds');
+present(); present(); present();
+assert(table.concat(ran, ' ') == 'p s1 s2' and warmup.ready(), 'Fixture: every step ran and the displays draw.');
+assert(warmup.restart('sounds') and warmup.ready(), 'Its restart keeps the displays drawing.');
+present();
+assert(table.concat(ran, ' ') == 'p s1 s2 s1 s2' and warmup.report().restarts == 0,
+    'It runs again and counts no restart: ' .. warmup.report().restarts);
+assert(warmup.restart('assets') and warmup.report().restarts == 1, 'A group the displays wait for counts.');
+
 -- Nothing runs inside a step: a drain or a Present from one does nothing, and a drain afterwards does the rest.
 ran, said = {}, {};
 local inner;

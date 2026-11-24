@@ -61,7 +61,7 @@ local function size(id)
 end;
 s.panels.self_buffs.mode = 'bars';
 size('self_buffs');
-assert(said('##frame_Bar width'), 'Fixture: the Size and place tab of a bar panel is on screen.');
+assert(said('##frame_Row height'), 'Fixture: the Size and place tab of a bar panel is on screen.');
 assert(not any('Bar span'), 'A bar panel has no Bar span: ' .. tostring(any('Bar span')));
 size('spell_recasts');
 assert(not any('Bar span'), 'A recast panel has none: ' .. tostring(any('Bar span')));

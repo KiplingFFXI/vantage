@@ -1,7 +1,7 @@
 """The settings scenarios of tests/frame_harness.lua measure what they say.
 
 A search_ scenario keeps its text in the settings search box, a player typing moves through the words and the pages, the
-main page's rows have More look closed and open, a panel_ row draws its tab, and a settings scenario fails when the window
+main page's rows have the look folds closed and open, a panel_ row draws its tab, and a settings scenario fails when the window
 never loaded or stopped, which would otherwise pass as a fast window. Skipped without the client.
 """
 from pathlib import Path
@@ -60,7 +60,7 @@ class SearchScenarioTests(unittest.TestCase):
                 self.assertEqual(lua.eval("require('ui.settings_window').search_memo.query"), 'effects')
                 self.assertEqual(lua.eval('H.app.state.settings.window.tab'), page)
 
-    def test_main_page_rows_have_more_look_closed_and_open(self):
+    def test_main_page_rows_have_the_look_folds_closed_and_open(self):
         for scenario, open_look in (('main_closed', False), ('main_open', True)):
             self.assertIn(scenario, benchmark_frame.FRAMES)
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix='vantage_frame_') as folder:
@@ -68,41 +68,32 @@ class SearchScenarioTests(unittest.TestCase):
                 lua.globals().H.run(5)
                 self.assertEqual(lua.eval('H.app.state.settings.window.tab'), 'Home')
                 self.assertTrue(lua.eval("DRAWN['##main_skin'] == true"))
-                self.assertEqual(lua.eval("DRAWN['##main_icon_size'] == true"), open_look)
-
-    def test_main_grid_row_has_the_grid_fold_open(self):
-        self.assertIn('main_grid', benchmark_frame.FRAMES)
-        for scenario, grid in (('main_closed', False), ('main_grid', True)):
-            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix='vantage_frame_') as folder:
-                lua = benchmark_frame.harness(folder, scenario, setup=[DRAWN])
-                lua.globals().H.run(5)
-                self.assertEqual(lua.eval('H.app.state.settings.window.tab'), 'Home')
-                self.assertEqual(lua.eval("DRAWN['##main_grid_size'] == true"), grid)
+                self.assertEqual(lua.eval("DRAWN['##main_bar_height'] == true"), open_look)
 
     def test_panel_rows_draw_their_tab(self):
         for scenario, context, drawn, folded in (('panel_show', 'watch/show', '##frame_Layout', None),
                                                  ('panel_place', 'watch/place', '##frame_Width', None),
                                                  ('panel_look', 'watch/look', '##frame_Box', '##frame_Line up rows'),
                                                  ('panel_look_open', 'watch/look', '##frame_Line up rows', None),
-                                                 ('panel_filters', 'watch/filters', '##frame_Effect', None),
+                                                 ('panel_filters', 'watch/filters', '##Effect', None),
                                                  ('panel_place', 'watch/place', '##frame_Fills', None),
                                                  ('panel_when', 'watch/when', '##frame_From_min', None),
-                                                 ('panel_recasts', 'recasts/show', '##frame_Editing', None),
-                                                 ('panel_party', 'party_ui/show', '##frame_Your own row', None),
+                                                 ('panel_recasts', 'recasts/show', '##frame_Icons show', None),
+                                                 ('panel_party', 'party_ui/show', '##frame_Include me', None),
                                                  ('panel_party_place', 'party_ui/place', '##frame_Longest row', None),
                                                  ('panel_party_look', 'party_ui/look', '##frame_Opacity', None),
-                                                 ('panel_party_filters', 'party_ui/filters', '##frame_Effect', None),
+                                                 ('panel_party_filters', 'party_ui/filters', '##Effect', None),
                                                  ('panel_party_place', 'party_ui/place', '##frame_Buff side', None),
                                                  ('panel_party_when', 'party_ui/when', '##frame_From_min', None),
                                                  ('panel_overhead', 'overhead/show', '##frame_Most units at once', None),
-                                                 ('panel_overhead_filters', 'overhead/filters', '##frame_Effect', None),
+                                                 ('panel_overhead_filters', 'overhead/filters', '##Effect', None),
                                                  ('panel_cooldowns', 'cooldown_list/show', '##frame_Most shown', None),
                                                  ('panel_rolls', 'rolls/show', '##frame_Most rolls shown', None),
                                                  ('panel_pet', 'pet/show', '##frame_Most effects shown', None),
-                                                 ('panel_pet_filters', 'pet/filters', '##frame_Effect', None),
+                                                 ('panel_pet_filters', 'pet/filters', '##Effect', None),
                                                  ('panel_alerts', 'notices/show', '##frame_Sound volume', '##frame_Trigger'),
                                                  ('panel_alerts_rule', 'notices/show', '##frame_Trigger', None),
-                                                 ('panel_hidden', 'hidden/show', '##frame_Effect', None)):
+                                                 ('panel_hidden', 'hidden/show', '##Effect', None)):
             self.assertIn(scenario, benchmark_frame.FRAMES)
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix='vantage_frame_') as folder:
                 lua = benchmark_frame.harness(folder, scenario, setup=[DRAWN])

@@ -27,28 +27,24 @@ function editor.catalog_snapshot(entries)
     return snapshot;
 end;
 
+-- The effect picked from entries, or nil. selection keeps the pick, in effect, and the entries' names by id, in labels.
 -- revision, when given, changes whenever an entry changes in place, so the entries aren't walked each frame to find out,
 -- and one added or taken off shows in their count. Without one they are compared with what they were.
 function editor.selection(entries, selection, revision)
-    local query = selection.query:lower();
-    local changed = selection.catalog ~= entries or selection.filtered_query ~= query;
+    local changed = selection.catalog ~= entries;
     if not changed then
         if revision ~= nil then changed = selection.revision ~= revision or selection.count ~= #entries;
         else changed = not editor.same_catalog(entries, selection.catalog_snapshot); end;
     end;
     if changed then
-        local ids, labels, exact = {}, {}, nil;
-        for _, effect in ipairs(entries) do
-            -- The rows show only names, but typing an effect's number still finds it.
-            local number = tostring(effect.id) == query;
-            if query == '' or number or effect.name:lower():find(query, 1, true) then ids[#ids + 1], labels[effect.id] = effect.id, effect.name; end;
-            if number or effect.name:lower() == query then exact = effect.id; end;
-        end;
-        selection.catalog, selection.count, selection.filtered_query, selection.revision = entries, #entries, query, revision;
+        local labels = {};
+        for _, effect in ipairs(entries) do labels[effect.id] = effect.name; end;
+        selection.catalog, selection.count, selection.revision = entries, #entries, revision;
         selection.catalog_snapshot = editor.catalog_snapshot(entries);
-        selection.ids, selection.labels, selection.first = ids, labels, exact or ids[1];
+        selection.labels = labels;
     end;
-    if not selection.labels[selection.effect] then selection.effect = selection.first; end;
+    -- Nothing is chosen until one is picked, and one the list no longer has is let go.
+    if selection.effect ~= nil and not selection.labels[selection.effect] then selection.effect = nil; end;
     return selection.effect;
 end;
 

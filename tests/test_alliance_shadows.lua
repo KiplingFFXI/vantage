@@ -21,26 +21,14 @@ local function snapshot(zone)
             [FRIEND] = { id = FRIEND, name = 'Friend', kind = 'player' }, [STRANGER] = { id = STRANGER, name = 'Stranger', kind = 'player' },
             [MOB] = { id = MOB, name = 'Yagudo Conquistador', kind = 'monster' } } };
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 -- One target row: { target, message, param, added, added_param, reaction, reaction_param }.
 local function action(actor, category, id, rows)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #rows); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, row in ipairs(rows) do
-        putbits(bytes, at, 32, row[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, row[3] or 0); putbits(bytes, at + 44, 10, row[2] or 0); at = at + 85;
-        putbits(bytes, at, 1, row[4] and 1 or 0); at = at + 1;
-        if row[4] then putbits(bytes, at + 10, 17, row[5] or 0); putbits(bytes, at + 27, 10, row[4]); at = at + 37; end
-        putbits(bytes, at, 1, row[6] and 1 or 0); at = at + 1;
-        if row[6] then putbits(bytes, at + 10, 14, row[7] or 0); putbits(bytes, at + 24, 10, row[6]); at = at + 34; end
+    local targets = {};
+    for i, row in ipairs(rows) do
+        targets[i] = { id = row[1], rows = { { message = row[2], param = row[3], added = row[4], added_param = row[5],
+            reaction = row[6], reaction_param = row[7] } } };
     end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, targets));
 end
 local function utsusemi(who, spell) return action(who, 4, spell, { { who, 230, 66 } }); end
 local function first(events, kind)
@@ -116,4 +104,21 @@ row = step(31, { action(MOB, 4, 144, { { FRIEND, 2, 300 } }) });
 assert(row and row.shadows == 3, 'A spell that went past them leaves the count.');
 row, count = step(32, { action(MOB, 1, 0, { { FRIEND, 1, 52 } }) });
 assert(count == 0, 'A hit got through, so none were left.');
+-- Their Blink gives 2, which go as a mob's do, and keeps its own icon. A hit that gets past it leaves it.
+row = step(40, { action(FRIEND, 4, 53, { { FRIEND, 230, 36 } }) });
+assert(row and row.effect == 36 and row.shadows == 2 and (row.icon or row.effect) == 36, 'Blink starts two: ' .. tostring(row and row.shadows));
+row = step(41, { action(MOB, 1, 0, { { FRIEND, 1, 52 } }) });
+assert(row and row.effect == 36 and row.shadows == 2, 'A hit that got past it leaves it.');
+row = step(42, { action(MOB, 1, 0, { { FRIEND, 31, 1 } }) });
+assert(row and row.effect == 36 and row.shadows == 1 and (row.icon or row.effect) == 36, 'One left.');
+row, count = step(43, { action(MOB, 1, 0, { { FRIEND, 31, 1 } }) });
+assert(count == 0, 'Its last shadow took Blink with it.');
+-- A blue mage's Zephyr Mantle puts on Blink with 4.
+row = step(50, { action(FRIEND, 4, 647, { { FRIEND, 230, 36 } }) });
+assert(row and row.effect == 36 and row.shadows == 4 and (row.icon or row.effect) == 36,
+    'Zephyr Mantle starts four: ' .. tostring(row and row.shadows));
+row = step(51, { action(MOB, 1, 0, { { FRIEND, 31, 3 } }) });
+assert(row and row.effect == 36 and row.shadows == 1, 'Three went.');
+row, count = step(52, { action(MOB, 1, 0, { { FRIEND, 31, 1 } }) });
+assert(count == 0, 'Its last shadow took Zephyr Mantle\'s Blink with it.');
 return 'An alliance member\'s shadows are counted as a mob\'s, and Ni goes by the job the client shows';

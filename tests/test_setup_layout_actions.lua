@@ -1,7 +1,7 @@
 local defaults,presets=require('ui.defaults'),require('setup_fixture');
 local copy,custom=require('core.store').copy,require('core.customization');
 local appearance=require('ui.appearance');
--- The look the party list buffs draw with: the timer panels' look, with their own icons and opacity.
+-- The look Party list draws with: the timer panels' look, with its own icons and opacity.
 local party_look=require('ui.party_theme').party;
 local imgui=require('imgui');
 require('ui.fonts').measure=function(_,value,size)return #value*7*size/16;end;
@@ -14,7 +14,7 @@ local function seed(face,locked)
     local p=s.party_ui;
     p.enabled,p.preview,p.locked=true,false,not locked;
     p.strips.alliance1=false;
-    p.style.icon_art,p.style.opacity=face=='XI View' and 'Client' or 'XI View',.6;
+    p.style.icon_art,p.style.opacity=face=='XI View' and 'Original FFXI' or 'XI View',.6;
     p.name_display,p.name_length='short',6;
     p.groups[2].order={5,4,3,2,1,0};
     p.groups[2].native_x,p.groups[2].native_side,p.groups[3].native_detached,p.groups[3].detached_x=-12,'right',true,333;
@@ -89,7 +89,7 @@ for _,spec in ipairs(sizes)do for _,face in ipairs({'Original FFXI','XI View','A
         data_preserved(s,before);
         local applied=seed(face,locked);
         assert(presets.apply(applied,{skin='Mint',size=spec[1],matching=true}),'The chosen skin and size apply.');
-        -- The party list buffs wear the timer panels' look.
+        -- Party list wears the timer panels' look.
         assert(applied.style.theme=='Mint' and party_look(applied.party_ui,applied.style).theme=='Mint' and applied.style.scale==spec[2],
             'Explicit staged choices apply to the complete setup.');
     end;
@@ -103,15 +103,15 @@ end;
 -- The explicit font/artwork opt-out survives even a complete default setup.
 for _,spec in ipairs(sizes)do for _,skin in ipairs(appearance.names)do
     local source=seed('XI View',true);
-    source.style.font,source.style.icon_art='Tahoma Bold','Client';
+    source.style.font,source.style.icon_art='Tahoma Bold','My icons';
     local before=copy(source);
     assert(presets.apply(source,{size=spec[1],skin=skin,matching=false}));
     for _,key in ipairs({'font','gauge_art','icon_art','recast_icon_art'})do
         assert(source.style[key]==before.style[key],'Unmatched full setup preserves the selected global family: '..key);
     end;
     same_fields(source.party_ui.style,before.party_ui.style,{'icon_art'},'Unmatched party_ui');
-    -- The party list buffs keep their own icons, at the setup's font size.
-    assert(party_look(source.party_ui,source.style).icon_art==before.party_ui.style.icon_art,'Unmatched party list buffs keep their icons');
+    -- Party list keeps its own icons, at the setup's font size.
+    assert(party_look(source.party_ui,source.style).icon_art==before.party_ui.style.icon_art,'An unmatched Party list keeps its icons');
     assert(source.style.scale==spec[2] and source.style.font_size==16 and party_look(source.party_ui,source.style).font_size==16);
     data_preserved(source,before);
 end;end;
@@ -132,7 +132,7 @@ end;
 local app=dofile(ADDON_DIR..'/vantage.lua');
 local window=require('ui.settings_window');
 local current;
--- Manual controls remain usable after a setup and keep the chosen size. Party opacity is with the party list buffs'
+-- Manual controls remain usable after a setup and keep the chosen size. Party opacity is with Party list's
 -- own icons; the party list has no font size of its own.
 local sliders=imgui.SliderFloat;
 for _,entry in ipairs({{'look','Opacity',0.5,function(p) return p.style.opacity==0.5; end},

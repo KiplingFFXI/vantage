@@ -85,7 +85,7 @@ assert(layout.chat({chat={x=0,y=0,width=0,height=10}})==nil)
 local placing=defaults.make()
 for _,switch in ipairs({'snap_grid','snap_screen','snap_party','snap_chat'}) do placing.edit_mode[switch]=false end
 placing.edit_mode.snap_distance=5
--- Grid mode on, with Self buffs ticked for it.
+-- Snap while moving on, with Self buffs ticked for it.
 placing.edit_mode.grid_mode,placing.edit_mode.grid_displays=true,{'self_buffs'}
 elements.frame();elements.frame()
 elements.record('self_debuffs',{x=100,y=50,width=90,height=40})

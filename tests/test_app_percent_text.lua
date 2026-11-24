@@ -8,12 +8,7 @@ for _, name in ipairs({ 'TextWrapped', 'BulletText', 'SetTooltip' }) do
 end;
 local SNAP = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 1, self_known = true, self_effects = {}, party = {}, entities = {
     [1001] = { id = 1001, name = 'Tester', hp = 100, mp = 100, tp = 0, level = 75, job = 1 } } };
-package.loaded['core.client'] = { load = function() end, read = function() return store.copy(SNAP); end };
-package.loaded['core.observer'] = { read = function() return {}; end };
-local hud = require('ui.hud');
-hud.draw, hud.draw_notices = function() end, function() end;
-require('ui.party_hud').draw = function() return 0, {}; end;
-require('ui.native_party_hud').draw = function() return 0, {}; end;
+require('app_fixture')(SNAP);
 package.loaded['core.native_party_ui'] = { treasure_open = function() return false; end, update = function() end,
     status = function() return { active = false }; end, restore = function() return true; end, suspend = function() return true; end };
 local app = dofile(ADDON_DIR .. '/vantage.lua');

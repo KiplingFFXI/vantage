@@ -71,50 +71,36 @@ local function frames(count)
         if leak and i % 6 == 0 then made = {}; end
     end
 end
--- A full collection shrinks the Lua stack, and the next frames grow it back once, which is LuaJIT's and not a frame's,
--- so a few frames run after the collection, with the collector stopped, before counting starts.
-local function measure(count)
-    jit.off(); jit.flush();
-    frames(60);
-    collectgarbage('collect'); collectgarbage('collect');
-    collectgarbage('stop');
-    frames(6);
-    local before = collectgarbage('count');
-    frames(count);
-    local each = (collectgarbage('count') - before) / count;
-    collectgarbage('restart');
-    jit.on();
-    return each;
-end
+local alloc = require('alloc_fixture');
 -- Warm, so every countdown text has been made once.
 frames(2700);
-local each = measure(600);
+local each = alloc.measure(frames, 600);
 assert(each < 0.002, ('Drawing the two displays makes %.4f KB a frame; nothing expected'):format(each));
 leak = true;
-each = measure(600);
+each = alloc.measure(frames, 600);
 leak = false;
 assert(each >= 0.002 and made, ('One table made ten times a second shows as %.4f KB a frame'):format(each));
 -- The effects as a list, and a jug's clock in place of the charm, make nothing more.
 s.pet.effects_as = 'list';
 frames(600);
-each = measure(600);
+each = alloc.measure(frames, 600);
 s.pet.effects_as = 'icons';
 assert(each < 0.002, ('The effects as a list make %.4f KB a frame'):format(each));
 local charm = view.pet.charm;
 view.pet.charm, view.pet.jug = nil, { name = 'SheepFamiliar', seconds = 3600, deadline = 3000 };
 frames(600);
-each = measure(600);
+each = alloc.measure(frames, 600);
 view.pet.charm, view.pet.jug = charm, nil;
 assert(each < 0.002, ('A jug\'s clock makes %.4f KB a frame'):format(each));
 -- The samples refill their own tables, and so does the SAMPLE tag over them, so drawing them makes nothing more.
 s.rolls.preview, s.pet.preview = true, true;
 frames(600);
-each = measure(600);
+each = alloc.measure(frames, 600);
 assert(each < 0.002, ('The samples make %.4f KB a frame'):format(each));
 for _, job in ipairs({ 9, 14, 15, 18 }) do
     view.context = { job = job };
     frames(600);
-    each = measure(600);
+    each = alloc.measure(frames, 600);
     assert(each < 0.002, ('The sample for job %d makes %.4f KB a frame'):format(job, each));
 end
 view.context = nil;
@@ -127,8 +113,28 @@ rawset(imgui, 'GetForegroundDrawList', function() return top; end);
 list.GetClipRectMin = function() return 0, 0; end;
 list.GetClipRectMax = function() return 1920, 1080; end;
 frames(600);
-each = measure(600);
+each = alloc.measure(frames, 600);
 assert(over > 0 and each < 0.002, ('The samples over the settings window make %.4f KB a frame'):format(each));
+-- On the Original FFXI skin with its window art there, each box draws that art (client_skin.panel), and still makes
+-- nothing.
+local assets = require('ui.client_assets');
+local client_texture, window_art, panels = assets.texture, {}, 0;
+for _, name in ipairs({ 'newtex', 'corner', 'hfr1', 'vfr1' }) do
+    local size = name == 'newtex' and 128 or 32;
+    window_art[name] = { id = 7, width = size, height = size, across = true, down = true };
+end
+assets.texture = function(kind, name, window_type)
+    if kind ~= 'window' then return client_texture(kind, name, window_type); end
+    if name == 'newtex' then panels = panels + 1; end
+    return window_art[name];
+end
+local plain_theme = s.style.theme;
+s.style.theme = 'Original FFXI';
+frames(600);
+panels = 0;
+each = alloc.measure(frames, 600);
+s.style.theme, assets.texture = plain_theme, client_texture;
+assert(panels > 0 and each < 0.002, ('The boxes on the window art make %.4f KB a frame'):format(each));
 
 -- With no art from the client, a picture leaves nothing in its place: no tile and no edge.
 local icons = require('ui.icons');

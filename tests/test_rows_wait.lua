@@ -20,12 +20,12 @@ local function none(names, list, says)
     for _, label in ipairs(list) do assert(not names[label], says .. ': ' .. label); end;
 end;
 
-local BAR = { 'Bar shape', 'Bar runs', 'Fill from', 'Shaded bars', 'Bar track color', 'Bar fill start color' };
+local BAR = { 'Bar shape', 'Bar runs', 'Fill from', 'Shaded bars', 'Bar track color', 'Bar color' };
 local TEXT = { 'Row text', 'Name color' };
 all(rows('look'), { 'Show its heading', 'Heading', 'Box', 'Show the bar', 'Show row text', 'Ending soon', 'Title color', 'Countdown color', 'Row text' }, 'A fresh panel has it');
 all(rows('look'), BAR, 'A fresh panel has it');
-all(rows('look', function(p) p.gradient = true; end), { 'Bar fill end color' }, 'Shaded bars has its end color');
-none(rows('look'), { 'Bar fill end color' }, 'One color has no end');
+all(rows('look', function(p) p.gradient = true; end), { 'Shaded bars end color' }, 'Shaded bars has its end color');
+none(rows('look'), { 'Shaded bars end color' }, 'One color has no end');
 
 -- The bar off: what shapes it goes, and the tick stays to turn it back on.
 local names = rows('look', function(p) p.show_fill = false; end);
@@ -56,7 +56,7 @@ none(rows('look', function(p) p.show_heading = false; end), { 'Heading', 'Title 
 -- No boxes or headings, for every panel.
 names = rows('look', function(_, s) s.style.minimal = true; end);
 none(names, { 'Show its heading', 'Heading', 'Box', 'Title color', 'Background color', 'Border color' }, 'No boxes or headings takes it');
-assert(h.says('No boxes or headings is on, so this panel draws neither. Turn it off under More look on the main page to use them.'), 'And says where to turn it off.');
+assert(h.says('No boxes or headings is on, so this panel draws neither. Turn it off under Boxes on the main page to use them.'), 'And says where to turn it off.');
 h.fresh(function(s) s.style.minimal = true; end);
 h.on(ID, 'look');
 assert(lands('panel box') == 'Why there is no box or heading' or lands('panel box') == 'Layout', 'Box leads to what hides it: ' .. tostring(lands('panel box')));
@@ -87,10 +87,10 @@ assert(not rows('show', function(p) p.show_target = true; end)['Who it is on'], 
 assert(rows('show', nil, 'target')['Who it is on'], 'On Target it stays.');
 
 -- A color for one effect shows on a bar, or a countdown that takes a row's color. Otherwise a line says where it would.
-local TINT = 'A color shows on a bar, or on a countdown while Color each countdown by how sure Vantage is of its time is on under More look.';
+local TINT = 'A color shows on a bar, or on a countdown while Color each countdown by how sure Vantage is of its time is on under While playing.';
 local function picked(change)
     rows('filters', change);
-    h.type('##frame_Find an effect', 'Haste');
+    h.choose('Haste', 33);
     return h.drawn();
 end;
 assert(picked().Color and not h.says(TINT), 'A panel with bars takes a color.');

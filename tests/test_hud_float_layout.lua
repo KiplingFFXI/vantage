@@ -83,3 +83,38 @@ for _, mode in ipairs({'bars', 'expanded'}) do
         end;
     end;
 end;
+-- An auto-width icon panel one cell wide gets its cell back as room only up to float error: at Size 0.85 read back,
+-- a 26 px cell comes back as 25.999999999999996. A countdown as wide as the cell still shows on one line, so each row
+-- is its icon and one line of countdown. '25m' is 26 px wide here, with a pixel of outline each side. Each case has
+-- its own countdown size, so no wrap is kept from the one before.
+local countdown = require('ui.countdown_text');
+local shown = {};
+countdown.draw = function(_, _, text) shown[#shown + 1] = text; return true; end;
+for _, case in ipairs({{'horizontal', 1, 12}, {'vertical', 3, 13}}) do
+    s, p = setup(0.85, 4, 28);
+    p.mode, p.auto_width, p.min_width, p.max_width, p.stack_direction = 'icons', true, 24, 700, case[1];
+    p.icon_countdown_size = case[3];
+    local rows = {};
+    for i = 1, case[2] do
+        rows[i] = {key='t'..i, effect=40+i, slot=i-1, scope='self', entity_id=1001, kind='buff', status='server',
+            present=true, name='E'..i, deadline=2500, total=36000};
+    end;
+    shown, MOCK.imgui_calls = {}, {};
+    hud.draw({valid=true, context={id=1001, valid=true}, rows=rows}, s, 1000, {});
+    local size;
+    for _, call in ipairs(MOCK.imgui_calls) do
+        if call[1] == 'SetNextWindowSize' then size = call[2];
+        elseif call[1] == 'Begin' and call[2] == '##vantage_self_buffs' then break; end;
+    end;
+    local scale = s.style.scale;
+    local _, wide, tall = countdown.icon_values(s.style.font, '25m', 28, p, scale);
+    assert(math.abs(wide * scale - 26) < 1e-9 and size[1] - 8 * scale < 26,
+        'Fixture: the cell comes back a hair short of the countdown at ' .. case[1]);
+    local whole = #shown == case[2];
+    for _, text in ipairs(shown) do whole = whole and text == '25m'; end;
+    assert(whole, ('A fitted %s icon panel shows each countdown whole: %s'):format(case[1], table.concat(shown, ' | ')));
+    -- 4 px of padding above and below, and the gap between rows.
+    local height = 8 * scale + case[2] * (28 * scale + tall * scale + 4 * scale) - 4 * scale;
+    assert(math.abs(size[2] - height) < 1e-6,
+        ('A fitted %s icon panel is no taller than one line of countdown makes it: %s, not %s'):format(case[1], size[2], height));
+end;

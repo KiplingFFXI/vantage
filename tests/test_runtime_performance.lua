@@ -51,7 +51,7 @@ package.loaded['ui.hud'] = {
 };
 package.loaded['ui.party_hud'] = { draw = function() return false, {}; end, cancel_layout_gesture = function() end };
 package.loaded['ui.native_party_hud'] = { draw = function() return false, {}; end, cancel_layout_gesture = function() end };
--- The window opens Party list buffs for the Party & alliance page, as the real one does.
+-- The window opens Party list for the Party & alliance page, as the real one does.
 package.loaded['ui.panel_frame'] = { opened = function() return 'party_ui'; end };
 package.loaded['ui.settings_window'] = { draw = function(s) if s.window.tab == 'Party & alliance' then s.window.tab = 'Display'; end; end };
 local app = dofile(ADDON_DIR .. '/vantage.lua');

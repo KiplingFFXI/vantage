@@ -39,12 +39,7 @@ assert(not ok and written == why and text() == '\255\254{\0}\0', 'An unreadable 
 
 -- The app on such a file: it runs on defaults, and refusing to save over it names the file.
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
-package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
-package.loaded['core.observer'] = { read = function() return {}; end };
-local hud = require('ui.hud');
-hud.draw, hud.draw_notices = function() end, function() end;
-require('ui.party_hud').draw = function() return 0, {}; end;
-require('ui.native_party_hud').draw = function() return 0, {}; end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui'] = { treasure_open = function() return false; end, update = function() end,
     status = function() return { active = false }; end, restore = function() return true; end, suspend = function() return true; end };
 local own = MOCK_INSTALL_PATH .. '/config/addons/vantage/Tester_1001';

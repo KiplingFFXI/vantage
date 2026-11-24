@@ -2,6 +2,7 @@ local defaults = require('ui.defaults')
 local theme = require('ui.theme')
 local fonts = require('ui.fonts')
 local skin = require('ui.client_skin')
+local steady = require('core.steady')
 local resize = require('ui.resize')
 local frame = require('ui.panel_frame')
 local window = {}
@@ -11,8 +12,11 @@ local callbacks, imgui, settings, live_view
 local catalog_cache, catalog_seen = nil, {}
 -- Goes up whenever the status catalog changes: when it's made, when a row is added, and when the client names a row in it.
 local catalog_changes, catalog_renamed = 0, nil
-local recast_catalog_cache, empty_catalog, recast_view_signature = {}, {}, ''
-local recast_signature_frame, draw_frame, saved_revision, recast_list_frame = -1, 0, -1, -1
+local recast_catalog_cache, empty_catalog, recast_view_signature = {}, {}, 0
+local recast_signature_rows, draw_frame, saved_revision, recast_list_frame = nil, 0, -1, -1
+-- The recasts on the live rows, three values each, and how many, with how many rows there were. recast_view_signature
+-- goes up when they change.
+local recast_seen, recast_seen_count, recast_signature_size = {}, 0, 0
 -- A look pick waiting for Apply or Cancel: { id, owner, text, action }.
 local look_confirm
 local escape_busy = false
@@ -27,12 +31,19 @@ local message_kind = 'notes'
 local tabs = { 'Home', 'Display', 'Durations', 'Profiles', 'Help' }
 -- What a page is called in its top line and in search results.
 local page_labels = { Home='Main page', Display='Timers and recasts', Durations='Timer durations', Profiles='Profiles and sharing' }
+-- What Back calls a page it goes to.
+frame.page_names = page_labels
 -- The page of the panel frame, and the names a command opens a display on it by. Which display and tab they open is
 -- the frame's to say.
 local frame_pages = { Display=true, Recasts=true, ['Party & alliance']=true, Filters=true }
 
 local function note(text, kind)
-    message, message_at, message_kind = text, os.clock(), kind or 'notes'
+    message, message_at, message_kind = text, steady(), kind or 'notes'
+end
+
+-- The note while it is shown, for 8 seconds after it was made.
+local function shown_note()
+    if message and steady() - message_at < 8 then return message end
 end
 
 -- geometry marks a change that moves or resizes this window, which Undo then puts back.
@@ -59,25 +70,35 @@ local function call(name, ...)
     return ok
 end
 
-local function open_page(page, panel, destination)
+-- back: this is Back itself, so it notes no place to come back to.
+local function open_page(page, panel, destination, back)
+    if not back then frame.remember(settings) end
     if frame_pages[page] then page, destination = 'Display', frame.route(page, panel, destination) end
     jump_section = destination
     editor_changed(function() settings.window.tab = page end)
     search[1], selected_match, scroll_match = '', 1, false
+    frame.settle(settings)
 end
 
 -- The tool pages, on the top bar. Each opens from a function made once, so a frame makes none.
 local function tool_page(text, page, help) return { text = text, help = help, open = function() open_page(page) end } end
 local tool_pages = {
-    tool_page('Profiles', 'Profiles', 'Save these settings as a profile, load one, or share one.'),
+    tool_page('Hide list', 'Filters', 'The effects hidden on every display, and the hide rules for some players or jobs.'),
     tool_page('Timer durations', 'Durations', 'Your own times for spells, abilities and effects, and the times learned from your casts.'),
+    tool_page('Profiles', 'Profiles', 'Save these settings as a profile, load one, or share one.'),
     tool_page('Help', 'Help', 'What Vantage can track, and how to move and read things.'),
 }
 
 -- A word of four letters or more ending in s also finds a word that ends without the s, so samples finds Sample displays.
+-- This runs each frame while a search is held, so the words are taken one at a time: gmatch makes a function each call.
+-- A search asks it of every row's words, so each text is lowered once and kept.
+local lowered = require('ui.render_cache').new(4096)
 function window.matches(query, value)
-    value = tostring(value or ''):lower()
-    for word in tostring(query or ''):lower():gmatch('%S+') do
+    value, query = tostring(value or ''), tostring(query or '')
+    value, query = lowered:get(value) or lowered:put(value, value:lower()), lowered:get(query) or lowered:put(query, query:lower())
+    local first, last = query:find('%S+')
+    while first do
+        local word = query:sub(first, last)
         -- A label's brackets and commas come along when it is typed out.
         local bare = word:gsub('^%p+', ''):gsub('%p+$', '')
         if bare ~= '' then word = bare end
@@ -86,6 +107,7 @@ function window.matches(query, value)
             local stem = word:sub(1, -2):gsub('%p', '%%%0')
             if not value:find('%f[%w]' .. stem .. '%f[%W]') then return false end
         end
+        first, last = query:find('%S+', last + 1)
     end
     return true
 end
@@ -103,21 +125,25 @@ function window.can_escape(was_busy, active, popup, focused, pressed)
     return not was_busy and not active and not popup and focused and pressed
 end
 
+-- The corners of the light's outline, filled in for each control it lights.
+local outline_from, outline_to = { 0, 0 }, { 0, 0 }
+
 -- The search's light on the item just drawn, if text is what finds it. named is what it is called, while a match by name
--- is wanted.
-function window.light(text, named)
+-- is wanted. label is the name its search result goes by: the result clicked is the match picked once it is drawn.
+function window.light(text, named, label)
     local memo = window.search_memo
     if memo.query ~= search[1] then memo.query, memo.verdicts = search[1], {} end
     local hit = memo.verdicts[text]
     if hit == nil then hit = window.matches(search[1], text); memo.verdicts[text] = hit end
     if not hit then return end
     matches_this_frame = matches_this_frame + 1
-    if named and memo.pick and not memo.named and window.matches(search[1], named) then memo.named = matches_this_frame end
+    if memo.want and label == memo.want then memo.named, memo.want = matches_this_frame, nil
+    elseif named and memo.pick and not memo.named and window.matches(search[1], named) then memo.named = matches_this_frame end
     if imgui.GetItemRectMin and imgui.GetWindowDrawList then
-        local x1, y1 = imgui.GetItemRectMin()
-        local x2, y2 = imgui.GetItemRectMax()
+        outline_from[1], outline_from[2] = imgui.GetItemRectMin()
+        outline_to[1], outline_to[2] = imgui.GetItemRectMax()
         local color = theme.u32(settings.style.warning_color)
-        imgui.GetWindowDrawList():AddRect({x1, y1}, {x2, y2}, color, 2, 0, matches_this_frame == selected_match and 2 or 1)
+        imgui.GetWindowDrawList():AddRect(outline_from, outline_to, color, 2, 0, matches_this_frame == selected_match and 2 or 1)
     end
     if scroll_match and matches_this_frame == selected_match and imgui.SetScrollHereY then
         imgui.SetScrollHereY(0.35)
@@ -147,7 +173,7 @@ local function mark(label, help)
         flipped[key] = known
     end
     -- A switch that shows hidden controls is lit by their names too while they are hidden, as the search found it.
-    window.light(indexed .. index.hidden_words(label, page, search_cache.on or ''), indexed)
+    window.light(indexed .. index.hidden_words(label, page, search_cache.on or ''), indexed, label)
 end
 
 -- flags are ImGui's for what counts as hovered: a greyed row asks to be hovered while disabled.
@@ -221,14 +247,13 @@ local function check(label, object, key, help, setter)
     tip(help)
 end
 
-local function text(label, object, key, help, length, transient)
+local function text(label, object, key, help, length)
     row_label(label, help)
     local value = text_value
     value[1] = object[key] or ''
     imgui.SetNextItemWidth(-1)
     if imgui.InputText('##' .. label, value, (length or 80) + 1) then
-        local function apply() object[key] = value[1]:gsub('[%c]', ''):gsub('##', '') end
-        if transient then apply() else changed(apply, false, label) end
+        changed(function() object[key] = value[1]:gsub('[%c]', ''):gsub('##', '') end, false, label)
     end
     mark(label, help)
     tip(help)
@@ -288,9 +313,9 @@ local function choice(label, object, key, choices, labels, help, setter, leaves)
     combo(label, object, key, choices, labels, help, setter, true, leaves)
 end
 
-local function query(label, object, key, help, length)
-    text(label, object, key, help, length, true)
-end
+-- Each wrapped caption by its words, with the room and the caption's width it was wrapped for, so a frame doesn't wrap
+-- it again.
+local wrapped = {}
 
 -- search names the button in the index when its caption alone says too little; false leaves it out.
 local function button(label, action, help, display_label, search)
@@ -300,9 +325,14 @@ local function button(label, action, help, display_label, search)
     local available = imgui.GetContentRegionAvail()
     local shown = caption
     if label_width + 20 > available then
-        local lines = require('ui.text_wrap').lines(caption, math.max(1, available - 20), imgui.CalcTextSize)
+        local room, kept = math.max(1, available - 20), wrapped[caption]
+        if not kept then kept = {}; wrapped[caption] = kept end
+        if kept.room ~= room or kept.width ~= label_width then
+            kept.room, kept.width = room, label_width
+            kept.text = table.concat(require('ui.text_wrap').lines(caption, room, imgui.CalcTextSize), '\n')
+        end
         -- Keep the same button ID when its caption wraps.
-        shown = table.concat(lines, '\n')
+        shown = kept.text
     end
     if imgui.Button(shown .. '###' .. label) then action() end
     if search ~= false then mark(search or label, help) end
@@ -329,15 +359,24 @@ local function pending_look(id)
     return look_confirm and look_confirm.id == id and look_confirm or nil
 end
 
--- The question for one pick, drawn where that pick was made.
+-- What the question's buttons do, made once so a frame with one up makes none. Each answers the question waiting now.
+local function apply_look()
+    local pending = look_confirm
+    look_confirm = nil
+    pending.action()
+end
+local function cancel_look() look_confirm = nil end
+
+-- The question for one pick, drawn where that pick was made. Its buttons show only while it waits, so they stay out of
+-- the search index.
 local function confirm_line(id)
     local pending = pending_look(id)
     if not pending then return end
     imgui.TextWrapped(pending.text)
-    button((pending.apply or 'Apply') .. '##look_' .. id, function() look_confirm = nil; pending.action() end,
-        pending.apply_help or 'Apply it and replace those looks. Undo brings them back.')
+    button((pending.apply or 'Apply') .. '##look_' .. id, apply_look,
+        pending.apply_help or 'Apply it and replace those looks. Undo brings them back.', nil, false)
     imgui.SameLine()
-    button('Cancel##look_' .. id, function() look_confirm = nil end, pending.cancel_help or 'Keep every look as it is.')
+    button('Cancel##look_' .. id, cancel_look, pending.cancel_help or 'Keep every look as it is.', nil, false)
 end
 
 -- A page, or a display's tab, opens at its top. A search keeps its place on what it found.
@@ -370,7 +409,7 @@ local function saved_effects(visit)
     end
 end
 
--- Lists sort without regard to case, as the client names debuffs in lowercase.
+-- Lists sort without regard to case, so AGI Boost comes after Accuracy Boost.
 function window.by_name(a, b)
     local first, second = a.name:lower(), b.name:lower()
     return first == second and a.id < b.id or first < second
@@ -407,12 +446,26 @@ end
 local function catalog(domain, kind)
     if domain == 'recast' then
         recast_list_frame = draw_frame
-        if recast_signature_frame ~= draw_frame then
-            local keys = {}
-            for _, row in ipairs(live_view and live_view.rows or {}) do
-                if row.domain == 'recast' then keys[#keys + 1] = tostring(row.effect) .. ':' .. tostring(row.name) .. ':' .. tostring(row.kind) end
+        -- Each refresh brings a new list of rows, so the recasts on it are read again only then, or when one is added,
+        -- against the ones kept.
+        local rows = live_view and live_view.rows
+        local size = rows and #rows or 0
+        if recast_signature_rows ~= rows or recast_signature_size ~= size then
+            recast_signature_rows, recast_signature_size = rows, size
+            local count, differs = 0, false
+            for _, row in ipairs(rows or empty_catalog) do
+                if row.domain == 'recast' then
+                    local at = count * 3
+                    if recast_seen[at + 1] ~= row.effect or recast_seen[at + 2] ~= row.name or recast_seen[at + 3] ~= row.kind then
+                        recast_seen[at + 1], recast_seen[at + 2], recast_seen[at + 3], differs = row.effect, row.name, row.kind, true
+                    end
+                    count = count + 1
+                end
             end
-            recast_view_signature, recast_signature_frame = table.concat(keys, '|'), draw_frame
+            if differs or count ~= recast_seen_count then
+                for index = count * 3 + 1, recast_seen_count * 3 do recast_seen[index] = nil end
+                recast_seen_count, recast_view_signature = count, recast_view_signature + 1
+            end
         end
         if kind == 'all' then kind = nil end
         local ok, recasts = pcall(require, 'core.recasts')
@@ -491,10 +544,20 @@ end
 -- The draw each picker's list was last open in. One find box serves them all, as one list is open at a time, and a list
 -- that opens starts with it empty.
 local picker_open = {}
+-- The size of the list's choices, and each choice's label by id with the name it was made from, kept so an open list
+-- makes none of them each frame. A new name makes its label again.
+local choices_size, choice_labels, choice_names = { 0, 250 }, {}, {}
+-- The other words an effect goes by, as Always show has them: Copy Image is Utsusemi's shadows.
+local other_words = {}
+for _, entry in ipairs(require('ui.overhead_defaults').always) do
+    for _, id in ipairs(entry.ids) do other_words[id] = entry.words end
+end
 
--- shown, when given, is what the closed picker reads instead of the selected effect's name.
-local function effect_picker(label, selected, setter, all, domain, shown)
-    row_label(label)
+-- shown, when given, is what the closed picker reads instead of the selected effect's name. all puts a choice for every
+-- effect, id 0, at the top, and when it is a string that is its name. rows, when given, are what it lists instead of the
+-- catalog of domain. What label has after ## tells apart two pickers with the same caption on one page.
+local function effect_picker(label, selected, setter, all, domain, shown, rows)
+    row_label(label:match('^(.-)##') or label)
     imgui.SetNextItemWidth(-1)
     skin.prepare_menu(imgui, menu_look)
     if imgui.BeginCombo('##' .. label, shown or effect_name(selected, domain)) then
@@ -502,14 +565,19 @@ local function effect_picker(label, selected, setter, all, domain, shown)
         picker_open[label] = draw_frame
         skin.menu(imgui, menu_look, 'popup')
         imgui.SetNextItemWidth(-1)
-        imgui.InputTextWithHint('##effect_search_' .. label, 'Find an effect by name', effect_search, 81)
+        imgui.InputTextWithHint('##effect_search_' .. label, 'Find by name', effect_search, 81)
         local query = effect_search[1]:lower()
-        if all and imgui.Selectable((domain == 'recast' and 'All recasts' or 'All effects') .. '##all', selected == 0) then setter(0) end
+        local every = type(all) == 'string' and all or domain == 'recast' and 'All recasts' or 'All effects'
+        if all and imgui.Selectable(every .. '##all', selected == 0) then setter(0) end
         -- The choices scroll in a child window of the list, and ImGui doesn't close the list for a pick made in one.
-        if imgui.BeginChild('##effect_choices_' .. label, { 0, 250 }, 0) then
-            for _, row in ipairs(catalog(domain)) do
-                if query == '' or row.name:lower():find(query, 1, true) or tostring(row.id) == query then
-                    if imgui.Selectable(row.name .. '##effect_' .. row.id, selected == row.id) then
+        if imgui.BeginChild('##effect_choices_' .. label, choices_size, 0) then
+            for _, row in ipairs(rows or catalog(domain)) do
+                if query == '' or row.name:lower():find(query, 1, true) or tostring(row.id) == query
+                    or (domain == nil or domain == 'status') and other_words[row.id] and other_words[row.id]:find(query, 1, true) then
+                    if choice_names[row.id] ~= row.name then
+                        choice_labels[row.id], choice_names[row.id] = row.name .. '##effect_' .. row.id, row.name
+                    end
+                    if imgui.Selectable(choice_labels[row.id], selected == row.id) then
                         setter(row.id)
                         imgui.CloseCurrentPopup()
                     end
@@ -521,49 +589,67 @@ local function effect_picker(label, selected, setter, all, domain, shown)
     end
 end
 
--- What the Help page's buttons do, made once.
+-- What the Help page's buttons do, made once. Most sections end with a button that copies the link to their topic in
+-- the guide, as this window can't open a browser. The anchors are the guide's headings (tests/test_help_links.lua).
 local function export_report() call('export_report') end
-local function copy_shown() call('copy_shown', frame.panel(settings), false) end
-local function copy_details() call('copy_shown', frame.panel(settings), true) end
+local guide_topics = {}
+local function guide_link(title, anchor)
+    local topic = { label = 'Copy the guide link##guide_' .. anchor, help = 'Copies the link to ' .. title .. ' in the guide, to paste in your browser.' }
+    topic.copy = function()
+        imgui.SetClipboardText(addon.link .. '/blob/main/docs/GUIDE.md#' .. anchor)
+        note('Copied the link to ' .. title .. ' in the guide.')
+    end
+    guide_topics[anchor] = topic
+    return topic
+end
+local topics = { start = guide_link('Start here', 'start-here'), timer = guide_link('Read a timer', 'read-a-timer'),
+    alerts = guide_link('Alerts', 'alerts'), arrange = guide_link('Arrange on screen', 'arrange-on-screen'),
+    replace = guide_link('Replace the game\'s buff icons', 'replace-the-games-buff-icons'),
+    wrong = guide_link('If something looks wrong', 'if-something-looks-wrong') }
+local function more(topic)
+    if addon and addon.link then button(topic.label, topic.copy, topic.help, nil, false) end
+end
 
 local function show_help()
-    button('Export report', export_report, 'Reports include current observations, available client data and a bounded recent event history. They do not send messages or upload files.')
-    imgui.SameLine(); button('Copy shown timers', copy_shown)
-    imgui.SameLine(); button('Copy timer details', copy_details)
-    check('Record recent events', settings.diagnostics, 'record', 'Keeps a bounded recent history for local troubleshooting.')
     if section('Getting started', nil, true) then
-        imgui.TextWrapped('Start on the main page. Tick what you want under What to show, and Edit opens that display. How it looks sets the skin, font and size, and More look holds the rest. Moving unlocks the displays. Hidden everywhere holds the effects hidden on every display, and each timer and recast panel has its own Filters tab.')
+        imgui.TextWrapped('Start on the main page. Tick what you want under What to show, and Edit opens that display. How it looks sets the skin, font and size. Hide list, at the top, hides effects everywhere.')
+        more(topics.start)
     end
     if section('Reading a timer') then
-        imgui.TextWrapped('A countdown shows the time left and nothing else. An effect with no known time keeps its icon and shows no countdown. Level Sync shows only its icon. Point at an effect to see where its time came from and how sure Vantage is.')
+        imgui.TextWrapped('A countdown shows the time left. An effect with no known time shows no countdown. Point at an effect to see where its time came from and how sure Vantage is.')
         imgui.Spacing()
         imgui.TextWrapped('Sometimes the game gives only the time left, not the full length. Then the details say what time the bar covers, and percent alerts can\'t run for that effect.')
+        more(topics.timer)
     end
     if section('What can be tracked') then
-        imgui.TextWrapped('Your own buffs and debuffs are the surest, as the game sends the full list. Party icons show that an effect is there, but not how long it has left. Effects on your target and watched enemies come from what your client sees land and wear off, so a missed message, another player\'s gear or a resist can leave the time or the effect itself unsure.')
+        imgui.TextWrapped('Your own buffs and debuffs are the surest, as the game sends the full list. Party icons show that an effect is there, not its time. Effects on others come from what your client sees.')
         imgui.Spacing()
-        imgui.TextWrapped('The game sends an action only to players within 30 yalms of whoever acts, so a party ability or roll farther off is not seen. A wear-off message goes only to its caster, so debuffs others put on a mob run on an estimate.')
+        imgui.TextWrapped('The game sends an action only to players within 30 yalms of whoever acts, and a wear-off only to its caster, so debuffs others put on a mob run on an estimate.')
         imgui.Spacing()
-        imgui.TextWrapped('Recasts: with Icons show set to The effect it gives, a spell or ability that gives a buff or debuff shows that status icon. Other recasts, and every recast with The spell or ability, use the client\'s spell, ability and item pictures. Shared ability timers can stand for several actions. Item recasts cover equipped enchanted items the client has shown, not consumables or items in other bags. A timer the client does not show has no countdown.')
-        imgui.Spacing()
-        imgui.TextWrapped('Party cooldowns: each time is estimated from the ability\'s base recast. Merits can make some of them end sooner, and Vantage can\'t see a member\'s merits. Pets\' moves are not counted.')
-        imgui.Spacing()
-        imgui.TextWrapped('Phantom Roll: it shows only what the game sent. A roll reaches party members within 8 yalms of the Corsair, 16 with Luzaf\'s Ring. Another Corsair\'s Double-Up time is estimated from their roll. A job bonus is added only for a job Vantage sees in the party; gear can also add it at random.')
-        imgui.Spacing()
-        imgui.TextWrapped('Pet: the game sends no list of a pet\'s effects, so these are the ones Vantage saw land on it, and most of their times are estimates. MP shows once the game gives the pet some. A charm\'s time is estimated from Phoenix\'s formula: your CHR, your level, the mob\'s level from a /check before the charm, and charm time gear. Ready isn\'t in this era, so Sic shows on its own.')
+        imgui.TextWrapped('Recasts, Party cooldowns, Phantom Roll and Pet each say what they can\'t see under their own heading in the guide.')
     end
     if section('Alerts') then
-        imgui.TextWrapped('An alert fires when something changes or crosses a threshold. Old warnings don\'t replay after a reload, death or zone change. An estimate reaching zero never counts as the effect wearing off. A rule plays a sound only if you pick one, and warnings that fire together are limited so they don\'t pile up.')
+        imgui.TextWrapped('An alert fires when something changes or crosses a threshold. Old warnings don\'t replay after a reload, death or zone change, and an estimate reaching zero isn\'t a wear-off.')
+        more(topics.alerts)
     end
     if section('Move and customize') then
-        imgui.TextWrapped('Unlock a panel, party list group or notice, then hold Shift and left-drag inside to move it. Shift + left-drag any edge or corner to resize; a group beside the game\'s party list only moves. This window moves and resizes the same way, and keeps its normal corner grip. With Hold Shift to see through this window on, drag the title bar to move it; the rest of the window stays see-through. With Grid mode on, a display you ticked for it snaps to the grid and the lines around it as you move it, and a resize snaps the edge you pull, as Grid and snapping under Moving on the main page sets. The line it snapped to shows while you drag, and the grid too while Show the grid is on. Every other display goes exactly where you drag it. A group\'s panel of its own moved beside its game window goes back beside it when Snap back beside the game\'s list when released is on. Typing prevents Shift dragging. Use sample effects to arrange empty panels. Each panel keeps its own filters, labels and ordering.')
-        imgui.TextWrapped('The party cooldown list, the ready pulse spot and the Phantom Roll and pet displays move the same way. /vg edit, or Edit mode on the main page, outlines every display at once: pick one, then hold Shift and drag it or nudge it with the arrow keys. Size and place in the bar opens that tab, where you can type its spot or pick what it moves with.')
-        imgui.TextWrapped('No boxes or headings under More look hides outer panel headings, backgrounds, borders, and empty messages while keeping your timers, icons, and fields. Use /vg minimal to toggle it, or /vg minimal on or off. Turning it off restores your previous appearance choices. The Frameless skin turns it on, and any other skin turns it off.')
-        imgui.TextWrapped('On the main page, choose Original FFXI or XI View as the Skin, with all eight client window skins under Window frame in More look. Skin reaches this window too. Font is one choice for every display and this window; if this window can\'t use it, it uses its plain font and a line under Font says so. Icon and gauge choices are in More look, and missing assets are reported there. Classic FFXI is colors only.')
+        imgui.TextWrapped('Unlock a display, then hold Shift and drag it to move it, or an edge or corner to resize it. A group beside the game\'s party list only moves. Arrange on screen, on the main page, outlines every display at once: pick one, then hold Shift and drag it or nudge it with the arrow keys.')
+        imgui.Spacing()
+        imgui.TextWrapped('No boxes or headings, under Boxes on the main page, hides the boxes and headings and keeps what they show. /vg minimal does it too.')
+        more(topics.arrange)
     end
     if section('Files and behavior') then
         imgui.TextWrapped('Vantage reads what the game client has and the packets it receives. It never sends anything, casts spells, uses items or changes targets. Settings, profiles and custom sounds stay in ' .. require('core.identity').relative('') .. '. You can replace the addon folder without touching those files.')
-        imgui.TextWrapped('Replace the game\'s buff icons, on the main page, is the one setting that changes the game itself. While it is on, the game doesn\'t draw its own buff icons and its + menu sits off screen. Vantage puts both back when you turn it off or unload Vantage.')
+        imgui.Spacing()
+        imgui.TextWrapped('Two settings change the game itself: Replace the game\'s buff icons and Replace the game\'s pet bar, both under While playing on the main page. While the first is on, the game doesn\'t draw its own buff icons and its + menu sits off screen. While the second is on, the game doesn\'t draw your pet\'s name, HP bar and TP above the party list. Vantage puts back what each one changes when you turn it off or unload Vantage.')
+        more(topics.replace)
+    end
+    -- What to send with a report of something wrong. Each timer and recast panel copies its own timers on its Show tab.
+    if section('Troubleshoot') then
+        button('Export report', export_report, 'Reports include current observations, available client data and a bounded recent event history. They do not send messages or upload files.')
+        check('Record recent events', settings.diagnostics, 'record', 'Keeps a bounded recent history for local troubleshooting.')
+        imgui.TextWrapped('Each timer and recast panel can copy its timers as text, with Copy shown timers and Copy timer details on its Show tab.')
+        more(topics.wrong)
     end
 end
 
@@ -626,15 +712,18 @@ function window.search(query)
 end
 
 -- Goes where a search result points. A topic that names a place opens it as a link does, so it stays open once the search
--- is cleared. A row of the panel frame opens its display, its tab and its fold.
+-- is cleared. A row of the panel frame opens its display, its tab and its fold. The control the result names is the match
+-- picked. When the page doesn't draw it, the pick is the first control whose own words match.
 function window.open_result(result)
+    frame.remember(settings)
     if result.destination or result.tab == 'Display' and not result.place then
         return open_page(result.tab, result.timers and frame.timer_panel(result.timers == 'status') or result.panel, result.destination)
     end
     if result.place then frame.go(result, settings, window.main_helpers) end
     editor_changed(function() settings.window.tab = result.tab end)
+    frame.settle(settings)
     selected_match, scroll_match, window.opened_topic = 1, true, result.topic
-    window.search_memo.pick = true
+    window.search_memo.pick, window.search_memo.want = true, result.label
 end
 
 local function geometry_copy(rect)
@@ -683,7 +772,9 @@ function window.cancel_resize()
     changed(function()
         for key, value in pairs(gesture.rect) do gesture.window[key] = value end
     end, true, 'Settings window layout', true)
-    window_bounds, window_geometry = geometry_copy(gesture.rect), geometry_copy(gesture.window)
+    -- With no geometry kept, the window is set to what was saved as it draws, even in the frame the button came up while
+    -- the pointer moved, so it shows where it was let go and makes no second step.
+    window_bounds, window_geometry = geometry_copy(gesture.rect), nil
 end
 
 -- Above the page: a display's header, or a tool page's top line. The main page, where Back goes, has neither.
@@ -691,7 +782,7 @@ local function display_controls()
     local page = settings.window.tab
     if page == 'Display' then frame.header(imgui, settings, live_view, callbacks, window.main_helpers)
     elseif page ~= 'Home' then
-        frame.top_line(imgui, window.main_helpers, page_labels[page] or page)
+        frame.top_line(imgui, window.main_helpers, page_labels[page] or page, nil, settings)
         imgui.Separator()
     end
 end
@@ -719,21 +810,25 @@ window.main_helpers = {
 
 -- What the Timer durations page draws with, made once like the main page's.
 local duration_helpers = {
-    changed = changed, check = check, text = text, query = query, number = number, combo = combo, choice = choice,
-    button = button, section = section, catalog = catalog, catalog_revision = catalog_revision, note = note,
+    changed = changed, check = check, text = text, number = number, combo = combo, choice = choice,
+    button = button, section = section, catalog = catalog, catalog_revision = catalog_revision, note = note, effect_picker = effect_picker,
+    mark = mark,
 }
 local function reset_durations() call('reset', 'durations') end
 
 local function draw_current_page()
-    local s = settings
+    local s, waiting = settings, jump_section
     if s.window.tab == 'Home' then
         require('ui.main_page').draw(imgui, s, live_view, callbacks, window.main_helpers)
     elseif s.window.tab == 'Display' then frame.body(imgui, s, live_view, callbacks, window.main_helpers)
     elseif s.window.tab == 'Durations' then
         require('ui.duration_settings').draw(imgui, s, live_view, callbacks, duration_helpers)
-        button('Reset this page', reset_durations, 'Puts this page back as it started. Undo brings your settings back.')
+        button('Reset this page', reset_durations, 'Puts this page back as it started, with no overrides. Learned times stay, as Clear learned durations takes them. Undo brings your settings back.')
     elseif s.window.tab == 'Profiles' then require('ui.profiles_page').draw(imgui, s, live_view, callbacks, window.main_helpers)
     else show_help() end
+    -- A place the page didn't draw, as a fold hidden now, is let go, so it doesn't open on a later visit. A link on the page
+    -- sets the next one.
+    if jump_section == waiting then jump_section = nil end
 end
 
 -- What a frame hands ImGui and keeps for the mouse checks, filled in place. ImGui reads them during the call only, and
@@ -749,12 +844,83 @@ local function fill(rect, x, y, width, height)
 end
 local function undo() call('undo') end
 local function redo() call('redo') end
+-- Mute alerts, at the end of the top bar on every page, and Unmute alerts while they are muted.
+local mute_text = { [false] = 'Mute alerts', [true] = 'Unmute alerts' }
+local mute_help = { [false] = 'None of your alerts fires until you unmute: no notices, chat lines, sounds or flashes. /vg mute does it too.',
+    [true] = 'Notices and sounds come back. Old warnings are not replayed.' }
+local function toggle_mute()
+    local muted = settings.alerts.muted == true
+    changed(function() settings.alerts.muted = not muted end, true, mute_text[muted])
+end
+window.mute = {
+    width = function() return imgui.CalcTextSize(mute_text[settings.alerts.muted == true]) + 32 end,
+    draw = function()
+        local muted = settings.alerts.muted == true
+        button(mute_text[muted] .. '##settings_mute', toggle_mute, mute_help[muted])
+    end,
+}
+-- What the search's buttons do, made once, on window.
+window.search_buttons = {
+    clear = function() search[1] = ''; selected_match = 1 end,
+    previous = function() selected_match = math.max(1, selected_match - 1); scroll_match = true end,
+    following = function() selected_match = math.min(previous_matches, selected_match + 1); scroll_match = true end,
+}
+
+-- The top bar: Undo, Redo, the search box, the tool buttons, Mute alerts and the search's results. It is a function of
+-- its own so draw_open stays clear of LuaJIT's limit of 60 upvalues.
+local function draw_top_bar()
+    local history = callbacks.history_status and callbacks.history_status() or { undo = 0, redo = 0 }
+    if imgui.BeginDisabled then imgui.BeginDisabled((history.undo or 0) == 0) end
+    button('Undo', undo, history.undo_label or 'Restore the previous settings change.')
+    if imgui.EndDisabled then imgui.EndDisabled() end
+    imgui.SameLine()
+    if imgui.BeginDisabled then imgui.BeginDisabled((history.redo or 0) == 0) end
+    button('Redo', redo, history.redo_label or 'Restore the change most recently undone.')
+    if imgui.EndDisabled then imgui.EndDisabled() end
+    imgui.SameLine()
+    local tools_width = window.mute.width()
+    for _, tool in ipairs(tool_pages) do tools_width = tools_width + imgui.CalcTextSize(tool.text) + 32 end
+    -- With no room for both, the box has the line and the buttons start the next.
+    local beside = imgui.GetContentRegionAvail() - tools_width >= 10 * imgui.GetFontSize()
+    imgui.SetNextItemWidth(beside and -tools_width or -1)
+    imgui.InputTextWithHint('##find_settings', 'Find a setting', search, 81)
+    for index, tool in ipairs(tool_pages) do
+        if beside or index > 1 then imgui.SameLine() end
+        button(tool.text, tool.open, tool.help)
+    end
+    imgui.SameLine()
+    window.mute.draw()
+    if search[1] ~= previous_query then selected_match, scroll_match, previous_query = 1, true, search[1]; window.search_memo.pick = true end
+    local found = window.search(search[1])
+    if search[1] ~= '' then
+        local steps, memo = window.search_buttons, window.search_memo
+        button('Clear search', steps.clear)
+        if previous_matches > 0 then
+            imgui.SameLine(); button('Previous match', steps.previous)
+            imgui.SameLine(); button('Next match', steps.following)
+            -- The count's line is made again only when its numbers change.
+            if memo.count_of ~= selected_match or memo.count_in ~= previous_matches then
+                memo.count_of, memo.count_in = selected_match, previous_matches
+                memo.count = ('%d of %d matching controls on this page'):format(selected_match, previous_matches)
+            end
+            imgui.TextUnformatted(memo.count)
+        end
+        if #found == 0 then imgui.TextUnformatted('No matching settings. Try one word, such as alert or font.') end
+        results_size[2] = math.min(8, #found) * imgui.GetTextLineHeightWithSpacing() + 6
+        if imgui.BeginChild('##search_results', results_size, 0) then
+            for _, result in ipairs(found) do
+                if imgui.Selectable(result.label .. '  /  ' .. (result.where or page_labels[result.tab] or result.tab)) then window.open_result(result) end
+            end
+        end
+        imgui.EndChild()
+    end
+end
 
 local function draw_open(s, view, cb)
     imgui, settings, live_view, callbacks = require('imgui'), s, view, cb or {}
     draw_frame = draw_frame + 1
     in_page = false
-    if s.window.tab ~= 'Display' and frame_pages[s.window.tab] then open_page(s.window.tab) end
+    if s.window.tab ~= 'Display' and frame_pages[s.window.tab] then open_page(s.window.tab, nil, nil, true) end
     local screen = imgui.GetIO().DisplaySize
     local shift = callbacks.shift
     if shift == nil then shift = imgui.GetIO().KeyShift == true end
@@ -793,7 +959,7 @@ local function draw_open(s, view, cb)
     imgui.SetNextWindowSize(window_size, condition)
     smallest[1], smallest[2], largest[1], largest[2] = math.min(560, screen.x), math.min(400, screen.y), math.min(2400, screen.x), math.min(1800, screen.y)
     imgui.SetNextWindowSizeConstraints(smallest, largest)
-    local look = theme.window(s, callbacks.settings_revision and callbacks.settings_revision())
+    local look = theme.window(s, callbacks.look_revision and callbacks.look_revision() or callbacks.settings_revision and callbacks.settings_revision())
     local colors = theme.push(s, look)
     menu_look = look
     window.main_helpers.look = look
@@ -811,6 +977,14 @@ local function draw_open(s, view, cb)
     if shift and not typing then window_open = nil end
     -- The settings window never docks into another window, nor takes one in.
     local flags = require('bit').bor(ImGuiWindowFlags_NoSavedSettings or 0, ImGuiWindowFlags_NoDocking or 0)
+    -- The window comes in front as it appears, and then Arrange on screen's bar comes in front of it where the window
+    -- leaves the bar no clear spot. After that, a click here leaves the bar in front. ImGui puts a new window with that
+    -- flag behind every display, so it isn't on as the window appears.
+    local frame_count = imgui.GetFrameCount and imgui.GetFrameCount() or 0
+    local appearing = window.shown_frame ~= frame_count and window.shown_frame ~= frame_count - 1
+    window.shown_frame = frame_count
+    if appearing then require('ui.edit_mode').bring_bar_forward()
+    elseif require('ui.edit_mode').covered() then flags = require('bit').bor(flags, ImGuiWindowFlags_NoBringToFrontOnFocus or 0) end
     if callbacks.focused == false then flags = require('bit').bor(flags, ImGuiWindowFlags_NoInputs or 0) end
     if peeking then flags = require('bit').bor(flags, ImGuiWindowFlags_NoInputs or 0, ImGuiWindowFlags_NoBackground or 0, ImGuiWindowFlags_NoDecoration or ImGuiWindowFlags_NoTitleBar or 0) end
     -- With Shift held or a Shift drag going on, the window is sized by that drag and ImGui draws no resize grip.
@@ -844,8 +1018,10 @@ local function draw_open(s, view, cb)
         end
         if not resize_gesture and not mouse_down and not same_geometry(window_bounds, s.window) then
             local resized = ww ~= s.window.width or wh ~= s.window.height
+            -- On a frame that set the window to its saved place and size, a size that differs is the fit to the screen,
+            -- which Vantage made, so it is no Undo step.
             changed(function() s.window.x, s.window.y, s.window.width, s.window.height = wx, wy, ww, wh end, true,
-                resized and 'Settings window size' or 'Settings window position', resized)
+                resized and 'Settings window size' or 'Settings window position', resized and not geometry_changed)
         end
         window_geometry = fill(kept_geometry, s.window.x, s.window.y, s.window.width, s.window.height)
         if capture then
@@ -857,54 +1033,21 @@ local function draw_open(s, view, cb)
             if imgui.BeginDisabled then imgui.BeginDisabled(true) end
             open[1] = true
         end
-        local history = callbacks.history_status and callbacks.history_status() or { undo = 0, redo = 0 }
-        if imgui.BeginDisabled then imgui.BeginDisabled((history.undo or 0) == 0) end
-        button('Undo', undo, history.undo_label or 'Restore the previous settings change.')
-        if imgui.EndDisabled then imgui.EndDisabled() end
-        imgui.SameLine()
-        if imgui.BeginDisabled then imgui.BeginDisabled((history.redo or 0) == 0) end
-        button('Redo', redo, history.redo_label or 'Restore the change most recently undone.')
-        if imgui.EndDisabled then imgui.EndDisabled() end
-        imgui.SameLine()
-        local tools_width = 0
-        for _, tool in ipairs(tool_pages) do tools_width = tools_width + imgui.CalcTextSize(tool.text) + 32 end
-        -- With no room for both, the box has the line and the buttons start the next.
-        local beside = imgui.GetContentRegionAvail() - tools_width >= 10 * imgui.GetFontSize()
-        imgui.SetNextItemWidth(beside and -tools_width or -1)
-        imgui.InputTextWithHint('##find_settings', 'Find a setting', search, 81)
-        for index, tool in ipairs(tool_pages) do
-            if beside or index > 1 then imgui.SameLine() end
-            button(tool.text, tool.open, tool.help)
-        end
-        if search[1] ~= previous_query then selected_match, scroll_match, previous_query = 1, true, search[1]; window.search_memo.pick = true end
-        local found = window.search(search[1])
-        if search[1] ~= '' then
-            button('Clear search', function() search[1] = ''; selected_match = 1 end)
-            if previous_matches > 0 then
-                imgui.SameLine(); button('Previous match', function() selected_match = math.max(1, selected_match - 1); scroll_match = true end)
-                imgui.SameLine(); button('Next match', function() selected_match = math.min(previous_matches, selected_match + 1); scroll_match = true end)
-                imgui.TextUnformatted(('%d of %d matching controls on this page'):format(selected_match, previous_matches))
-            end
-            if #found == 0 then imgui.TextUnformatted('No matching settings. Try one word, such as alert or font.') end
-            results_size[2] = math.min(8, #found) * 23 + 6
-            if imgui.BeginChild('##search_results', results_size, 0) then
-                for _, result in ipairs(found) do
-                    if imgui.Selectable(result.label .. '  /  ' .. (result.where or page_labels[result.tab] or result.tab)) then window.open_result(result) end
-                end
-            end
-            imgui.EndChild()
-        end
+        draw_top_bar()
         imgui.Separator()
-        if message and os.clock() - message_at < 8 then
+        local shown = shown_note()
+        if shown then
             if look[message_kind] then imgui.PushStyleColor(ImGuiCol_Text, look[message_kind]) end
-            imgui.TextWrapped(message)
+            imgui.TextWrapped(shown)
             if look[message_kind] then imgui.PopStyleColor() end
         end
         -- ImGui's resize corners are squares about a line of text tall at the bottom corners, and they take a click
-        -- before anything under them. The page ends above them, so nothing on it sits there.
+        -- before anything under them. The page ends above them, so nothing on it sits there. While Arrange on screen's bar
+        -- covers the window's foot, the page ends above the bar too, so its last rows can scroll out from under it.
         local _, available_height = imgui.GetContentRegionAvail()
         local _, page_top = imgui.GetCursorScreenPos()
-        content_size[2] = math.max(120, math.min(available_height, wy + wh - imgui.GetFontSize() - page_top))
+        local bar_top = require('ui.edit_mode').covered_top()
+        content_size[2] = math.max(120, math.min(available_height, wy + wh - imgui.GetFontSize() - page_top, bar_top and bar_top - 4 - page_top or math.huge))
         local content_visible = imgui.BeginChild('##settings_content', content_size, 0, ImGuiWindowFlags_NoSavedSettings or 0)
         if content_visible then
         if search_page ~= s.window.tab then selected_match, scroll_match, search_page = 1, true, s.window.tab; window.search_memo.pick = true end
@@ -922,7 +1065,7 @@ local function draw_open(s, view, cb)
         local memo = window.search_memo
         if memo.pick then
             if memo.named then selected_match, scroll_match = memo.named, true end
-            memo.pick, memo.named = false, nil
+            memo.pick, memo.named, memo.want = false, nil, nil
         end
         selected_match = math.min(selected_match, math.max(1, previous_matches))
         -- A topic only opens its page. With nothing there to light up, the search goes, as after a link.
@@ -953,11 +1096,15 @@ function window.draw(s, view, cb)
     -- A page that fails leaves what it opened to ui/imgui_scopes.lua: the error goes on to the Present, which closes
     -- every scope opened since it began.
     draw_open(s, view, cb)
+    -- The display editors load one a frame while the window is open (ui/panel_frame.lua).
+    frame.warm()
 end
 
 if VANTAGE_TEST_MODE then
     -- Tests check the search index against what each page marks when it is drawn.
     window._tabs = tabs
+    -- tests/test_help_links.lua checks each guide link against the guide's headings.
+    window.guide_topics = guide_topics
 end
 
 return window

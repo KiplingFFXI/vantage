@@ -1,12 +1,8 @@
 -- Only the top 64 rows of the client font texture go to the device: the bitmap face draws only its first two rows
 -- of 16-pixel glyphs. The pixels the menu fonts and the countdown atlas read stay whole, and every texel a glyph
 -- quad can sample, whether the sampler wraps or clamps, is the same as in the whole texture.
-local function u16(value) return string.char(value % 256, math.floor(value / 256) % 256) end
-local function u32(value) return u16(value % 65536) .. u16(math.floor(value / 65536)) end
-local function chunk(kind, payload)
-    local length = math.ceil((16 + #payload) / 16) * 16
-    return 'TEST' .. u32(length / 16 * 128 + kind) .. string.rep('\0', 8) .. payload .. string.rep('\0', length - 16 - #payload)
-end
+local dat = require('dat_fixture')
+local u16, u32, chunk, upvalue = dat.u16, dat.u32, dat.chunk, dat.upvalue
 local function texture(name, width, height, data)
     data = data or string.rep(string.rep('\255', 8) .. '\255\255\0\0\0\0\0\0', math.ceil(width / 4) * math.ceil(height / 4))
     return chunk(0x20, string.char(0xA1) .. name .. u32(40) .. u32(width) .. u32(height)
@@ -36,13 +32,6 @@ assets._set_platform_for_tests({
         return { id = next_id, release = function() end }
     end,
 })
-local function upvalue(fn, wanted)
-    for index = 1, 200 do
-        local name, value = debug.getupvalue(fn, index)
-        if name == wanted then return value end
-        if not name then break end
-    end
-end
 local function le(text, at) local a, b, c, d = text:byte(at, at + 3); return a + b * 256 + c * 65536 + d * 16777216 end
 
 assets.prepare()

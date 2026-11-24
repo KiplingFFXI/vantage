@@ -1,6 +1,7 @@
--- Profile sharing on Profiles and sharing, through the real vantage.lua and settings window. Export to clipboard copies the picked
--- saved profile as a whole profile export without loading it, the same string loading it and copying it gives,
--- and changes neither the settings nor Undo. Export to a file writes that string to a new file in the shared folder,
+-- Profile sharing on Profiles and sharing, through the real vantage.lua and settings window. Copy, with A saved profile
+-- under What to export, copies the saved profile picked there as a whole profile export without loading it, the same
+-- string loading it and copying it gives, and changes neither the settings, Undo nor the profile picked on the rows.
+-- Save to a file writes that string to a new file in the shared folder,
 -- named from the profile's letters, digits, spaces, - and _ only, without a name of a character on this PC or of the
 -- Windows user, never over a file, not even one made while it writes, and never outside that folder.
 -- Import from clipboard reads one, and Import from a file reads a .txt file there (at most an export's length). A whole
@@ -65,7 +66,19 @@ local function live() local value = store.copy(app.state.settings); value.window
 local function saved() return store.read(root .. 'profiles.json'); end;
 local function read_file(path) local file = io.open(path, 'rb'); if not file then return nil; end; local text = file:read('*a'); file:close(); return text; end;
 local function data_of(text) return json.decode(text:match('^VG:1:%x+:(.+)$')).data; end;
-local function pick(name) draw(name, '##profiles'); draw(); assert(previews['##profiles'] == name, 'Fixture: ' .. name .. ' is picked.'); end;
+-- Whether name's round button is on: it is the profile picked.
+local function picked(name)
+    for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'RadioButton' and call[2] == name .. '##profile_pick' then return call[3] == true; end; end;
+    return false;
+end;
+local function pick(name) draw(name .. '##profile_pick'); draw(); assert(picked(name), 'Fixture: ' .. name .. ' is picked.'); end;
+-- Picks A saved profile under What to export, and name under Profile to export.
+local function choose(name)
+    draw('A saved profile##saved', '##What to export');
+    draw(name .. '##export_profile', '##export_profile'); draw();
+    assert(previews['##export_profile'] == name, 'Fixture: ' .. name .. ' is the profile to export.');
+end;
+local SAVE, COPY = 'Save to a file##share_save_file', 'Copy##share_copy';
 
 -- Your own settings: locks on, a job link, a member, a watched enemy, diagnostics and chat colors of your own.
 local s = app.state.settings;
@@ -85,21 +98,23 @@ s.active_profile = 'Raid';
 app.state.history, app.state.redo, app.state.transaction = {}, {}, nil;
 draw(); draw();
 
-do -- Section: Share copies the picked saved profile without loading it.
-    pick('Raid');
+do -- Section: Copy of a saved profile copies it without loading it, and leaves the profile picked on the rows.
+    pick('Solo');
+    choose('Raid');
     local before, undo = live(), #app.state.history;
     MOCK.clipboard = nil;
-    draw('Export to clipboard##profile_share'); draw();
+    draw(COPY); draw();
     assert(type(MOCK.clipboard) == 'string' and MOCK.clipboard:find('^VG:1:'), 'Share puts an export on the clipboard.');
     assert(data_of(MOCK.clipboard).panels.target.width == 333, 'It is the saved profile, not the settings on screen.');
     assert(equal(before, live()) and app.state.settings.panels.target.width == 250 and app.state.settings.active_profile == 'Raid',
         'The settings on screen don\'t change.');
     assert(#app.state.history == undo and #app.state.redo == 0 and app.state.transaction == nil, 'Nothing is added to Undo.');
-    assert(shown('Copied "Raid". Send it in a message, or use Export to a file to keep it as a file.'), 'The status line says it was copied, and where it can go.');
+    assert(shown('Copied "Raid". Send it in a message, or use Save to a file to keep it as a file.'), 'The status line says it was copied, and where it can go.');
+    assert(picked('Solo') and not picked('Raid'), 'Solo is still the profile picked on the rows.');
     assert(not MOCK.clipboard:find(NAME, 1, true) and not MOCK.clipboard:find(tostring(MEMBER), 1, true), 'It holds no name or id.');
     -- The same string Load, then Copy of a whole profile, give.
     local copied = MOCK.clipboard;
-    draw('Load##profile_load'); draw();
+    draw('Load##profile_load_Raid'); draw();
     assert(app.state.settings.panels.target.width == 333, 'Fixture: Raid is loaded.');
     -- The same data: JSON keeps the order the tables give their keys in, which can differ between two tables.
     assert(app.callbacks.share_copy('profile') and equal(data_of(MOCK.clipboard), data_of(copied)), 'Share gives what loading it and copying it gives.');
@@ -107,17 +122,47 @@ do -- Section: Share copies the picked saved profile without loading it.
     assert(app.state.settings.panels.target.width == 250, 'Fixture: Undo takes the load back.');
 end; -- end of section
 
-do -- Section: Export to a file writes it to a new file in the shared folder, never over one.
-    pick('Raid');
+do -- Section: Save to a file of a saved profile writes it to a new file in the shared folder, never over one.
+    pick('Solo');
+    choose('Raid');
     local before, undo = live(), #app.state.history;
-    draw('Export to a file##profile_save_file'); draw();
+    draw(SAVE); draw();
     local first = read_file(shared .. 'Raid.txt');
     assert(first and first:find('^VG:1:') and data_of(first).panels.target.width == 333, 'The file holds the export of Raid.');
     assert(shown('Saved "Raid" as config/addons/vantage/shared/Raid.txt. A friend puts it in their own shared folder and uses Import from a file.'),
         'The status line names the file.');
-    draw('Export to a file##profile_save_file'); draw();
+    draw(SAVE); draw();
     assert(read_file(shared .. 'Raid 2.txt') == first and read_file(shared .. 'Raid.txt') == first, 'A second save is Raid 2.txt; Raid.txt stays.');
     assert(equal(before, live()) and #app.state.history == undo, 'The settings and Undo don\'t change.');
+    assert(picked('Solo') and not picked('Raid'), 'Solo is still the profile picked on the rows.');
+end; -- end of section
+
+do -- Section: Save to a file of the current settings names the file after what it holds, and changes nothing.
+    local before, undo = live(), #app.state.history;
+    for _, case in ipairs({ { 'filters', nil, 'Hide list' }, { 'element', 'rolls', 'Phantom Roll' }, { 'profile', nil, 'Whole profile' } }) do
+        draw(share.kind_names[case[1]] .. '##' .. case[1], '##What to export');
+        if case[2] then draw(case[3] .. '##' .. case[2], '##Display to export'); end;
+        draw(SAVE); draw();
+        local text = read_file(shared .. case[3] .. '.txt');
+        local made = assert(share.export(app.state.settings, case[1], case[2], NAME));
+        assert(text and text:find('^VG:1:') and equal(data_of(text), data_of(made)), case[3] .. '.txt holds the export Copy makes.');
+        local what = case[1] == 'element' and case[3] or case[3]:lower();
+        assert(shown('Saved an export of ' .. what .. ' as config/addons/vantage/shared/' .. case[3] .. '.txt. A friend puts it in their own shared folder and uses Import from a file.'),
+            'The status line names ' .. case[3] .. '.txt.');
+        draw(SAVE); draw();
+        assert(read_file(shared .. case[3] .. ' 2.txt') and read_file(shared .. case[3] .. '.txt') == text, 'A second save is ' .. case[3] .. ' 2.txt.');
+    end;
+    assert(equal(before, live()) and #app.state.history == undo, 'The settings and Undo don\'t change.');
+    -- A saved profile deleted is no longer the one to export, and Save to a file then asks for one.
+    assert(app.callbacks.profile_save('Gone', false), 'Fixture: Gone is saved.');
+    choose('Gone');
+    assert(app.callbacks.profile_delete('Gone', app.callbacks.profile_status('Gone').token), 'Fixture: Gone is deleted.');
+    draw(); draw();
+    assert(previews['##export_profile'] == 'Choose a saved profile', 'A deleted profile is no longer the one to export.');
+    draw(SAVE); draw();
+    assert(shown('Choose a saved profile first.'), 'Save to a file asks for a saved profile.');
+    -- Fixture: saving Gone made it the profile in use, and the sections below go on from Raid.
+    app.state.settings.active_profile = 'Raid';
 end; -- end of section
 
 -- A friend's whole profile, placed on a 2560 x 1440 screen, with their own locks, diagnostics and chat colors.
@@ -152,7 +197,7 @@ do -- Section: Save as a new profile saves the clipboard's whole profile, not lo
     assert(#list == names + 1 and saved().Imported, 'It is saved as a new profile, Imported.');
     assert(equal(before, live()) and app.state.settings.active_profile == 'Raid', 'It is not loaded: the settings on screen don\'t change.');
     assert(#app.state.history == undo and #app.state.redo == redo and app.state.transaction == nil, 'Nothing is added to Undo.');
-    assert(previews['##profiles'] == 'Imported', 'It is picked, so Load uses it.');
+    assert(picked('Imported'), 'It is picked, so Load uses it.');
     assert(shown('Saved "Imported" as a new profile. It is not loaded: click Load to use it.'), 'The status line says so.');
     assert(not drawn('InputTextWithHint', '##import_name'), 'The name box goes once it is saved.');
     local imported = saved().Imported;
@@ -163,7 +208,7 @@ do -- Section: Save as a new profile saves the clipboard's whole profile, not lo
     assert(imported.panels.self_buffs.x == 150 and imported.panels.self_buffs.y == 160 and imported.panels.target.width == 250
         and imported.placement_screen.width == 1920, 'Keep my own display positions keeps where your displays are, their sizes and your screen.');
     -- Load, one click.
-    draw('Load##profile_load'); draw();
+    draw('Load##profile_load_Imported'); draw();
     local now = app.state.settings;
     assert(now.panels.target.mode == 'bars' and now.active_profile == 'Imported', 'Load loads it.');
     assert(now.job_profiles['17'] == 'Raid' and now.panels.party.members[MEMBER] and now.watch_ids[1] == MEMBER,
@@ -203,7 +248,7 @@ do -- Section: the name is the first free one, and a name in use asks for anothe
     assert(not shown('A profile with that name is already saved.'), 'Clear takes away the line asking for another name.');
     -- A line about something else stays.
     draw('Import from clipboard'); draw();
-    draw('Export to clipboard##profile_share'); draw();
+    choose('Imported'); draw(COPY); draw();
     assert(shown('Copied "'), 'Fixture: Share says what it copied.');
     draw('Clear##share_clear'); draw();
     assert(shown('Copied "') and not drawn('InputTextWithHint', '##import_name'), 'Clear leaves a line about something else.');
@@ -278,6 +323,11 @@ do -- Section: Import from a file lists the .txt files in the shared folder and 
     -- 40 characters a profile name can have, its number kept. Letters a profile name can't have and ## are left out, so
     -- the name always saves and is never cut in the middle of a letter.
     local long = ('Long name '):rep(6);
+    -- A name holding ## has an ID by its place in the list, which a click goes by.
+    local function row(name, index)
+        if not name:find('##', 1, true) then return name .. '##profile_file_' .. name; end;
+        return 'profile_file_' .. index;
+    end;
     for _, case in ipairs({ { ' Night raid .TXT', 'Night raid' }, { '.txt', 'Imported 2' }, { long .. '.txt', long:sub(1, 39) },
         { long .. '.txt', long:sub(1, 38) .. ' 2' }, { 'Caf\195\169 raid.txt', 'Caf raid' }, { 'Raid##night.txt', 'Raidnight' },
         { ('a'):rep(39) .. '\195\169b.txt', ('a'):rep(39) .. 'b' } }) do
@@ -285,11 +335,44 @@ do -- Section: Import from a file lists the .txt files in the shared folder and 
         file:write(from_friend);
         file:close();
         MOCK.dirs[shared] = { case[1] };
-        draw('Import from a file##profile_open_file'); draw(case[1] .. '##profile_file_' .. case[1], '##profile_file'); draw();
+        draw('Import from a file##profile_open_file'); draw(row(case[1], 1), '##profile_file'); draw();
         name = drawn('InputTextWithHint', '##import_name');
         assert(name and name[4][1] == case[2], 'The name for ' .. case[1] .. ' is ' .. case[2] .. ': ' .. tostring(name and name[4][1]));
         draw('Save as a new profile'); draw();
         assert(saved()[case[2]] and not drawn('InputTextWithHint', '##import_name'), case[2] .. ' is saved.');
+    end;
+    -- ImGui shows a label up to its first ## and makes its ID from its last ### on, or from all of it. So every row
+    -- shows its whole name, each has an ID of its own, and a click on any row opens that file.
+    local odd = { 'A###x.txt', 'B###x.txt', 'Raid##night.txt', 'Raid #2.txt', 'Plain.txt' };
+    for _, name in ipairs(odd) do
+        local file = assert(io.open(shared .. name, 'wb'));
+        file:write(from_friend);
+        file:close();
+    end;
+    MOCK.dirs[shared] = odd;
+    draw('Import from a file##profile_open_file'); draw(nil, '##profile_file');
+    local labels, ids = {}, {};
+    for _, call in ipairs(MOCK.imgui_calls) do
+        if call[1] == 'Selectable' and call[2]:find('profile_file_', 1, true) then
+            local label, last, at = call[2], nil, 0;
+            repeat at = label:find('###', at + 1, true); last = at or last; until not at;
+            local id = last and label:sub(last) or label;
+            assert(not ids[id], 'Two rows share one ImGui ID: ' .. id);
+            ids[id] = true;
+            labels[(label:match('^(.-)##') or label):gsub(' ', '')] = label;
+        end;
+    end;
+    for _, name in ipairs(odd) do
+        local label = labels[name:gsub(' ', '')];
+        assert(label, name .. ' shows its whole name in the list.');
+        assert(name:find('##', 1, true) or label == name .. '##profile_file_' .. name, name .. ' keeps its label: ' .. label);
+    end;
+    for _, case in ipairs({ { 'B###x.txt', 'B#x' }, { 'A###x.txt', 'A#x' } }) do
+        local label = labels[case[1]];
+        draw('Import from a file##profile_open_file'); draw(label:match('###(.*)$') or label, '##profile_file'); draw();
+        name = drawn('InputTextWithHint', '##import_name');
+        assert(name and name[4][1] == case[2], 'A click on ' .. case[1] .. ' opens it: ' .. tostring(name and name[4][1]));
+        draw('Clear##share_clear'); draw();
     end;
     -- A name with nothing a profile name can have left, or None, which is kept for turning off a job profile, is
     -- Imported too.
@@ -342,14 +425,14 @@ do -- Section: file names keep letters, digits, spaces, - and _ only; nothing is
     for _, case in ipairs(cases) do assert(app.callbacks.profile_save(case[1], false), 'Fixture: a profile named ' .. case[1] .. ' is saved.'); end;
     local open, create_dir, writes = io.open, ashita.fs.create_dir, {};
     for _, case in ipairs(cases) do
-        pick(case[1]);
-        -- Every file opened to write and folder made while Export to a file is clicked.
+        choose(case[1]);
+        -- Every file opened to write and folder made while Save to a file is clicked.
         io.open = function(target, mode)
             if mode and mode:find('[wa+]') then writes[#writes + 1] = target; end;
             return open(target, mode);
         end;
         ashita.fs.create_dir = function(target) writes[#writes + 1] = target .. '/'; return create_dir(target); end;
-        draw('Export to a file##profile_save_file');
+        draw(SAVE);
         io.open, ashita.fs.create_dir = open, create_dir;
         draw();
         assert(read_file(shared .. case[2] .. '.txt'), case[1] .. ' is saved as ' .. case[2] .. '.txt in the shared folder.');
@@ -373,8 +456,8 @@ do -- Section: the file name leaves out your name, the Windows user's and the ot
     MOCK.dirs[root] = { FRIEND .. '_2002', NAME .. '_1001', 'profiles.json', 'shared' };
     for _, case in ipairs({ { FRIEND .. ' trial', 'trial' }, { NAME .. ' WHM', 'WHM' }, { 'winuser setup', 'setup' } }) do
         assert(app.callbacks.profile_save(case[1], false), 'Fixture: a profile named ' .. case[1] .. ' is saved.');
-        pick(case[1]);
-        draw('Export to a file##profile_save_file'); draw();
+        choose(case[1]);
+        draw(SAVE); draw();
         assert(read_file(shared .. case[2] .. '.txt') and shown('Saved "' .. case[1] .. '" as config/addons/vantage/shared/' .. case[2] .. '.txt.'),
             case[1] .. ' is saved as ' .. case[2] .. '.txt, and the status line names that file.');
         assert(not read_file(shared .. case[1] .. '.txt'), 'No file is named ' .. case[1] .. '.');
@@ -388,7 +471,7 @@ do -- Section: a file there is never replaced.
     assert(not ok and code == 'exists' and why:find('already exists', 1, true) and read_file(shared .. 'Keep.txt') == 'mine',
         'Writing a file that is there writes nothing.');
     assert(share.save_file(shared, 'Keep', 'theirs') == 'Keep 2.txt' and read_file(shared .. 'Keep.txt') == 'mine'
-        and read_file(shared .. 'Keep 2.txt') == 'theirs', 'Export to a file takes the next free name.');
+        and read_file(shared .. 'Keep 2.txt') == 'theirs', 'Save to a file takes the next free name.');
     -- A file made after the look for one and before the move stays as well, and the temporary file goes.
     assert(store.create(shared .. 'Race.txt', 'mine'), 'Fixture: Race.txt is made.');
     local exists, open, asked, temps = ashita.fs.exists, io.open, 0, {};
@@ -405,6 +488,12 @@ do -- Section: a file there is never replaced.
     assert(saved_as == 'Race 2.txt' and read_file(shared .. 'Race.txt') == 'mine' and read_file(shared .. 'Race 2.txt') == 'theirs',
         'A file made meanwhile is not replaced: ' .. tostring(saved_as));
     assert(#temps == 2 and not read_file(temps[1]) and not read_file(temps[2]), 'No temporary file is left.');
+    -- After 99 names are taken it stops, and the refusal fits a file of current settings as well as a profile's.
+    local create = store.create;
+    store.create = function() return false, 'There already.', 'exists'; end;
+    local none, why = share.save_file(shared, share.settings_file_name('filters'), 'theirs');
+    store.create = create;
+    assert(none == nil and why == 'The shared folder already has 99 files with this name.', 'The 99 file refusal names no profile: ' .. tostring(why));
 end; -- end of section
 
 rawset(imgui, 'GetClipboardText', nil);

@@ -1,5 +1,5 @@
 -- Snapping for every move: edit mode's drags, and each display's own Shift drag once it is unlocked. Only a display
--- ticked for Grid mode snaps, and only while Grid mode is on (settings.edit_mode.grid_mode and grid_displays); any
+-- ticked to snap snaps, and only while Snap while moving is on (settings.edit_mode.grid_mode and grid_displays); any
 -- other move goes where the pointer puts it, with no search, no line and no grid. A ticked display being moved snaps
 -- its nearest edge or middle, and a resize snaps the edge being pulled, to the nearest line within the snap distance:
 -- the grid's, the screen's center and edges, the other displays', the game's party list's and the chat log's, as
@@ -19,7 +19,7 @@ local best, best_line, reach;
 local guide_x, guide_y, edge_x, edge_y;
 local from, to = { 0, 0 }, { 0, 0 };
 
--- Whether display id is ticked for Grid mode, with Grid mode on or off.
+-- Whether display id is ticked to snap, with Snap while moving on or off.
 function snap.ticked(settings, id)
     local e = type(settings) == 'table' and settings.edit_mode;
     local list = type(e) == 'table' and e.grid_displays;
@@ -30,13 +30,13 @@ function snap.ticked(settings, id)
     return false;
 end
 
--- Whether display id snaps: Grid mode is on and id is ticked for it.
+-- Whether display id snaps: Snap while moving is on and id is ticked for it.
 function snap.on(settings, id)
     return type(settings) == 'table' and type(settings.edit_mode) == 'table' and settings.edit_mode.grid_mode == true
         and snap.ticked(settings, id);
 end
 
--- Ticks or unticks display id for Grid mode, the list kept in the displays' own order.
+-- Ticks or unticks display id to snap, the list kept in the displays' own order.
 function snap.tick(settings, id, on)
     local list = {};
     for _, element in ipairs(elements.movable) do
@@ -44,6 +44,16 @@ function snap.tick(settings, id, on)
         if other == id and on or other ~= id and snap.ticked(settings, other) then list[#list + 1] = other; end
     end
     settings.edit_mode.grid_displays = list;
+end
+
+-- Snap while moving on or off. With no display ticked yet, turning it on ticks them all, so it does something at once.
+function snap.switch(settings, on)
+    local e = settings.edit_mode;
+    e.grid_mode = on == true;
+    if not e.grid_mode or type(e.grid_displays) == 'table' and #e.grid_displays > 0 then return; end
+    local list = {};
+    for _, element in ipairs(elements.movable) do list[#list + 1] = element.id; end
+    e.grid_displays = list;
 end
 
 local function consider(target, point)

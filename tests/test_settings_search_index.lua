@@ -31,11 +31,15 @@ for _, label in ipairs({ 'Icon size in a panel of its own', 'Put party buffs bac
     assert(static.Display[label], 'The index holds ' .. label .. ' on the panels.');
     assert(not static.Home[label], 'The main page has no ' .. label .. '.');
 end;
+-- Reload icons is listed by its name, and found by the words for your own icon sets.
+assert(static.Home['Reload icons'] and index.Home['Reload icons']:find('icon sets', 1, true), 'Reload icons is found by icon sets, under its own name.');
+assert(static.Home['Open icons folder'] and index.Home['Open icons folder']:find('import icons', 1, true), 'Open icons folder is found by import icons.');
+for label in pairs(static.Home) do assert(not label:find('import icon sets', 1, true), 'A result shows a name, not its search words: ' .. label); end;
 -- Profile sharing's controls are found before Profiles is opened.
-for _, label in ipairs({ 'Export a saved profile', 'Export a saved profile to a file', 'Import from clipboard',
+for _, label in ipairs({ 'Profile to export', 'Save the export to a file', 'Import from clipboard',
     'Import from a file', 'Keep my own display positions', 'Save as a new profile', 'Load profile', 'Overwrite profile', 'Rename profile',
     'Delete profile', 'Load this profile when I change to', 'Link this job', 'Unlink this job', 'Unlink all jobs',
-    'Undo the last profile change', 'Share settings across my characters', 'What to share across characters', 'Export',
+    'Undo the last profile change', 'Share settings across my characters', 'What to share across characters', 'What to export',
     'Copy the export', 'Import and add', 'Import and replace', 'Save it as', 'Put every display back where it started',
     'Reset all settings' }) do
     assert(static.Profiles[label], 'The index holds ' .. label .. ' on Profiles.');
@@ -49,7 +53,7 @@ local function more_words(when)
         { 'Show effects as', 'Display', 'Show effects as' }, { 'List with names', 'Display', 'Show effects as' },
         { 'Show maneuvers and overload risk', 'Display', 'Show maneuvers and overload risk' },
         -- What a display's tabs do.
-        { 'Effect visibility', 'Display', 'Find an effect' }, { 'Notice placement and size', 'Display', 'Notice position and resizing' },
+        { 'Effect visibility', 'Display', 'Choose an effect' }, { 'Notice placement and size', 'Display', 'Notice position and resizing' },
         { 'Customize display filters', 'Display', 'Effect filters, labels and pinned order' },
         { 'Clear every anchor', 'Display', 'Moves with' }, { "Every display's anchor", 'Display', 'Moves with' },
         -- What is on Profiles and sharing and the main page.
@@ -59,24 +63,25 @@ local function more_words(when)
         { 'Choose current job', 'Profiles', 'Load this profile when I change to' },
         { 'Share selected settings across characters', 'Profiles', 'Share settings across my characters' },
         { 'Reset panel layouts', 'Profiles', 'Put every display back where it started' },
-        { 'What to export', 'Profiles', 'Export' }, { 'Copy a share string', 'Profiles', 'Copy the export' },
+        { 'Export current settings', 'Profiles', 'What to export' }, { 'Copy a share string', 'Profiles', 'Copy the export' },
+        { 'Export a saved profile', 'Profiles', 'Profile to export', 'What to export' }, { 'Export a saved profile to a file', 'Profiles', 'Save the export to a file' },
         { 'Accent color', 'Home', 'Accent color' },
-        { 'Only on a mob or player named', 'Durations', 'Add duration override' }, { 'Record recent diagnostic events', 'Help', 'Record recent events' },
+        { 'Only on a mob or player named', 'Durations', 'What to override' }, { 'Record recent diagnostic events', 'Help', 'Record recent events' },
         { 'Export diagnostic report', 'Help', 'Export report' },
-        { 'Tick displays for Grid mode', 'Home', 'Grid mode' },
-        { 'Find an effect', 'Display', 'Find an effect' },
+        { 'Grid mode', 'Home', 'Snap while moving' },
+        { 'Find an effect', 'Display', 'Choose an effect' },
         -- The other buttons and topics.
-        { 'Show party list buffs', 'Home', 'Party list buffs' }, { 'Party list buff settings', 'Home', 'Party list buffs' },
-        { 'Customize party', 'Home', 'Party list buffs' },
+        { 'Show party list buffs', 'Home', 'Party list' }, { 'Party list buff settings', 'Home', 'Party list' },
+        { 'Customize party', 'Home', 'Party list' }, { 'Party distance', 'Home', 'Show the distance to each member' },
+        { 'Overhead party icons', 'Home', 'Party buffs over heads' },
         { 'Self buffs', 'Home', 'Self buffs' }, { 'Self debuffs', 'Home', 'Self debuffs' },
         { 'Customize timers', 'Home', 'Edit Self buffs' }, { 'Customize recasts', 'Home', 'Edit Recasts' },
-        { 'Customize appearance', 'Home', 'How it looks' }, { 'Open filters', 'Home', 'Edit Hidden everywhere' },
-        { 'More customization', 'Home', 'More look' },
-        { 'Starter layouts', 'Home', 'Starter profile' }, { 'healer', 'Home', 'Starter profile' },
+        { 'Customize appearance', 'Home', 'How it looks' },
+        { 'More customization', 'Home', 'Artwork' }, { 'More look', 'Home', 'Sizes' }, { 'Countdown text', 'Home', 'Text effects' },
+        { 'Starter layouts', 'Home', 'Quick setup for a role' }, { 'healer', 'Home', 'Quick setup for a role' },
         { 'Skin, size and customization', 'Home', 'Skin and size' },
-        -- Grid and snapping shows only while Grid mode is on, and it is off in both checks, so its name and more words
-        -- find Grid mode, which shows it.
-        { 'Grid and snapping', 'Home', 'Grid mode' }, { 'Tick the displays that snap', 'Home', 'Grid mode' },
+        -- What snapping does is set in Arrange on screen's bar, so its words find Snap while moving, which leads there.
+        { 'snapping', 'Home', 'Snap while moving' }, { 'Show the grid', 'Home', 'Snap while moving' },
         -- The main page's settings.
         { 'Status and recast icon size', 'Home', 'Icon size' }, { 'Timer icon size', 'Home', 'Icon size' },
         { 'Overall scale', 'Home', 'Size' }, { 'Timer scale', 'Home', 'Size' },
@@ -93,12 +98,12 @@ local function more_words(when)
         { 'End sample displays', 'Home', 'Show samples' }, { 'Sample party', 'Display', 'Show samples' },
         { 'Name', 'Home', 'Name' }, { 'Countdown', 'Home', 'Countdown' },
         { 'Detail text', 'Home', 'Detail text' }, { 'Bar track', 'Home', 'Bar track' },
-        { 'Reset alert settings', 'Display', 'Reset this display' },
-        -- The party list buffs' icon size shows only while a group is in a panel of its own, and none is in both checks,
+        { 'Reset alert settings', 'Display', 'Reset all of this display' },
+        -- Party list's icon size shows only while a group is in a panel of its own, and none is in both checks,
         -- so these find each group's switch for that.
         { 'Buff and debuff icon size', 'Display', 'Your party in a panel of its own' },
         { 'Party icon size', 'Display', 'Your party in a panel of its own' },
-        -- The party list buffs' countdown switch.
+        -- Party list's countdown switch.
         { 'Show effect countdowns', 'Display', 'Countdowns' },
         -- The countdown and blink rows.
         { 'Bold effect countdowns', 'Home', 'Bold countdowns' }, { 'Countdown text outline', 'Home', 'Countdown outline' },
@@ -145,18 +150,18 @@ local function where_it_is(when)
         { 'Reset strip offsets', 'Display', 'Put moved groups back' },
         { 'Strip maximum width', 'Display', 'Longest row' }, { 'Party & alliance', 'Display', 'Buffs beside the game party list' },
         { 'Hover details', 'Home', 'Show details when I point at a timer' },
-        -- Snap distance shows only while Grid mode is on, and it is off in both checks, so it finds Grid mode.
-        { 'Snap distance', 'Home', 'Grid mode' },
+        -- Snap distance is in Arrange on screen's bar, so it finds Snap while moving.
+        { 'Snap distance', 'Home', 'Snap while moving' },
     }) do
         local found = false;
         for _, result in ipairs(window.search(entry[1])) do found = found or result.tab == entry[2] and result.label == entry[3]; end;
         assert(found, when .. ', ' .. entry[1] .. ' finds ' .. entry[3] .. ' on ' .. entry[2]);
     end;
-    -- Grid mode, on the main page, is found by the words a player would type.
+    -- Snap while moving, on the main page, is found by the words a player would type.
     for _, words in ipairs({ 'grid mode', 'grid', 'snap', 'snap to grid' }) do
         local found = false;
-        for _, result in ipairs(window.search(words)) do found = found or result.tab == 'Home' and result.label == 'Grid mode'; end;
-        assert(found, when .. ', ' .. words .. ' finds Grid mode on the main page');
+        for _, result in ipairs(window.search(words)) do found = found or result.tab == 'Home' and result.label == 'Snap while moving'; end;
+        assert(found, when .. ', ' .. words .. ' finds Snap while moving on the main page');
     end;
 end;
 -- No control sets how many diagnostic events are kept, so words about a maximum find no tick on Help.
@@ -174,9 +179,12 @@ no_maximum('Before any page is drawn');
 -- More words are added beside a control's own keywords, not in place of them.
 for _, entry in ipairs({ { 'cursor subtarget', 'Follow the cursor while I am choosing a target' } }) do
     local found = false;
-    for _, result in ipairs(window.search(entry[1])) do found = found or result.tab == 'Display' and result.label == entry[2]; end;
-    assert(found, 'Before any page is drawn, ' .. entry[1] .. ' still finds ' .. entry[2] .. ' on its panel');
+    for _, result in ipairs(window.search(entry[1])) do found = found or result.tab == 'Home' and result.label == entry[2]; end;
+    assert(found, 'Before any page is drawn, ' .. entry[1] .. ' still finds ' .. entry[2] .. ' on its page');
 end;
+-- The row's own help holds these words too, so only its alias shows they are kept.
+local follow_words = require('ui.search_index').more_words.Home['Follow the cursor while I am choosing a target'];
+assert(follow_words:find('Target timers Show', 1, true), 'The follow row still has its old words Target timers Show');
 -- A label still holding this once every page is drawn was never marked. The panel frame keeps its own words, and
 -- tests/test_panel_search.lua walks them.
 local UNMARKED = '\0';
@@ -224,8 +232,8 @@ fresh(function(s)
     p.effects.fit_all = false;
     -- Party countdowns start off; on here, so their controls show.
     p.effects.timers = true;
-    -- The party list buffs' own icons, a custom look.
-    p.style.icon_art = 'Client';
+    -- Party list's own icons, a custom look.
+    p.style.icon_art = 'XI View';
     s.recast_display = 'combined';
     for _, panel in pairs(s.panels) do
         panel.mode, panel.order, panel.countdown_outline = 'bars', { 33 }, true;
@@ -237,7 +245,7 @@ fresh(function(s)
     rule.flash = true;
     s.alerts.rules = { rule };
     s.effect_filters.rules = { { enabled = true, effect = 253, kind = 'all', name = '', job = 0, scope = 'self' } };
-    -- Grid mode starts off; on here, so the main page's grid controls show, with the ticks of the displays that are on.
+    -- Snap while moving starts off; on here, as a player who snaps has it.
     s.edit_mode.grid_mode = true;
     s.durations.learn = true;
     s.shared_layout = true;
@@ -278,6 +286,8 @@ for _, mode in ipairs({ 'fixed', 'add', 'percent', 'count_up' }) do
     end);
     draw('Durations'); draw('Durations');
 end;
+-- A spell picked to override, which Add duration override waits for.
+draw('Durations', 'Spell 57##effect_57', '##What to override'); draw('Durations');
 -- The pet display with outlined countdowns.
 fresh(function(s) s.pet.countdown_outline = true; end);
 require('ui.panel_frame').open('pet');
@@ -289,11 +299,10 @@ for _, to in ipairs({ 'screen', 'element' }) do
     require('ui.panel_frame').open('notices', 'place');
     draw('Display'); draw('Display');
 end;
--- Grid mode on with every display on, so the main page lists each display's tick: the recast panels one by one,
--- then combined, and the strips as they are drawn on the screen.
+-- Every display on: the recast panels one by one, then combined, and the strips as they are drawn on the screen.
 for _, recasts in ipairs({ 'separate', 'combined' }) do
     fresh(function(s)
-        s.edit_mode.grid_mode, s.recast_display = true, recasts;
+        s.recast_display = recasts;
         for _, panel in pairs(s.panels) do panel.enabled = true; end;
         s.party_cooldowns.enabled, s.party_cooldowns.list.enabled = true, true;
         s.ready_pulse.enabled, s.ready_pulse.spot = true, 'screen';
@@ -309,15 +318,17 @@ local shared = assert(require('core.share').export(app.state.settings, 'layout')
 imgui.GetClipboardText = function() return shared; end;
 draw('Profiles', 'Import from clipboard'); draw('Profiles');
 imgui.GetClipboardText = nil;
-draw('Profiles', 'One display##element', '##Export'); draw('Profiles');
+draw('Profiles', 'One display##element', '##What to export'); draw('Profiles');
 
 -- A saved profile, picked, overwritten and recoverable, and the job link on Home.
 fresh();
 assert(app.callbacks.profile_save('Healer', false), 'Fixture: the profile is saved.');
-draw('Profiles', 'Healer', '##profiles');
-draw('Profiles', 'Overwrite##profile_overwrite'); draw('Profiles');
+draw('Profiles', 'Healer##profile_pick');
+draw('Profiles', 'Overwrite##profile_overwrite_Healer'); draw('Profiles');
 draw('Profiles', 'Confirm overwrite'); draw('Profiles');
 draw('Profiles', 'Link##profile_link'); draw('Profiles');
+-- A saved profile picked to export.
+draw('Profiles', 'A saved profile##saved', '##What to export'); draw('Profiles');
 -- A whole profile placed on another screen size, read from the clipboard, and a file Import from a file lists.
 local placed = store.copy(app.state.settings);
 placed.placement_screen = { width = 2560, height = 1440 };

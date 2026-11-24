@@ -32,6 +32,10 @@ for _, entry in ipairs(files) do
     used_names[entry[1]:lower()] = true
 end
 choices[#choices + 1], choices[#choices + 2] = 'Original FFXI', 'XI View'
+-- The built-in fonts' names in lower case, before any font file of your own joins them. An export keeps one of these
+-- whatever your character is called (core/share.lua).
+fonts.built_in = {}
+for name in pairs(used_names) do fonts.built_in[name] = true end
 fonts.labels = { Agave = 'Ashita (Agave)', Ashita = 'Ashita (Agave)' }
 
 function fonts.names()

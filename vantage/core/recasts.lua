@@ -12,6 +12,7 @@ local preview_missing = {spell={},ability={},item={}};
 local ready_observations = {spell={},ability={}};
 local item_library, item_library_tried, item_library_problem;
 local clear = require('table.clear');
+local steady = require('core.steady');
 
 local function finite(value)
     return type(value)=='number' and value==value and math.abs(value)<math.huge;
@@ -21,33 +22,12 @@ local function integer(value, low, high)
     return finite(value) and value==math.floor(value) and value>=low and value<=high;
 end
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end;
-
-local function field(object, key)
-    if object==nil then return nil; end;
-    local ok,value=pcall(index_of,object,key);
-    if ok then return value; end;
-end
-
-local function call(object, key, ...)
-    local fn=field(object,key);
-    if type(fn)~='function' then return nil; end;
-    local ok,value=pcall(fn,object,...);
-    if ok then return value; end;
-end
+local field, call, resource_name = require('core.guard').field, require('core.guard').call, require('core.guard').resource_name;
 
 local function copy(value)
     local result={};
     for key,item in pairs(value) do result[key]=item; end;
     return result;
-end
-
-local function resource_name(resource)
-    local value=field(field(resource,'Name'),1);
-    if type(value)~='string' then return nil; end;
-    value=value:gsub('%c',''):match('^%s*(.-)%s*$');
-    if value~='' and value~='.' then return value:sub(1,200); end;
 end
 
 local function entry(kind, id, name, shared)
@@ -76,14 +56,14 @@ local function action_icon(kind,id,resource)
         result.ability_element=result.list_icon_nq;
     else result.item_id=id; end;
     preview_icons[kind][id]=result;
-    preview_missing[kind][id]=resource==nil and kind~='item' and os.clock() or nil;
+    preview_missing[kind][id]=resource==nil and kind~='item' and steady() or nil;
     return result;
 end
 
 function recasts.preview_icon(kind,id)
     if not preview_icons[kind] or not integer(id,kind=='item' and 1 or 0,kind=='spell' and 1023 or kind=='ability' and 2047 or 65534) then return nil; end;
     local retry=preview_missing[kind][id];
-    if preview_icons[kind][id] and (not retry or os.clock()-retry<1) then return preview_icons[kind][id]; end;
+    if preview_icons[kind][id] and (not retry or steady()-retry<1) then return preview_icons[kind][id]; end;
     local resources=call(AshitaCore,'GetResourceManager');
     local resource=kind=='spell' and call(resources,'GetSpellById',id) or kind=='ability' and call(resources,'GetAbilityById',id) or nil;
     return action_icon(kind,id,resource);
@@ -129,9 +109,18 @@ local function ability_caption(candidates)
     table.sort(list);
     return table.concat(list,' / ',1,math.min(2,#list));
 end
+-- A timer a whole group of abilities shares goes by the group's name, as the game's menu has it: its first two names
+-- would read as the two you used. By recast id (Phoenix sql/abilities.sql recastId): each kind of blood pact, the
+-- rolls, the Quick Draw shots and the maneuvers. Sic's timer (:92) has Ready (:269) and the jug pets' moves (:528 on)
+-- too, but Ready is WotG and isn't loaded, so on Phoenix the timer is Sic's alone (data/pets.lua) and goes by its name.
+local GROUPS={[102]='Sic',[173]='Blood Pact: Rage',[174]='Blood Pact: Ward',[193]='Phantom Roll',[195]='Quick Draw',[210]='Maneuvers'};
+local function ability_name(timer,candidates,shared)
+    return GROUPS[timer] or ability_caption(candidates)..(shared and ' (shared)' or '');
+end
 
 -- The ids data/actions.lua keeps. What it leaves out doesn't exist on Phoenix: those rows stay here, as names, icons
--- and live rows read them, marked unlisted for the pickers to leave out.
+-- and live rows read them, marked unlisted for the pickers to leave out. A spell off the list is read live only if you
+-- know it.
 local function on_phoenix(list)
     local ids={};
     for _,id in ipairs(require('data.actions')[list]) do ids[id]=true; end;
@@ -155,8 +144,8 @@ local function index_abilities(resources)
     for timer,values in pairs(groups) do
         ability_candidates[timer]=values;
         local shared=#values>1 or timer==0;
-        local caption=timer==0 and 'Job special' or ability_caption(values);
-        names.ability[timer]=ability_icons(entry('ability',timer,caption..(shared and ' (shared)' or ''),shared),
+        local name=timer==0 and 'Job special (shared)' or ability_name(timer,values,shared);
+        names.ability[timer]=ability_icons(entry('ability',timer,name,shared),
             timer==0 and {} or values,'resource_aliases',false);
         -- One ability on the list keeps its timer, and timer 0 is every job's special.
         names.ability[timer].unlisted=timer~=0 and not kept[timer] or nil;
@@ -223,17 +212,25 @@ function recasts.catalog(kind)
 end
 
 function recasts.new()
-    return setmetatable({rows={},previous={},events={},sequence=0,version=0,valid=false,capabilities={},uses={},pending={},requests={}},methods);
+    return setmetatable({rows={},previous={},events={},spare_events={},sequence=0,version=0,valid=false,capabilities={},uses={},pending={},requests={},
+        item_answers={}},methods);
 end
 
 -- How far from a cooldown's first reading your use of its ability can come. Phoenix sends the two together. A pact's
 -- cooldown starts when the avatar's move goes off, which core/observer.lua counts as a use of the pact too.
 local USE_WINDOW=3;
 
+-- How long what reset() kept waits for its timers after the first sample of a zone or pause. At a zone-in Phoenix
+-- lists the abilities on cooldown (0x119) only after the rest of its answer to the client's first packets, the whole
+-- inventory too (src/map/packets/c2s/0x00c_gameok.cpp:106 and 0x061_clistatus.cpp:35,
+-- src/map/utils/charutils.cpp:1691). In Phoenix packet logs it came 1.6 to 8.1 seconds after the zone-in's status
+-- icons (0x063).
+local CARRY_WAIT=60;
+
 -- Your own use of a job ability, or your avatar's pact going off, by its id (core/observer.lua). Phoenix lists only the
 -- abilities on cooldown (0x119), so the first use of one since you logged in, zoned or changed jobs brings a timer with
 -- no reading before it, and so does a zone's list that comes after the first read. Only one that comes with a use of
--- its own has started.
+-- its own has started, and one a zone's late list brings back keeps what it had before the zone.
 function methods:used(action_id,now)
     if integer(action_id,0,1023) and finite(now) then self.uses[action_id]=now; end;
 end
@@ -264,14 +261,21 @@ local function confirmed(model,timer,at)
     return false;
 end
 
--- A zone change or a pause drops the rows, but the client keeps counting the same cooldowns. Rows that knew their
--- start and total are kept aside, so the first sample after can give them back to the same character and job.
+-- A zone change or a pause drops the rows, but the client keeps counting the same cooldowns. Rows still counting are
+-- kept aside, so the samples after can give them back to the same character and job, with their start and total when
+-- they knew them.
 function methods:reset()
     local kept;
-    for key,row in pairs(self.rows) do if row.total and row.start and row.deadline then
+    for key,row in pairs(self.rows) do if row.deadline then
         kept=kept or {};kept[key]=row;
     end end;
-    if kept then self.carried={owner=self.owner,time=self.last_time,rows=kept}; end;
+    -- A second reset before every kept row came back, as a pause before a zone's late list, adds its rows to those
+    -- still waiting.
+    local carried=self.carried;
+    if kept and carried and carried.owner==self.owner then
+        for key,row in pairs(kept) do carried.rows[key]=row; end;
+        carried.time=self.last_time or carried.time;
+    elseif kept then self.carried={owner=self.owner,time=self.last_time,rows=kept}; end;
     if next(self.rows) then self.version=self.version+1; end;
     self.rows,self.previous,self.spare,self.events,self.epoch,self.last_time={},{},nil,{},nil,nil;
     clear(self.uses);clear(self.pending);clear(self.requests);
@@ -284,22 +288,42 @@ local function known_value(value)
     if value==false or value==0 then return false; end;
 end
 
+-- What the known abilities go by, and the list a sample writes them into, made once.
+local context_keys,context_fields={'GetMainJob','GetSubJob','GetMainJobLevel','GetSubJobLevel'},{};
 local function refresh_ability_context(model,memory,now)
     local player=call(memory,'GetPlayer');
     local ready=known_value(call(player,'HasAbilityData'));
-    local fields={tostring(ready)};
-    for _,key in ipairs({'GetMainJob','GetSubJob','GetMainJobLevel','GetSubJobLevel'}) do fields[#fields+1]=tostring(call(player,key)); end;
-    local signature=table.concat(fields,':');
-    if model.ability_context~=signature or not model.ability_checked or now-model.ability_checked>=1 then
-        model.ability_context,model.ability_checked,model.ability_metadata=signature,now,{};
+    context_fields[1]=tostring(ready);
+    for index,key in ipairs(context_keys) do context_fields[index+1]=tostring(call(player,key)); end;
+    local signature=table.concat(context_fields,':');
+    if model.ability_context~=signature or not model.ability_checked then
+        model.ability_context,model.ability_checked,model.ability_metadata,model.ability_last,model.ability_bases=signature,now,{},nil,{};
+    elseif now-model.ability_checked>=1 then
+        -- Once a second the known abilities are asked again. What their answers made last time is kept in
+        -- ability_last, to hand out again when the answers are the same.
+        model.ability_checked=now;
+        model.ability_last,model.ability_metadata=model.ability_metadata,model.ability_last or {};
+        clear(model.ability_metadata);
     end;
     return player,ready;
 end
 
+-- Whether what the known abilities made for timer id last time, last, is what they make now: a copy of the same base
+-- for the same abilities, in the same order.
+local function same_known(model,id,last,base,selected)
+    if not last or last==base or model.ability_bases[id]~=base or #last.action_icons~=#selected then return false; end;
+    for index,candidate in ipairs(selected) do if last.action_icons[index]~=candidate.icon then return false; end; end;
+    return true;
+end
+
+-- The abilities of a timer the client names none for, and the list of a timer's abilities you know, refilled each time
+-- it is asked about.
+local NO_CANDIDATES,selected={},{};
 local function live_ability_metadata(model,id,resources,player,ready,counts)
     local base=metadata('ability',id,resources);
     if model.ability_metadata[id] then return model.ability_metadata[id]; end;
-    local candidates,selected=ability_candidates[id] or {},{};
+    local candidates=ability_candidates[id] or NO_CANDIDATES;
+    clear(selected);
     local complete=ready==true and type(field(player,'HasAbility'))=='function';
     if complete then
         for _,candidate in ipairs(candidates) do
@@ -315,11 +339,13 @@ local function live_ability_metadata(model,id,resources,player,ready,counts)
             elseif known==nil or pet==nil then complete=false; end;
         end;
     end;
-    local result=base;
-    if complete and #selected>0 then
+    local result,last=base,model.ability_last and model.ability_last[id];
+    if complete and #selected>0 and same_known(model,id,last,base,selected) then result=last;
+    elseif complete and #selected>0 then
         result=copy(base);
-        result.name=ability_caption(selected)..(base.shared and ' (shared)' or '');
+        result.name=ability_name(id,selected,base.shared);
         ability_icons(result,selected,'known_abilities',true);
+        model.ability_bases[id]=base;
     end;
     model.ability_metadata[id]=result;
     return result;
@@ -333,39 +359,68 @@ local function apply_metadata(row,meta)
     for _,key in ipairs(icon_fields) do row[key]=meta[key]; end;
 end
 
-local function timer_reader(object,key,counts)
-    local fn=field(object,key);
-    return function(index)
-        if type(fn)~='function' then return nil; end;
-        counts[key]=(counts[key] or 0)+1;
-        local ok,value=pcall(fn,object,index);
-        if ok and integer(value,0,2147483647) then return value; end;
-    end;
+-- One timer read with fn, the manager's function named key, counted under key.
+local function read_timer(fn,object,key,counts,index)
+    if type(fn)~='function' then return nil; end;
+    counts[key]=(counts[key] or 0)+1;
+    local ok,value=pcall(fn,object,index);
+    if ok and integer(value,0,2147483647) then return value; end;
 end
 
-local function observation(kind,id,seconds)
-    if seconds>0 then return {kind=kind,id=id,seconds=seconds}; end;
+-- A running timer's reading goes in the table pool keeps for its key, refilled each time. A sample fills the pool of
+-- the sample before last, as the last one's readings are what it compares with.
+local function observation(pool,key,kind,id,seconds)
+    if seconds>0 then
+        local held=pool[key];
+        if not held then held={kind=kind,id=id};pool[key]=held; end;
+        held.seconds,held.meta=seconds,nil;
+        return held;
+    end;
     -- Ready samples never change; reuse them instead of allocating one for each timer each tick.
     local cache=ready_observations[kind];
     if not cache[id] then cache[id]={kind=kind,id=id,seconds=0}; end;
     return cache[id];
 end
 
--- The spells the client has a name for, and each one's row key, found once. A sample reads only their timers and makes
--- no keys: a spell with no name has nothing to show. A client that names none yet is asked again the next sample.
-local named_spells,spell_keys;
-local function spells_to_read(resources)
-    if not named_spells and resources then
-        local found,keys={},{};
+-- The spells the client has a name for, split into those on data/actions.lua's list and the rest, and each one's row
+-- key by its id, found once. A spell with no name has nothing to show, and one off the list can't count down on Phoenix
+-- (Phoenix src/map/utils/charutils.cpp:961 loads only the spells whose content is on). A client that names none yet is
+-- asked again the next sample.
+local listed_spells,other_spells,spell_keys;
+-- How often the spells off the list you know are asked about again, in seconds. A new character, zone, job or support
+-- job asks at once.
+local SPELL_CHECK=5;
+-- A sample reads the listed spells and the ones off the list you know, kept in one list for the model and refilled
+-- only when they are asked about again. It makes no keys.
+local function spells_to_read(model,memory,resources,now)
+    if not listed_spells and resources then
+        local listed,found,others,keys=on_phoenix('spells'),{},{},{};
         for id=0,1023 do
             if resource_name(call(resources,'GetSpellById',id)) then
-                found[#found+1]=id;
-                keys[#found]='spell:'..id;
+                if listed[id] then found[#found+1]=id; else others[#others+1]=id; end;
+                keys[id]='spell:'..id;
             end;
         end;
-        if #found>0 then named_spells,spell_keys=found,keys; end;
+        if #found>0 or #others>0 then listed_spells,other_spells,spell_keys=found,others,keys; end;
     end;
-    return named_spells;
+    if not listed_spells then return nil; end;
+    local ids,checked=model.spell_ids,model.spell_checked;
+    if ids and model.spell_epoch==model.epoch and now>=checked and now-checked<SPELL_CHECK then return ids; end;
+    if not ids then
+        ids={};
+        for index,id in ipairs(listed_spells) do ids[index]=id; end;
+        model.spell_ids=ids;
+    end;
+    local count=#listed_spells;
+    local player=call(memory,'GetPlayer');
+    if type(field(player,'HasSpell'))=='function' then
+        for _,id in ipairs(other_spells) do
+            if known_value(call(player,'HasSpell',id))==true then count=count+1;ids[count]=id; end;
+        end;
+    end;
+    for index=#ids,count+1,-1 do ids[index]=nil; end;
+    model.spell_epoch,model.spell_checked=model.epoch,now;
+    return ids;
 end
 
 -- Item recasts come from Ashita's item data library, loaded on the first equipped item with charges. It needs
@@ -381,10 +436,28 @@ local function item_parser()
     return item_library;
 end
 
-local function read_items(memory,resources,result,counts,capabilities)
+-- The library's answer for a worn item comes from its extra bytes and the client's game time, which its game_time_diff
+-- reads in whole seconds through the game time function core/clock.lua finds. So each item's answer is kept with its
+-- bytes and that second, and the library is asked again only when either moved. An answer of 0 is kept while the bytes
+-- stay the same, as the times they hold have passed or no charges are left. Each sample marks what it read with its
+-- stamp. The clock is read only once core/clock.lua has looked for it, as self timers do, and without it a counting
+-- item is asked at every sample.
+local item_clock,item_stamp=nil,0;
+local function game_second()
+    if item_clock==nil then
+        local ok,value=pcall(require,'core.clock');
+        item_clock=ok and type(value)=='table' and type(value.get_game_time_raw)=='function' and value or false;
+    end;
+    if not item_clock or type(item_clock.loaded)=='function' and not item_clock.loaded() then return nil; end;
+    local ok,value=pcall(item_clock.get_game_time_raw);
+    if ok and finite(value) then return value; end;
+end
+
+local function read_items(memory,resources,result,counts,capabilities,pool,answers)
     local inventory=call(memory,'GetInventory');
     capabilities.items=inventory~=nil;
     if not inventory then return; end;
+    item_stamp=item_stamp+1;
     for slot=0,15 do
         counts.equipment=(counts.equipment or 0)+1;
         local equipped=call(inventory,'GetEquippedItem',slot);
@@ -405,19 +478,37 @@ local function read_items(memory,resources,result,counts,capabilities)
                     capabilities.item_timers=parser~=nil;
                     if parser then
                         counts.item_timers=(counts.item_timers or 0)+1;
-                        local ok,info=pcall(parser.parse_timer_info,item,resource,true);
-                        local seconds=ok and type(info)=='table' and info.use_delay or nil;
-                        local charges=ok and type(info)=='table' and info.remaining_charges or nil;
+                        local key='item:'..id..':'..index;
+                        local answer=answers[key];
+                        if not (answer and answer.extra==extra and answer.seconds<=0) then
+                            -- The second is read before the library reads the clock, so one that turns between them
+                            -- only asks again at the next sample.
+                            local second=game_second();
+                            if not answer or answer.extra~=extra or not second or answer.second~=second then
+                                local ok,info=pcall(parser.parse_timer_info,item,resource,true);
+                                if ok and type(info)=='table' and type(info.use_delay)=='number' then
+                                    answer=answer or {};answers[key]=answer;
+                                    answer.extra,answer.second,answer.seconds,answer.charges=extra,second,info.use_delay,info.remaining_charges;
+                                else answer,answers[key]=nil,nil; end;
+                            end;
+                        end;
+                        if answer then answer.stamp=item_stamp; end;
+                        local seconds,charges=answer and answer.seconds,answer and answer.charges;
                         if finite(seconds) and seconds>=-2147483648 and seconds<=2147483647 and integer(charges,1,255) then
-                            local key='item:'..id..':'..index;
-                            result[key]={kind='item',id=id,seconds=math.max(0,seconds),meta=metadata('item',id,resources,resource),
-                                charges=charges,equipment_slot=slot,inventory_index=index};
+                            -- The reading goes in the pool's table for its key, as a running timer's does.
+                            local held=pool[key];
+                            if not held then held={kind='item',id=id};pool[key]=held; end;
+                            held.seconds,held.meta=math.max(0,seconds),metadata('item',id,resources,resource);
+                            held.charges,held.equipment_slot,held.inventory_index=charges,slot,index;
+                            result[key]=held;
                         end;
                     end;
                 end;
             end;
         end;
     end;
+    -- An item's key changes when it moves in the bag, so no answer is kept for an item this sample didn't read.
+    for key,answer in pairs(answers) do if answer.stamp~=item_stamp then answers[key]=nil; end;end;
 end
 
 local function same_session(memory,snapshot)
@@ -438,16 +529,25 @@ end
 
 function methods:update(snapshot,now,options)
     options=options or {};
+    -- Off, or with no character to read, it resets once and then makes nothing until a sample reads again. That sample
+    -- resets too, as its epoch is new.
     if not finite(now) or options.enabled==false or not snapshot or not snapshot.valid or not integer(snapshot.id,1,4294967295) then
-        self:reset();self.capabilities={};return;
+        if not self.off then self:reset();self.capabilities,self.off={},true; end;
+        return;
     end;
-    local epoch=table.concat({snapshot.id,snapshot.zone or 0,snapshot.job or 0},':');
+    self.off=nil;
+    -- A support job change drops the ability cooldowns as a main job change does (Phoenix
+    -- src/map/packets/c2s/0x100_myroom_job.cpp:160). One that reads 0 for a while, as under a battlefield's restriction,
+    -- changes nothing.
+    if integer(snapshot.sub_job,1,255) then self.sub_job=snapshot.sub_job; end;
+    local epoch=snapshot.id..':'..(snapshot.zone or 0)..':'..(snapshot.job or 0)..':'..(self.sub_job or 0);
     if self.epoch~=epoch or self.last_time and (now<self.last_time or now-self.last_time>2) then self:reset(); end;
     local baseline=self.epoch~=epoch;
     self.epoch,self.last_time,self.owner=epoch,now,snapshot.id..':'..(snapshot.job or 0);
     -- Time that went back makes the kept end times meaningless; another character or job has other cooldowns.
     local carried=self.carried;
-    if carried and (now<carried.time or carried.owner~=self.owner) then
+    if carried and baseline then carried.from=now; end;
+    if carried and (now<carried.time or carried.owner~=self.owner or now-carried.from>CARRY_WAIT) then
         carried,self.carried=nil,nil;
     end;
     local memory=call(AshitaCore,'GetMemoryManager');
@@ -456,28 +556,33 @@ function methods:update(snapshot,now,options)
     for action,time in pairs(self.uses) do if math.abs(now-time)>2*USE_WINDOW then self.uses[action]=nil; end;end;
     for action,time in pairs(self.requests) do if math.abs(now-time)>REQUEST_WINDOW then self.requests[action]=nil; end;end;
     local manager,resources=call(memory,'GetRecast'),call(AshitaCore,'GetResourceManager');
-    local counts,observed={},self.spare or {};
-    self.spare=nil;clear(observed);
-    local capabilities={spells=type(field(manager,'GetSpellTimer'))=='function',abilities=type(field(manager,'GetAbilityTimer'))=='function'
-        and type(field(manager,'GetAbilityTimerId'))=='function',items=false,reads=counts};
-    local spells=options.spells~=false and capabilities.spells and spells_to_read(resources);
+    -- The capabilities and read counts, and the readings, of the sample before last are refilled. The last sample's
+    -- stay as they were: this one compares with its readings.
+    local capabilities,observed,pool=self.spare_capabilities or {},self.spare or {},self.spare_pool or {};
+    local counts=capabilities.reads or {};
+    self.spare,self.spare_pool,self.spare_capabilities=nil,nil,nil;
+    clear(observed);clear(capabilities);clear(counts);
+    capabilities.spells=type(field(manager,'GetSpellTimer'))=='function';
+    capabilities.abilities=type(field(manager,'GetAbilityTimer'))=='function' and type(field(manager,'GetAbilityTimerId'))=='function';
+    capabilities.items,capabilities.reads=false,counts;
+    local spells=options.spells~=false and capabilities.spells and spells_to_read(self,memory,resources,now);
     if spells then
-        local read=timer_reader(manager,'GetSpellTimer',counts);
-        for index,id in ipairs(spells) do
-            local raw=read(id);
-            if raw~=nil then observed[spell_keys[index]]=observation('spell',id,raw/60); end;
+        local read=field(manager,'GetSpellTimer');
+        for _,id in ipairs(spells) do
+            local raw=read_timer(read,manager,'GetSpellTimer',counts,id);
+            if raw~=nil then observed[spell_keys[id]]=observation(pool,spell_keys[id],'spell',id,raw/60); end;
         end;
     end;
     if options.abilities~=false and capabilities.abilities then
-        local read_id,read_timer=timer_reader(manager,'GetAbilityTimerId',counts),timer_reader(manager,'GetAbilityTimer',counts);
+        local read_id,read=field(manager,'GetAbilityTimerId'),field(manager,'GetAbilityTimer');
         local complete=true;
         for slot=0,30 do
-            local id,raw=read_id(slot),read_timer(slot);
+            local id,raw=read_timer(read_id,manager,'GetAbilityTimerId',counts,slot),read_timer(read,manager,'GetAbilityTimer',counts,slot);
             if not integer(id,0,4095) or raw==nil then complete=false; end;
             -- Id 0 is the job special only in slot 0. In any other slot it is an empty slot.
             if integer(id,0,4095) and (id~=0 or slot==0) and raw~=nil then
                 local key='ability:'..id;
-                if not observed[key] or raw/60>observed[key].seconds then observed[key]=observation('ability',id,raw/60); end;
+                if not observed[key] or raw/60>observed[key].seconds then observed[key]=observation(pool,key,'ability',id,raw/60); end;
             end;
         end;
         if not complete then
@@ -485,14 +590,18 @@ function methods:update(snapshot,now,options)
         end;
         capabilities.ability_complete=complete;
     end;
-    if options.items~=false then read_items(memory,resources,observed,counts,capabilities); end;
+    if options.items~=false then
+        read_items(memory,resources,observed,counts,capabilities,pool,self.item_answers);
+        -- An item's key changes when it moves in the bag, so the pool keeps no reading for an item this sample didn't read.
+        for key,held in pairs(pool) do if held.kind=='item' and observed[key]~=held then pool[key]=nil; end;end;
+    end;
     local player,ready,identity_checked;
     for _,input in pairs(observed) do if input.kind=='ability' and input.seconds>0 then
         if not identity_checked then player,ready=refresh_ability_context(self,memory,now);identity_checked=true; end;
         input.meta=live_ability_metadata(self,input.id,resources,player,ready,counts);
     end end;
     if not same_session(memory,snapshot) then self:reset();self.capabilities={identity_changed=true,reads=counts};return; end;
-    self.valid,self.capabilities=capabilities.spells or capabilities.abilities or capabilities.items,capabilities;
+    self.valid,self.capabilities,self.spare_capabilities=capabilities.spells or capabilities.abilities or capabilities.items,capabilities,self.capabilities;
     -- Whether a row came, went or took another name. Only that moves the version, which has the settings window build
     -- its list of recasts again.
     local changed=false;
@@ -503,8 +612,16 @@ function methods:update(snapshot,now,options)
             -- used, so a running ability timer can rise by up to a second without a new use.
             local started=not baseline and previous and (previous.seconds==0
                 or input.seconds>previous.seconds+(input.kind=='ability' and 1.5 or 0.1));
+            -- The same cooldown ends when it did before the zone change or pause: it keeps its start and total, and its
+            -- instance, so a ready pulse that played for it doesn't play again. An ability's can come back with a zone's
+            -- list that comes late, and the job special's slot reads 0 until then, so that's no new use either.
+            local kept=not row and carried and (baseline or not previous or input.kind=='ability') and carried.rows[key];
+            if kept then
+                carried.rows[key]=nil;
+                if math.abs(kept.deadline-(now+input.seconds))<=1.5 then started=false; else kept=nil; end;
+            end;
             -- An ability timer with no reading before it waits from its first reading for your use of it.
-            local first=self.pending[key] or not baseline and not previous and input.kind=='ability' and now;
+            local first=not kept and (self.pending[key] or not baseline and not previous and input.kind=='ability' and now);
             if first and not started then started=confirmed(self,input.id,first); end;
             self.pending[key]=first and not started and now-first<=USE_WINDOW and first or nil;
             local meta=input.meta or metadata(input.kind,input.id,resources);
@@ -515,12 +632,7 @@ function methods:update(snapshot,now,options)
                     group=meta.group,effect=meta.effect,recast_id=input.id,name=meta.name,entity_id=snapshot.id,entity_name=snapshot.name or 'You',
                     present=true,first_seen=now,priority=0,total=started and input.seconds or nil,start=started and now or nil,shared=meta.shared};
                 self.rows[key]=row;
-                -- The same cooldown ends when it did before the zone change or pause: it keeps its start and total, and
-                -- its instance, so a ready pulse that played for it doesn't play again.
-                local kept=baseline and carried and carried.rows[key];
-                if kept and not started and math.abs(kept.deadline-(now+input.seconds))<=1.5 then
-                    row.start,row.total,row.instance=kept.start,kept.total,kept.instance;
-                end;
+                if kept then row.start,row.total,row.instance=kept.start,kept.total,kept.instance; end;
             elseif not previous then row.total,row.start=nil,nil; end;
             local name=row.name;
             apply_metadata(row,meta);
@@ -545,8 +657,8 @@ function methods:update(snapshot,now,options)
         if now-row.unavailable_at>10 then self.rows[key],changed=nil,true; end;
     end end;
     for key in pairs(self.pending) do if not observed[key] or observed[key].seconds==0 then self.pending[key]=nil; end;end;
-    if baseline then self.carried=nil; end;
     self.spare,self.previous=self.previous,observed;
+    self.spare_pool,self.previous_pool=self.previous_pool,pool;
     if changed then self.version=self.version+1; end;
 end
 
@@ -562,16 +674,40 @@ function methods:project(view,now)
     end end;
 end
 
+local function by_key(a,b) return a.key<b.key; end;
+
+-- vantage.lua asks for a view each refresh. It gets the same list each time, and each row's copy again, refilled from
+-- its row, so what was written on the copy goes. A row made again for a new use gets a new copy, so one held from
+-- before keeps what it had. Nothing keeps the list or a copy past the next view.
 function methods:view(now)
-    local result={rows={},valid=self.valid,version=self.version,capabilities=self.capabilities};
-    for _,row in pairs(self.rows) do result.rows[#result.rows+1]=copy(row); end;
-    table.sort(result.rows,function(a,b) return a.key<b.key; end);
+    local result,copies,sources=self.shown,self.copies,self.sources;
+    if not result then
+        result,copies,sources={rows={}},{},{};
+        self.shown,self.copies,self.sources=result,copies,sources;
+    end;
+    local rows,count=result.rows,0;
+    for key,row in pairs(self.rows) do
+        local shown=copies[key];
+        if shown and sources[key]==row then clear(shown);
+        else shown={};copies[key],sources[key]=shown,row; end;
+        for field,value in pairs(row) do shown[field]=value; end;
+        count=count+1;rows[count]=shown;
+    end;
+    for index=#rows,count+1,-1 do rows[index]=nil; end;
+    for key in pairs(copies) do if not self.rows[key] then copies[key],sources[key]=nil,nil; end;end;
+    table.sort(rows,by_key);
+    result.valid,result.version,result.capabilities=self.valid,self.version,self.capabilities;
     self:project(result,now);
     return result;
 end
 
+-- Two lists take turns, as the tracker's do: the one handed back now is emptied at the next drain, so its readers read
+-- it within this refresh only.
 function methods:drain_events()
-    local result=self.events;self.events={};return result;
+    local result,spare=self.events,self.spare_events;
+    clear(spare);
+    self.events,self.spare_events=spare,result;
+    return result;
 end
 
 -- For /vg report and the Recasts tab, which asks each frame: whether item recasts can be read. Callers only read it.

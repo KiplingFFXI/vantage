@@ -19,7 +19,7 @@ for _,sort in ipairs({'longest', 'oldest', 'remaining', 'name', 'fixed'}) do
     for _,key in ipairs(status_panels) do assert(settings.panels[key].sort == sort, 'Saved panel order survives loading.'); end;
 end;
 for _,sort in ipairs({'longest', 'oldest', 'remaining', 'name'}) do
-    assert(party.tidy({effects={sort=sort}}).effects.sort == sort, 'The party list buffs retain each supported manual sort.');
+    assert(party.tidy({effects={sort=sort}}).effects.sort == sort, 'Party list retains each supported manual sort.');
 end;
 
 local function effect(id, name, first_seen, sequence, remaining)

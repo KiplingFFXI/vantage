@@ -9,6 +9,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
+import check_repository
 import package
 import release_files
 
@@ -65,6 +66,17 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(count, len(package.REQUIRED) + 5)
         with zipfile.ZipFile(path) as archive:
             self.assertFalse(any(name.endswith(('.pyc', '.ttf', '.DAT', '.json')) for name in archive.namelist()))
+
+    def test_the_research_folder_is_left_out(self):
+        # The client decoder's folder sits at the top of the repository, and git ignores it. Neither the archive nor
+        # the repository check reads it, even with a private marker in it.
+        for name in ('research/native-solo-research/xi_core.py', 'research/native-solo-research/vendor/capstone.dll'):
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_bytes(package.PATH_MARKERS[0].encode('ascii') + b'\n')
+        _, count, _ = self.build()
+        self.assertEqual(count, len(package.REQUIRED) + 5)
+        self.assertEqual([path for path in check_repository.public_files(self.root) if 'research' in path.parts], [])
+        self.assertIn('/research/', (ROOT / '.gitignore').read_text(encoding='ascii').splitlines())
 
     def test_unexpected_runtime_file_refused(self):
         (self.addon / 'core/extra.lua').write_text('return {};\n', encoding='ascii')
@@ -125,6 +137,36 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(package.OWN_MARKERS, ROOT / 'tools/private_markers.txt')
         self.assertIn('tools/private_markers.txt', (ROOT / '.gitignore').read_text(encoding='ascii').splitlines())
 
+    def test_the_repository_check_refuses_marker_lines_outside_the_archive(self):
+        # Tests, tools and repository-only documents are published too, so the repository check looks for the lines of
+        # private_markers.txt in every public file. It skips the marker file itself, which git ignores.
+        (self.root / 'tools/private_markers.txt').write_text('\n'.join(OWN) + '\n', encoding='ascii')
+        (self.root / 'tests/test_x.py').write_text('x = "%s"\n' % OWN[0].upper(), encoding='ascii')
+        (self.root / 'docs/RELEASING.md').write_text('Mail %s.\n' % OWN[1], encoding='ascii')
+        problems, _ = check_repository.check(self.root)
+        flagged = sorted(problem for problem in problems if 'private' in problem)
+        self.assertEqual(flagged, ['docs/RELEASING.md: private path or credential marker',
+                                   'tests/test_x.py: private path or credential marker'])
+
+    def test_the_repository_check_reports_a_marker_file_that_isnt_ascii(self):
+        (self.root / 'tools/private_markers.txt').write_bytes(b'caf\xc3\xa9\n')
+        problems, _ = check_repository.check(self.root)
+        self.assertIn('tools/private_markers.txt: expected ASCII text', problems)
+
+    def test_the_repository_check_refuses_leftovers_the_archive_skips(self):
+        for name in ('__pycache__/x.pyc', 'fonts/menu-v1-0000.ttf', 'data/ROM.DAT'):
+            (self.addon / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.addon / name).write_bytes(b'x')
+            with self.subTest(name=name), self.assertRaisesRegex(RuntimeError, 'Unexpected or linked runtime'):
+                release_files.addon_files(self.addon)
+            (self.addon / name).unlink()
+            if name.startswith(('__pycache__/', 'fonts/')):
+                (self.addon / name).parent.rmdir()
+        # The archive skips an empty folder it doesn't know, as it always has.
+        (self.addon / 'extra').mkdir()
+        _, count, _ = self.build()
+        self.assertEqual(count, len(package.REQUIRED) + 5)
+
     def test_output_inside_the_addon_refused(self):
         with self.assertRaisesRegex(RuntimeError, 'outside'):
             package.build(self.addon / 'out', self.root)
@@ -136,7 +178,7 @@ class PackageTests(unittest.TestCase):
                 names = archive.namelist()
                 for name in names:
                     self.assertIsNone(package.private_marker(archive.read(name)), name)
-        self.assertEqual(path.name, 'vantage-1.3.0-addon.zip')
+        self.assertEqual(path.name, 'vantage-1.4.0-addon.zip')
         self.assertEqual(count, len(package.REQUIRED) + 5)
         self.assertIn('docs/INSTALL.md', names)
 

@@ -1,5 +1,5 @@
 -- Only effects from job abilities in the settings: off to start, kept by a save, and off again after a reset. Its tick
--- is on the Filters tab of Party members' timers and Party list buffs and nowhere else, it writes there, and search
+-- is on the Filters tab of Party members' timers and Party list and nowhere else, it writes there, and search
 -- finds it by what it's about.
 local defaults, custom = require('ui.defaults'), require('core.customization');
 local TICK = 'Only effects from job abilities';
@@ -23,9 +23,9 @@ do
     s.panels.party.abilities_only, s.party_ui.effects.abilities_only = true, true;
     s = custom.reset(s, 'effects');
     assert(s.panels.party.abilities_only == false, 'Reset effects and groups turns it off on Party members\' timers.');
-    assert(s.party_ui.effects.abilities_only == true, 'And leaves Party list buffs.');
+    assert(s.party_ui.effects.abilities_only == true, 'And leaves Party list.');
     s = custom.reset(s, 'party_ui');
-    assert(s.party_ui.effects.abilities_only == false, 'Reset Party list buffs turns theirs off.');
+    assert(s.party_ui.effects.abilities_only == false, 'Reset Party list turns theirs off.');
 end;
 
 do
@@ -53,11 +53,11 @@ do
 
     h.fresh(function(s) s.party_ui.enabled = true; end);
     h.on('party_ui', 'filters');
-    assert(ticked(), 'Party list buffs has it on Filters.');
+    assert(ticked(), 'Party list has it on Filters.');
     h.draw(TICK .. '##frame');
     assert(h.s.party_ui.effects.abilities_only == true, 'The tick writes there.');
     for _, text in ipairs({ 'job abilities', 'maneuvers' }) do
-        assert(found(text, 'party_ui'), 'Search for ' .. text .. ' finds it on Party list buffs.');
+        assert(found(text, 'party_ui'), 'Search for ' .. text .. ' finds it on Party list.');
     end;
     h.s.party_ui.effects.kind = 'none';
     h.bump();

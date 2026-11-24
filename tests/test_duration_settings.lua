@@ -27,8 +27,8 @@ end;
 assert(found('learned durations', 'Durations', 'Duration overrides and learned durations'), 'Search names the Timer durations page.');
 -- What isn't drawn yet finds the control that shows it: the Add button of an empty list, the panel picker for a light
 -- only some panels have.
-for _, entry in ipairs({ { 'Add duration override', 'Durations' }, { 'Learn from my casts', 'Durations' }, { 'Clear learned durations', 'Durations', 'Learn from my casts' },
-    { 'count up', 'Durations', 'Duration overrides and learned durations' }, { 'Change the time to', 'Durations', 'Add duration override' },
+for _, entry in ipairs({ { 'Add duration override', 'Durations', 'What to override' }, { 'Learn from my casts', 'Durations' }, { 'Clear learned durations', 'Durations', 'Learn from my casts' },
+    { 'count up', 'Durations', 'Duration overrides and learned durations' }, { 'Change the time to', 'Durations', 'What to override' },
     { 'Light up buffs', 'Display', 'Light up buffs you can remove' }, { 'Glow around lit icons', 'Display', 'Light up buffs you can remove' },
     { 'Glow around lit buffs', 'Display', 'Light up buffs you can remove' }, { 'Light up debuffs', 'Display', 'Light up debuffs you can remove' },
     { 'cursna', 'Display', 'Debuffs you can remove' },
@@ -46,6 +46,12 @@ imgui.ColorEdit4 = function(label, value)
     if colored and colored[1] == label then for i = 1, 4 do value[i] = colored[2][i]; end; colored = nil; return true; end
     return false;
 end;
+-- A pick from a list of names goes by the id at the end of its label, as a spell's name comes from the client.
+local chosen, selectable = nil, imgui.Selectable;
+imgui.Selectable = function(label, ...)
+    if chosen and tostring(label):sub(-#chosen) == chosen then chosen = nil; return true; end
+    return selectable(label, ...);
+end;
 local input, input_with_hint = imgui.InputText, imgui.InputTextWithHint;
 local function typing(label, value)
     if typed and typed[1] == label then value[1], typed = typed[2], nil; return true; end
@@ -56,11 +62,11 @@ imgui.InputTextWithHint = function(label, hint, value, ...) if typing(label, val
 local view = { rows = {}, context = { valid = true, job = 3, target = { id = 0x1000100, name = 'Crab', kind = 'monster' }, entities = {} } };
 local function frame(step)
     step = step or {};
-    combo, slider, typed, colored = step.combo, step.slider, step.typed, step.color;
+    combo, slider, typed, colored, chosen = step.combo, step.slider, step.typed, step.color, step.chosen;
     if step.click then MOCK.clicks[step.click] = true; end
     window.draw(app.state.settings, view, app.callbacks);
     assert(not step.click or not MOCK.clicks[step.click], 'The control is on the page: ' .. tostring(step.click));
-    assert(not slider and not typed and not colored, 'The control is on the page.');
+    assert(not slider and not typed and not colored and not chosen, 'The control is on the page.');
     MOCK.clicks = {};
 end;
 local LEARNED = { ['spell:253:2:crab'] = { samples = { 58, 60, 61 }, unit = 'Crab', at = 5 } };
@@ -72,7 +78,7 @@ local function begin(tab, setup)
         s.window.sections['Home/' .. name] = true;
     end
     s.durations.learned = copy(LEARNED);
-    page._pick.kind, page._pick.query, page._pick.rule, page._pick.place = 'spell', '', nil, 1;
+    page._pick.kind, page._pick.effect, page._pick.rule, page._pick.place = 'spell', nil, nil, 1;
     app.state.settings = s;
     if setup then setup(s.durations, s); end
     frame();
@@ -85,10 +91,10 @@ local function pick(label, shown, value) return { { combo = '##' .. label, click
 local function one(rule) return function(d) local value = require('core.durations').override(); for k, v in pairs(rule) do value[k] = v; end; d.overrides = { value }; end; end;
 -- { name, setup, steps, check(durations, before), Undo label }
 local rows = {
-    { 'Add duration override', nil, { { typed = { '##Find what to override', '253' } }, { click = 'Add duration override' } },
+    { 'Add duration override', nil, { { combo = '##What to override', chosen = '##effect_253' }, { click = 'Add duration override' } },
         function(d) local r = d.overrides[1]; return #d.overrides == 1 and r.kind == 'spell' and r.id == 253 and r.mode == 'fixed' and r.seconds == 60; end,
         'Add duration override' },
-    { 'Add an effect override', nil, { { combo = '##Override applies to', click = 'An effect##effect' }, { typed = { '##Find what to override', '4' } },
+    { 'Add an effect override', nil, { { combo = '##Override applies to', click = 'An effect##effect' }, { combo = '##What to override', chosen = '##effect_4' },
         { click = 'Add duration override' } }, function(d) return d.overrides[1].kind == 'effect' and d.overrides[1].id == 4; end, 'Add duration override' },
     { 'Override enabled', one({ id = 253 }), click('Override enabled'), function(d) return d.overrides[1].enabled == false; end, 'Override enabled' },
     { 'Change the time to', one({ id = 253 }), pick('Change the time to', 'Count up from when it landed', 'count_up'),
@@ -211,6 +217,17 @@ frame(); frame();
 string.format = format;
 assert(made['%d. %s%s'] == 3 and made['%d learned time%s:'] == 1, 'A change makes them once: ' .. tostring(made['%d. %s%s']));
 assert(previews['##Override to edit'] == '3. ' .. picked:sub(4), 'And the list says what changed: ' .. tostring(previews['##Override to edit']));
+-- One line says how many overrides there are, and Override to edit lists them, so none is printed twice.
+MOCK.imgui_calls = {};
+frame();
+local lines = {};
+for _, call in ipairs(MOCK.imgui_calls) do if call[1] == 'TextWrapped' then lines[#lines + 1] = call[2]; end; end;
+local count_line, printed = false, false;
+for _, line in ipairs(lines) do
+    if line == '3 duration overrides.' then count_line = true; end;
+    if line:find('^%d%. ') then printed = true; end;
+end;
+assert(count_line and not printed, 'The page says how many and prints none of them: ' .. table.concat(lines, ' | '));
 imgui.BeginCombo = begin_combo;
 
 -- The panels' light: its switch on the panel's Show tab and its glow and color on Look, each as one Undo step.

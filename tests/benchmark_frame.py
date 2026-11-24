@@ -1,7 +1,7 @@
 """Per-frame Lua time and allocation of the default look with real client art; no game, GPU or live FPS.
 
 Runs tests/frame_harness.lua (solo, party6, alliance18, settings, filters, overhead, cooldowns, rolls, pet and edit, the
-main page with More look closed and open, the settings window on each other page, and the settings window with text in
+main page with its look folds closed and open, the settings window on each other page, and the settings window with text in
 its search box, held on each page and being typed) in the test runtime or, with --runtime
 x86, in a plain x86 luajit.exe (tests/luajit-x86/luajit.exe, or --exe) through tests/x86_runtime.lua, where vantage.lua
 sets LuaJIT's limits itself as it does in the game. Each run prints KB allocated per frame with the collector stopped, ms per frame with
@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 
-from lupa import luajit21
+import run
 
 HERE = Path(__file__).resolve().parent
 ADDON = HERE.parent / 'vantage'
@@ -23,11 +23,11 @@ LUAJIT = HERE / 'luajit-x86/luajit.exe'
 # Frames per batch. A batch with the collector stopped holds all its garbage (about 7 MB a frame in an alliance
 # before batch 1), so the counts stay well inside the 32-bit runtime's memory.
 FRAMES = {'solo': 600, 'party6': 300, 'alliance18': 60, 'settings': 300, 'filters': 300, 'overhead': 300, 'cooldowns': 300, 'rolls': 300,
-          'pet': 300, 'edit': 300, 'main_closed': 300, 'main_open': 300, 'main_grid': 300, 'panel_show': 300, 'panel_look': 300,
+          'pet': 300, 'edit': 300, 'main_closed': 300, 'main_open': 300, 'panel_show': 300, 'panel_look': 300,
           'panel_look_open': 300, 'panel_filters': 300, 'panel_place': 300, 'panel_when': 300, 'panel_recasts': 300,
           'panel_party': 300, 'panel_party_look': 300, 'panel_party_filters': 300,
           'panel_party_place': 300, 'panel_party_when': 300, 'panel_overhead': 300, 'panel_overhead_filters': 300,
-          'panel_cooldowns': 300, 'panel_rolls': 300, 'panel_pet': 300, 'panel_pet_filters': 300, 'panel_alerts': 300,
+          'panel_cooldowns': 300, 'panel_cooldowns_filters': 300, 'panel_rolls': 300, 'panel_pet': 300, 'panel_pet_filters': 300, 'panel_alerts': 300,
           'panel_alerts_rule': 300, 'panel_hidden': 300}
 # The settings scenario open on each other page; the settings row is the main page with every fold open.
 PAGES = ['settings_filters', 'settings_display', 'settings_party', 'settings_durations', 'settings_profiles', 'settings_help']
@@ -46,27 +46,8 @@ def libs():
 
 
 def runtime(install, addon=ADDON):
-    """A test runtime like tests/run.py, with the addon folder chosen."""
-    install, addon = Path(install).resolve(), Path(addon).resolve()
-    lua = luajit21.LuaRuntime(unpack_returned_tuples=True)
-    lua.execute('package.path = ... .. package.path', ';'.join((
-        addon.as_posix() + '/?.lua', HERE.as_posix() + '/?.lua', libs().as_posix() + '/?.lua', '')))
-    g = lua.globals()
-    g.MOCK_INSTALL_PATH, g.ADDON_DIR, g.ASHITA_LIBS = install.as_posix(), addon.as_posix(), libs().as_posix()
-    g.VANTAGE_TEST_MODE = True
-
-    def mkdir(path):
-        target = Path(path).resolve()
-        if not target.is_relative_to(install):
-            raise RuntimeError('The harness may create folders only inside its temporary install.')
-        target.mkdir(parents=True, exist_ok=True)
-        return True
-
-    g.MOCK_MKDIR = mkdir
-    mkdir(install / 'config/addons/vantage')
-    lua.execute((HERE / 'mock_ashita.lua').read_text(encoding='utf-8'))
-    g.MOCK.fs[(install / 'config/addons/vantage').as_posix() + '/'] = True
-    return lua
+    """A test runtime from tests/run.py, with the addon folder chosen."""
+    return run.runtime(install, addon)
 
 
 def harness(install, scenario, addon=ADDON, setup=()):

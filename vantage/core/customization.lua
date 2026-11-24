@@ -1,22 +1,16 @@
 local defaults = require('ui.defaults');
 local customization = {};
 
-function customization.equal(a, b)
-    if type(a) ~= type(b) then return false; end
-    if type(a) ~= 'table' then return a == b; end
-    for key, value in pairs(a) do if not customization.equal(value, b[key]) then return false; end end
-    for key in pairs(b) do if a[key] == nil then return false; end end
-    return true;
-end
+customization.equal = require('core.tables').same;
 
--- What the navigation reset scope resets in settings.window.
+-- What Reset all's Undo step puts back in settings.window, the Hold Shift to see through this window switch.
 local navigation = { 'peek' };
 customization.navigation = navigation;
 
 function customization.history_value(settings, include_window_geometry, include_navigation)
     local value = defaults.copy(settings);
     -- Navigating and moving the editor should not bury display changes in Undo. A step that moves the window
-    -- keeps its place and size, and the resets that promise Undo keep its navigation.
+    -- keeps its place and size, and Reset all, which promises Undo, keeps its navigation.
     local window, kept = value.window or {}, nil;
     if include_window_geometry then kept = { x = window.x, y = window.y, width = window.width, height = window.height }; end
     if include_navigation then
@@ -93,13 +87,21 @@ local function put_back_displays(settings, fresh)
 end
 
 -- What Undo calls a reset, by what the player knows it as.
-local reset_names = { rolls = 'Phantom Roll', pet = 'Pet', alerts = 'Alerts', party_ui = 'Party list buffs', party_cooldowns = 'Party cooldowns', overhead = 'Overhead icons' };
+-- The pet's alert switches, kept with the pet's settings but shown on Alerts.
+local pet_alert_keys = { 'alert_hp', 'alert_hp_percent', 'alert_tp', 'alert_ending' };
+
+local reset_names = { rolls = 'Phantom Roll', pet = 'Pet', alerts = 'Alerts', party_ui = 'Party list', party_cooldowns = 'Party cooldowns', overhead = 'Overhead icons' };
 
 function customization.reset_label(section)
     section = section or 'all';
     if section == 'job_profiles' then return 'Unlink all jobs'; end
     return 'Reset ' .. (reset_names[section] or defaults.panel_names[section] or section:gsub('_', ' '));
 end
+
+-- Each timer panel's key is a scope that resets that panel alone. A scope that isn't there lists them too, so a near
+-- miss on one can be put right.
+local panel_keys = table.concat(defaults.panel_order, ', ', 1, #defaults.panel_order - 1) .. ' or '
+    .. defaults.panel_order[#defaults.panel_order];
 
 function customization.reset(settings, section)
     section = section or 'all';
@@ -108,8 +110,6 @@ function customization.reset(settings, section)
         settings.style = fresh.style;
         settings.window_style = fresh.window_style;
         panel_looks(settings, fresh);
-    elseif section == 'navigation' then
-        for _, key in ipairs(navigation) do settings.window[key] = fresh.window[key]; end
     elseif section == 'panels' or section == 'layouts' then
         for _,id in ipairs(defaults.panel_order) do
             local panel=settings.panels[id];
@@ -121,17 +121,22 @@ function customization.reset(settings, section)
         for _,id in ipairs(defaults.panel_order) do
             local panel=settings.panels[id];
             for _, key in ipairs({ 'include', 'exclude', 'pinned', 'order', 'labels', 'groups', 'members', 'effect_colors' }) do panel[key] = {}; end
-            panel.filter, panel.mine_only = '', false;
+            panel.filter, panel.mine_only, panel.known_only = '', false, false;
         end
         settings.panels.watch.list_debuffed = false;
-        settings.panels.party.abilities_only = false;
+        local party = settings.panels.party;
+        party.abilities_only, party.include_self, party.fold_casts = false, false, false;
     elseif section == 'party_ui' then
         settings.party_ui = fresh.party_ui;
     elseif section == 'overhead' then
         settings.overhead = fresh.overhead;
     elseif section == 'recast_tints' or section == 'ready_pulse' or section == 'party_cooldowns' or section == 'rolls' or section == 'pet'
         or section == 'edit_mode' then
+        local pet = settings.pet;
         settings[section] = fresh[section];
+        if section == 'pet' and type(pet) == 'table' then
+            for _, key in ipairs(pet_alert_keys) do settings.pet[key] = pet[key]; end;
+        end;
     elseif section == 'conditions' then
         -- Every display's When to show, and nothing else.
         local elements = require('ui.elements');
@@ -151,8 +156,6 @@ function customization.reset(settings, section)
         -- The times learned from your casts aren't settings; Clear learned durations takes them.
         fresh.durations.learned = type(settings.durations) == 'table' and settings.durations.learned or {};
         settings.durations = fresh.durations;
-    elseif section == 'preview' then
-        settings.preview = fresh.preview;
     elseif section == 'all' then
         fresh.window.open = settings.window.open;
         fresh.job_profiles = settings.job_profiles;
@@ -164,14 +167,17 @@ function customization.reset(settings, section)
     elseif ({window=true,window_style=true,job_profiles=true,alerts=true,effect_filters=true,tracking=true,visibility=true,chat_colors=true,diagnostics=true})[section] then
         settings[section] = fresh[section];
         if section == 'window' then settings.window.open = true; end
+        if section == 'alerts' and type(settings.pet) == 'table' then
+            for _, key in ipairs(pet_alert_keys) do settings.pet[key] = fresh.pet[key]; end;
+        end
     else
-        return nil, 'That reset scope was not found. Choose appearance, panels, displays, party_ui, overhead, durations, recast_tints, ready_pulse, party_cooldowns, rolls, pet, edit_mode, moves_with, layout, conditions, effects, alerts, window, window_style, visibility, tracking, preview, navigation, chat_colors, job_profiles or all.';
+        return nil, 'That reset scope was not found. Choose appearance, panels, displays, party_ui, overhead, durations, recast_tints, ready_pulse, party_cooldowns, rolls, pet, edit_mode, moves_with, layout, conditions, effects, alerts, effect_filters, window, window_style, visibility, tracking, chat_colors, diagnostics, job_profiles or all. To reset one timer panel, choose ' .. panel_keys .. '.';
     end
     return settings;
 end
 
 local editable = {enabled=true,recast_display=true,style=true,panels=true,party_ui=true,effect_filters=true,visibility=true,tracking=true,alerts=true,
-    window=true,window_style=true,preview=true,shared_layout=true,shared_scope=true,replace_game_buffs=true,
+    window=true,window_style=true,preview=true,shared_layout=true,shared_scope=true,replace_game_buffs=true,replace_game_pet_bar=true,
     chat_colors=true,diagnostics=true,overhead=true,durations=true,recast_tints=true,ready_pulse=true,party_cooldowns=true,rolls=true,pet=true,
     edit_mode=true};
 
@@ -236,7 +242,7 @@ function customization.set(settings, path, text)
     local ok, tidy = pcall(defaults.tidy, candidate);
     if not ok then return nil, 'That value is not valid for this setting.'; end
     object, field = locate(tidy, path);
-    -- Tidy keeps the Grid mode ticks in the displays' order, each once, so a display set as one of them is taken
+    -- Tidy keeps the snapping ticks in the displays' order, each once, so a display set as one of them is taken
     -- while the list holds it, wherever that puts it.
     if path:match('^edit_mode%.grid_displays%.') then
         for _, id in ipairs(tidy.edit_mode.grid_displays) do if id == value then return tidy; end end

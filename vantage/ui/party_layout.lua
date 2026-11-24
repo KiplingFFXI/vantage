@@ -16,13 +16,9 @@ function layout.inside(rect, x, y)
     return x >= rect.x and y >= rect.y and x < rect.x + rect.width and y < rect.y + rect.height;
 end
 
+-- An effect's countdown text, by countdown_text's one rule. The strips ask for it through layout.
 function layout.effect_time(effect)
-    if tonumber(effect.effect)==269 and effect.domain~='recast' then return ''; end
-    -- A duration override that counts up (core/durations.lua) shows the time since the effect landed.
-    if effect.count_up == true and type(effect.elapsed) == 'number' and effect.elapsed >= 0 then return countdown.time(effect.elapsed); end
-    local left = effect.remaining;
-    if type(left) ~= 'number' or left ~= left or left < 0 or left == math.huge then return ''; end
-    return countdown.time(left);
+    return countdown.effect_text(effect);
 end
 
 local function selected(map, id)
@@ -34,7 +30,7 @@ end
 
 local selection_plans, selection_orders = render_cache.new(256), render_cache.new(64);
 local selection_revision = render_cache.revisions(64,
-    {'fit_all','kind','include','exclude','pinned','sort','max','show_copy_image','show_third_eye','abilities_only'});
+    {'fit_all','kind','include','exclude','pinned','order','sort','max','show_copy_image','show_third_eye','abilities_only'});
 -- The key of the Always show tick of the effects that have one, by id.
 local always = {};
 for _, tick in ipairs(require('ui.overhead_defaults').always) do
@@ -45,9 +41,14 @@ local function effect_order(options, revision)
     local saved = selection_orders:get(revision);
     if saved then return saved; end;
     local pinned, sort = require('core.store').copy(options.pinned or {}), options.sort or 'longest';
+    -- My order: each listed effect's place on it. The rest follow, by name.
+    local ranks = {};
+    if sort == 'fixed' then for rank, id in ipairs(options.order or {}) do ranks[id] = ranks[id] or rank; end; end;
     local function less(a, b)
         local ap, bp = selected(pinned, a.effect), selected(pinned, b.effect);
         if ap ~= bp then return ap; end;
+        local ar, br = ranks[a.effect] or math.huge, ranks[b.effect] or math.huge;
+        if ar ~= br then return ar < br; end;
         if sort == 'longest' then
             local longer = effect_ordering.longest(a, b);
             if longer ~= nil then return longer; end;
@@ -230,6 +231,19 @@ local function icon_countdown(text, icon_size, options, pixel_scale, width, heig
         below = below, fallback = fallback, lines = lines };
 end;
 
+-- icon_countdown's plans, kept by everything they are worked out from, so a countdown text seen before makes nothing.
+-- A kept plan is shared and only read. The fallback icon_countdown marks is one it made itself, never a kept one.
+local countdown_plans = render_cache.new(512);
+local function kept_countdown(text, icon_size, options, pixel_scale, width, height)
+    if text == '' then return nil; end;
+    if not options.measure_key then return icon_countdown(text, icon_size, options, pixel_scale, width, height); end;
+    local left, top, right, bottom = countdown.padding(options);
+    local key = render_cache.key(options.measure_key, options.countdown_font, icon_size, pixel_scale,
+        options.icon_countdown_position, options.icon_countdown_size, options.icon_countdown_gap, options.fixed_countdown_slot,
+        left, top, right, bottom, width, height, text);
+    return countdown_plans:get(key) or countdown_plans:put(key, icon_countdown(text, icon_size, options, pixel_scale, width, height));
+end;
+
 -- Each effect is an icon cell, with its countdown while countdowns show. options.cell_gap is the space between cells,
 -- 3 px unless a strip sets its own. Icons keep their size: as many as fit show, and an area narrower than one icon
 -- shows none.
@@ -245,16 +259,15 @@ local function build_effect_cells(effects, options, rect)
         timers = {};
         for _, effect in ipairs(effects) do
             local timer = layout.effect_time(effect);
-            if timer ~= '' then
-                local bounds = countdown.icon_metrics(options.countdown_font, timer, icon_height, options, pixel_scale);
-                if options.icon_countdown_position ~= 'inside' and not options.fixed_countdown_slot then
-                    icon_column = math.min(rect.width, math.max(icon_column, bounds.width));
-                end;
+            -- Only a countdown under its icon, outside the game's fixed rows, can widen the column.
+            if timer ~= '' and options.icon_countdown_position ~= 'inside' and not options.fixed_countdown_slot then
+                local _, width = countdown.icon_values(options.countdown_font, timer, icon_height, options, pixel_scale);
+                icon_column = math.min(rect.width, math.max(icon_column, width));
             end;
         end;
         cell_width = math.max(cell_width, icon_column);
         for _, effect in ipairs(effects) do
-            local plan = icon_countdown(layout.effect_time(effect), icon_height, options, pixel_scale, icon_column, rect.height);
+            local plan = kept_countdown(layout.effect_time(effect), icon_height, options, pixel_scale, icon_column, rect.height);
             timers[effect] = plan;
             if plan and plan.below then cell_height = math.max(cell_height, icon_height + plan.gap + plan.height); end;
         end;
@@ -304,17 +317,23 @@ local cell_plans = render_cache.new(128);
 -- Where a draw's cache keeps the sizes asked for during that draw.
 local drawn_sizes = {};
 
+-- The pieces of a plan's key, one list filled again each time.
+local parts = {};
+
 -- The cells of these effects in an area of this size at 0, 0, kept by everything they are worked out from.
 local function cell_plan(effects, options, rect)
     local left, top, right, bottom = countdown.padding(options);
-    local parts = {render_cache.key(options.measure_key, options.icon_size, options.pixel_scale,
+    parts[1] = render_cache.key(options.measure_key, options.icon_size, options.pixel_scale,
         options.countdown_font, options.icon_countdown_position, options.icon_countdown_size, options.icon_countdown_gap,
         options.timers, options.wrap,
         options.fit_all, options.auto_rows, options.rows, options.separate, options.growth, options.fixed_countdown_slot, rect.align_right,
-        rect.width, rect.height, left, top, right, bottom, options.cell_gap)};
-    for index, effect in ipairs(effects) do
+        rect.width, rect.height, left, top, right, bottom, options.cell_gap);
+    local count = #effects;
+    for index = 1, count do
+        local effect = effects[index];
         parts[index + 1] = render_cache.key(effect.kind, options.timers and layout.effect_time(effect) or '');
     end;
+    for index = #parts, count + 2, -1 do parts[index] = nil; end;
     local key = table.concat(parts);
     local saved = cell_plans:get(key);
     if not saved then
@@ -368,9 +387,41 @@ function layout.effect_cells(effects, options, rect, sizing, cache)
     return placed_cells(saved, effects, rect), saved.omitted, saved.height;
 end;
 
+-- Whether a row whose only change is countdown texts took them in place. Its cells keep their places when no countdown
+-- can widen the column (beside the game's rows, or inside the icon) and each new countdown keeps the old one's shape,
+-- so each cell takes its new countdown and the plan isn't worked out again. A countdown that comes or goes, or changes
+-- shape, gives false.
+local function retimed(holder, effects, options, count)
+    if not (options.timers and (options.fixed_countdown_slot or options.icon_countdown_position == 'inside')) then return false; end;
+    local pixel_scale = number(options.pixel_scale, 1/512, 512, 1);
+    local icon_height = number(options.icon_size, 10/pixel_scale, 128/pixel_scale, 20/pixel_scale);
+    local texts, height, at = holder.texts, holder.height, 0;
+    for index = 1, count do
+        local effect = effects[index];
+        if texts[at + 1] ~= effect.kind then return false; end;
+        local text, old = layout.effect_time(effect), texts[at + 2];
+        if text ~= old then
+            if text == '' or old == '' then return false; end;
+            local before = kept_countdown(old, icon_height, options, pixel_scale, icon_height, height);
+            local after = kept_countdown(text, icon_height, options, pixel_scale, icon_height, height);
+            if before.below ~= after.below or before.fallback ~= after.fallback or before.height ~= after.height
+                or before.gap ~= after.gap then
+                return false;
+            end;
+        end;
+        at = at + 2;
+    end;
+    for index = 1, count do texts[index * 2] = layout.effect_time(effects[index]); end;
+    for _, cell in ipairs(holder.cells) do
+        cell.countdown = kept_countdown(layout.effect_time(cell.effect), icon_height, options, pixel_scale, cell.icon_column_width,
+            height);
+    end;
+    return true;
+end;
+
 -- layout.effect_cells for a strip row, kept in holder from frame to frame. The same effects list and options table,
 -- an area of the same size and each effect's kind and countdown text give the cells of the frame before, moved to the
--- area; only a change works them out again.
+-- area. Only a change works them out again, and retimed takes a countdown that ticks in place where it can.
 function layout.kept_cells(holder, effects, options, rect)
     if not options.measure_key then return layout.effect_cells(effects, options, rect); end;
     local count, texts = #effects, holder.texts;
@@ -381,7 +432,7 @@ function layout.kept_cells(holder, effects, options, rect)
         for index = 1, count do
             local effect = effects[index];
             if texts[at + 1] ~= effect.kind or texts[at + 2] ~= (options.timers and layout.effect_time(effect) or '') then
-                same = false;
+                same = retimed(holder, effects, options, count);
                 break;
             end;
             at = at + 2;
@@ -397,7 +448,18 @@ function layout.kept_cells(holder, effects, options, rect)
             at = at + 2;
         end;
         for index = #texts, at + 1, -1 do texts[index] = nil; end;
-        holder.cells = placed_cells(saved, effects, rect);
+        -- Its own cells are filled again, not copied into new ones. A countdown that ticks works out the plan again only
+        -- where retimed can't take it in place. Nothing keeps the cells past the frame that paints them.
+        local cells = holder.cells or {};
+        holder.cells = cells;
+        for index, source in ipairs(saved.cells) do
+            local cell = cells[index];
+            if not cell then cell = {}; cells[index] = cell; end;
+            for field in pairs(cell) do if source[field] == nil then cell[field] = nil; end; end;
+            for field, value in pairs(source) do if field ~= 'effect_index' then cell[field] = value; end; end;
+            cell.x, cell.y, cell.effect = source.x + rect.x, source.y + rect.y, effects[source.effect_index];
+        end;
+        for index = #cells, #saved.cells + 1, -1 do cells[index] = nil; end;
         holder.saved, holder.effects, holder.options, holder.count = saved, effects, options, count;
         holder.width, holder.height, holder.align_right, holder.x, holder.y = rect.width, rect.height, rect.align_right, rect.x, rect.y;
         return holder.cells, saved.omitted, saved.height;

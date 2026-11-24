@@ -223,9 +223,10 @@ function warmup.restart(name)
         if entry.group == name and entry.done then entry.done, group.left, again = false, group.left + 1, again + 1; end
     end
     if again == 0 then return true; end
-    if group.displays then opened = false; end
+    -- /vg report's restarts count only the groups the displays wait for, which a new graphics device makes again. A
+    -- group they don't wait for, as the alert sounds, runs again without counting.
+    if group.displays then opened, log.restarts = false, log.restarts + 1; end
     idle = false;
-    log.restarts = log.restarts + 1;
     if not spread then warmup.drain(name); end
     return true;
 end

@@ -1,6 +1,6 @@
 # Install Vantage
 
-Vantage is an Ashita v4 addon for FFXI on Phoenix. It shows buff, debuff and recast timers that you can move, size and style, and it can put buffs beside the game's party list. It doesn't hide or replace any of the game's windows unless you turn on **Replace the game's buff icons**, which hides the game's own buff icons. You need Ashita v4, version 4.3.2.1 or later. That's the build the Phoenix launcher installs.
+Vantage is an Ashita v4 addon for FFXI on Phoenix. It shows buff, debuff and recast timers that you can move, size and style, and it can put buffs beside the game's party list. It doesn't hide or replace any of the game's windows unless you turn on **Replace the game's buff icons**, which hides the game's own buff icons, or **Replace the game's pet bar**, which hides the game's own pet bar. You need Ashita v4, version 4.3.2.1 or later. That's the build the Phoenix launcher installs.
 
 ## Install
 
@@ -14,7 +14,7 @@ The game can stay open while you do this.
 /addon load vantage
 ```
 
-   If Vantage is already loaded, run `/addon reload vantage` instead. Until you do, it keeps running the code it already loaded.
+   If Vantage is already loaded, run `/addon reload vantage` instead, right away and before you open `/vg`. Until you do, Vantage can load some of the new files, such as the settings window's pages, into the code it already loaded.
 
 4. Run `/vg` to open the main page.
 
@@ -24,11 +24,11 @@ Enable vantage under **Manually installed** on the Phoenix launcher's Addons pag
 
 ## Settings
 
-Each character gets its own `settings.json`, in its own folder under `config/addons/vantage`. Profiles, shared layouts, custom fonts, sounds and reports are kept there too. Copying in a new addon folder doesn't touch any of them.
+Each character gets its own `settings.json`, in its own folder under `config/addons/vantage`. Profiles, shared layouts, custom fonts, sounds, icon sets and reports are kept there too. Copying in a new addon folder doesn't touch any of them.
 
 ## Check it
 
-Run `/vg report` after loading. It writes `reports/latest.json` in the settings folder. The report says whether Vantage found the game clock for your own countdowns, the item data for item recasts, the game's party list rows and the chat window. It also says where the client art and fonts came from, why one isn't drawn the way you picked, and whether the settings window's client fonts are drawn sharp. If Vantage can't find a part, that part turns off on its own and everything else keeps working. If your own buffs show no countdown, the report says why. A report can hold the names of characters and targets Vantage saw.
+Run `/vg report` after loading. It writes `reports/latest.json` in the settings folder. The report says whether Vantage found the game clock for your own countdowns, the item data for item recasts, the game's party list rows and the chat window. It also says where the client art and fonts came from, why one isn't drawn the way you picked, and whether the settings window's client fonts are drawn sharp. If Vantage can't find a part, that part turns off on its own and everything else keeps working. If your own buffs show no countdown, the report says why. A report can hold the names of characters and targets Vantage saw. A path under the game's, Ashita's or your Windows user folder is written from that folder, so the folders above it, like your Windows user name, aren't in it.
 
 ## Remove it
 

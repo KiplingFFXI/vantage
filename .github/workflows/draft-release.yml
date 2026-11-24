@@ -1,6 +1,8 @@
 # Drafts a GitHub release when a push to main changes addon.version in vantage/vantage.lua, when you push a tag
 # like v1.0.1 for that version, or when it's run by hand. The draft holds the zip and that
 # version's CHANGELOG.md section. Only people with write access to the repo see it until it's published.
+# The notes end with a hidden line naming the commit the zip was built from. If the version already has a release,
+# the run fails unless that release was built from the run's commit and, on a tag run, from where the tag points.
 name: Draft release
 
 on:
@@ -30,6 +32,14 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
+      # Reads git ls-remote's lines for a tag and its peeled ^{} line, and prints the one commit the tag points to.
+      # It fails on anything else. Both steps below run it with awk -v tag="refs/tags/v<version>" "$TAG_COMMIT".
+      TAG_COMMIT: |
+        NF != 2 || length($1) != 40 || $1 ~ /[^0-9a-f]/ { invalid = 1; next }
+        $2 == tag { if (direct != "") invalid = 1; direct = $1; next }
+        $2 == tag "^{}" { if (peeled != "") invalid = 1; peeled = $1; next }
+        { invalid = 1 }
+        END { if (invalid || direct == "") exit 1; print peeled != "" ? peeled : direct }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -64,7 +74,40 @@ jobs:
           fi
           tags=$(gh release list --limit 1000 --json tagName --jq '.[].tagName')
           if printf '%s\n' "$tags" | grep -qx "v$version"; then
-            echo "v$version already has a release."
+            # Publishing uses the tag wherever it points then, and keeps the zip the draft was made with. So that zip
+            # has to come from this commit, and on a tag run from where the tag points now. The draft's notes name its
+            # build commit in a hidden last line, which stays when the Target is switched to main for publishing.
+            if ! notes=$(gh release view "v$version" --json body --jq .body); then
+              echo "Could not read the release v$version."
+              exit 1
+            fi
+            built=$(printf '%s\n' "$notes" | tr -d '\r' \
+              | sed -nE 's/^<!-- Built from ([0-9a-f]{40})([^0-9a-f].*)?$/\1/p' | sort -u)
+            if [ ${#built} -ne 40 ]; then
+              echo "v$version already has a release, but its notes don't say which commit its zip was built from."
+              exit 1
+            fi
+            if [ "$built" != "$GITHUB_SHA" ]; then
+              echo "v$version already has a release, but its zip was built from $built, not $GITHUB_SHA."
+              echo "Delete that release and run this again, or change addon.version."
+              exit 1
+            fi
+            if [ "$GITHUB_REF_TYPE" = tag ]; then
+              tag="refs/tags/v$version"
+              if ! refs=$(git ls-remote --tags origin "$tag" "$tag^{}"); then
+                echo "Could not verify v$version on origin."
+                exit 1
+              fi
+              if ! tagged_commit=$(printf '%s\n' "$refs" | awk -v tag="$tag" "$TAG_COMMIT"); then
+                echo "Could not resolve v$version to a single commit."
+                exit 1
+              fi
+              if [ "$tagged_commit" != "$built" ]; then
+                echo "v$version points to $tagged_commit, but its release's zip was built from $built."
+                exit 1
+              fi
+            fi
+            echo "v$version already has a release, built from this commit."
             exit 0
           fi
           echo "draft=true" >> "$GITHUB_OUTPUT"
@@ -85,6 +128,8 @@ jobs:
             echo "CHANGELOG.md has no section for $VERSION."
             exit 1
           fi
+          # A hidden last line names the commit the zip is built from, for the version check on later runs.
+          printf '\n<!-- Built from %s. draft-release.yml checks this line. -->\n' "$GITHUB_SHA" >> "$RUNNER_TEMP/notes.md"
           # --target only chooses a commit when the tag does not exist. Recheck the remote immediately
           # before creating the draft so an existing tag cannot silently point at another build.
           tag="refs/tags/v$VERSION"
@@ -93,12 +138,7 @@ jobs:
             exit 1
           fi
           if [ -n "$refs" ]; then
-            if ! tagged_commit=$(printf '%s\n' "$refs" | awk -v tag="$tag" '
-              NF != 2 || length($1) != 40 || $1 ~ /[^0-9a-f]/ { invalid = 1; next }
-              $2 == tag { if (direct != "") invalid = 1; direct = $1; next }
-              $2 == tag "^{}" { if (peeled != "") invalid = 1; peeled = $1; next }
-              { invalid = 1 }
-              END { if (invalid || direct == "") exit 1; print peeled != "" ? peeled : direct }'); then
+            if ! tagged_commit=$(printf '%s\n' "$refs" | awk -v tag="$tag" "$TAG_COMMIT"); then
               echo "Could not resolve v$VERSION to a single commit. No release was drafted."
               exit 1
             fi

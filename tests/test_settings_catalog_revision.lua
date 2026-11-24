@@ -1,32 +1,32 @@
--- Where the settings window keeps a revision of its effect catalog, a finder compares that instead of walking the catalog
--- each frame, and a live list on Filters is said again only when its table, the settings or the catalog's names change.
+-- Where the settings window keeps a revision of its effect catalog, an effect list compares that instead of walking the
+-- catalog each frame, and a live list on Filters is said again only when its table, the settings or the catalog's names change.
 -- Without one both go on as before. A button caption too wide for the page is wrapped again only when its room, its
 -- width, the font size or the settings change.
 local editor, status = require('ui.effect_settings'), require('ui.status_panel');
 local walks, same = 0, editor.same_catalog;
 editor.same_catalog = function(...) walks = walks + 1; return same(...); end;
 
--- The finder by itself.
-local entries, selection = { { id = 33, name = 'Haste', kind = 'buff' }, { id = 40, name = 'Protect', kind = 'buff' } }, { query = '' };
-assert(editor.selection(entries, selection, 1) == 33, 'Fixture: the first effect is picked.');
+-- The list by itself.
+local entries, selection = { { id = 33, name = 'Haste', kind = 'buff' }, { id = 40, name = 'Protect', kind = 'buff' } }, {};
+assert(editor.selection(entries, selection, 1) == nil and selection.labels[33] == 'Haste', 'Fixture: the names are listed, and nothing is picked.');
+selection.effect = 33;
 local labels = selection.labels;
 for _ = 1, 5 do editor.selection(entries, selection, 1); end;
 assert(walks == 0 and selection.labels == labels, 'With a revision an unchanged catalog is not walked, and its list is kept.');
 entries[1].name = 'Slow';
 assert(editor.selection(entries, selection, 2) == 33 and selection.labels ~= labels and selection.labels[33] == 'Slow' and walks == 0,
     'A new revision lists the catalog again.');
-labels = selection.labels;
-selection.query = 'prot';
-assert(editor.selection(entries, selection, 2) == 40 and selection.labels ~= labels, 'What is typed still lists it again.');
 entries[#entries + 1] = { id = 58, name = 'Protectra', kind = 'buff' };
-assert(editor.selection(entries, selection, 2) == 40 and selection.labels[58] == 'Protectra' and walks == 0,
+assert(editor.selection(entries, selection, 2) == 33 and selection.labels[58] == 'Protectra' and walks == 0,
     'One added to the same list shows by their count, with the same revision.');
+table.remove(entries, 1);
+assert(editor.selection(entries, selection, 2) == nil, 'A pick the list no longer has is let go.');
 walks = 0;
 editor.selection(entries, selection);
 editor.selection(entries, selection);
 assert(walks == 2, 'Without a revision the catalog is walked each time, as before.');
 
--- The finders on Filters pass the window's revision.
+-- The effect lists on Filters pass the window's revision.
 local h = require('panel_fixture')();
 local helpers = require('ui.settings_window').main_helpers;
 local kept_revision, names = helpers.catalog_revision, 1;
@@ -40,7 +40,7 @@ for _, id in ipairs({ 'self_buffs', 'overhead' }) do
     h.on(id, 'filters');
     walks = 0;
     h.draw(); h.draw(); h.draw();
-    assert(walks == 0, 'The finder does not walk a catalog the window keeps a revision of: ' .. id);
+    assert(walks == 0, 'The list does not walk a catalog the window keeps a revision of: ' .. id);
     helpers.catalog_revision = nil;
     h.draw(); h.draw();
     assert(walks == 2, 'Without one it walks it each frame, as before: ' .. id .. ' (' .. walks .. ')');
@@ -64,8 +64,11 @@ names = 2;
 h.draw();
 assert(said == 2 and listed('Regen'), 'A change to the catalog\'s names says it again.');
 said = 0;
-h.type('##frame_Find an effect', 'Protect');
-assert(said == 0, 'Typing in the finder changes no list, so none is said again.');
+h.combo, h.typed['##effect_search_Effect'] = '##Effect', 'Protect';
+h.draw(); h.draw();
+h.combo = nil;
+h.choose('Protect', 40);
+assert(said == 0, 'Finding and picking one in the effect list changes no list, so none is said again.');
 h.draw('Show only##frame');
 assert(said == 1 and listed('Protect') and listed('Regen'), 'A tick that changes the list in place shows on its line in the same frame.');
 h.draw();
@@ -80,7 +83,7 @@ editor.same_catalog = same;
 
 -- A caption too wide for the page.
 local wrap, imgui = require('ui.text_wrap'), require('imgui');
-local CAPTION, ID = 'Clear this kind\'s filters', '###Clear this kind\'s filters##frame';
+local CAPTION, ID = 'Reset all of this display', '###Reset all of this display##frame';
 local lines, wrapped = wrap.lines, 0;
 wrap.lines = function(text, ...)
     if text == CAPTION then wrapped = wrapped + 1; end;

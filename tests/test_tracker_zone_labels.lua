@@ -55,6 +55,20 @@ frame({valid=false},31);
 view=frame(snapshot(SELF,103,1,1,{status(40,0,1800,108000)}),35,{cast(40,44,2003,0)});
 assert(find(view,40).source==2003,'A Protect cast since is credited to its caster.');
 
+-- Phoenix saves the time left on it as you zone and starts that time again as you land (status_effect_container.cpp
+-- :1631-1660, :1540-1594), so the time left doesn't run while you zone. The copy keeps its full time, and the time it
+-- has run moves with its deadline.
+tracker=require('core.tracker').new();
+frame(snapshot(SELF,102,1,0,{}),0);
+frame(snapshot(SELF,102,3,1,{status(40,0,1810,108000)}),10,{cast(40,43,SELF,0)});
+view=frame(snapshot(SELF,102,3,1,{status(40,0,1810,108000)}),11);
+assert(find(view,40).total==1800 and find(view,40).start==10,'Fixture: the cast gives Protect its full time.');
+view=zone_in(SELF,103,{status(40,0,1815,108300)},30);
+protect=find(view,40);
+assert(protect.total==1800 and protect.start==15 and protect.elapsed==20,
+    'Protect kept through the zone change keeps its full time and the time it has run: total '..tostring(protect.total)
+    ..', start '..tostring(protect.start)..', elapsed '..tostring(protect.elapsed));
+
 -- The carried casters last only to the first whole listing.
 setup();
 zone_in(SELF,103,{},30);

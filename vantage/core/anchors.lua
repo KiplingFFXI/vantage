@@ -1,8 +1,8 @@
 -- Where an anchored display goes. Each display keeps an anchor beside its own place (ui/elements.lua names them): to
 -- a point of the screen, beside another display, beside the game's party list or beside the chat log. Its saved x and
 -- y stay as its fallback spot, used while it has no anchor or its anchor isn't on screen. This file only works places
--- out; it reads nothing from the game. It also holds the edit mode settings (settings.edit_mode): Grid mode, the
--- displays ticked for it, the grid and what a move of one of them snaps to.
+-- out; it reads nothing from the game. It also holds the edit mode settings (settings.edit_mode): Snap while moving
+-- (grid_mode), the displays ticked for it, the grid and what a move of one of them snaps to.
 local anchors = {};
 local numbers = require('ui.numbers');
 local finite = numbers.finite;
@@ -20,20 +20,14 @@ function anchors.make()
     return { to = 'none', point = 'top_left', dx = 0, dy = 0, element = '', side = 'below', align = 'start', gap = 4, offset = 0 };
 end
 
--- Grid mode starts off with no display ticked for it (grid_displays, a list of ids).
+-- Snap while moving starts off with no display ticked for it (grid_displays, a list of ids). Turning it on then ticks
+-- them all (ui/snap.lua snap.switch).
 function anchors.make_edit()
     return { grid_mode = false, grid_displays = {}, grid = 16, show_grid = true, snap_grid = true, snap_screen = true,
         snap_elements = true, snap_party = true, snap_chat = true, snap_distance = 8 };
 end
 
-local function choice(value, choices, fallback)
-    for _, item in ipairs(choices) do if value == item then return value; end end
-    return fallback;
-end
-
-local function number(value, low, high, fallback)
-    return numbers.clamp_round(value, low, high, fallback);
-end
+local choice, number = numbers.choice, numbers.clamp_round;
 
 -- An anchor from a save or a hand edit. ids names the displays it may follow; own is the display's own id, which it
 -- can't follow. An anchor to a display that isn't one of them has no anchor.
@@ -54,7 +48,7 @@ function anchors.tidy(value, own, ids)
     return require('core.store').keep_unknown(out, value);
 end
 
--- movable is the displays a move can tick for Grid mode (ui/elements.lua elements.movable): the list keeps each of
+-- movable is the displays a move can tick to snap (ui/elements.lua elements.movable): the list keeps each of
 -- theirs once, in their order, and nothing else.
 function anchors.tidy_edit(value, movable)
     local fresh = anchors.make_edit();

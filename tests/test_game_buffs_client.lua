@@ -76,6 +76,13 @@ end
 -- Clients changed in one place each: the new one, with nothing written to any of them.
 local new = fixture.load('new');
 local function at(image, name) return image:find(image.base, #image.data, game_buffs._patterns[name], 0); end
+-- The warmup's steps, with the finder keeping what it finds as it does in the game.
+local function steps(image, store)
+    finder._set_store(store or MOCK.pattern_store());
+    finder._set_pages(function(where, size) return image:contains(where, size); end);
+    for _, step in ipairs(game_buffs.warmup_steps()) do step.run(); end
+    image.finds = 0;
+end
 local function refused(name, change, wanted)
     local image = new:copy();
     change(image);
@@ -84,6 +91,14 @@ local function refused(name, change, wanted)
     local pick, why = game_buffs.update(true);
     assert(pick == nil and type(why) == 'string' and why:find(wanted, 1, true), name .. ': ' .. tostring(why));
     assert(#writes == 0 and image.data == changed and not game_buffs.status().on, name .. ': nothing is written.');
+    -- After the steps, the frame that would replace the icons says the same and searches nothing, even for a piece
+    -- that isn't there.
+    over(image);
+    steps(image);
+    local _, again = game_buffs.update(true);
+    assert(again == why and image.finds == 0, name .. ': after the steps, no search in the frame: ' .. image.finds);
+    finder._set_store(nil);
+    finder._set_pages(nil);
 end
 refused('an icon paint changed past its start', function(image) image:write(at(image, 'icon_paint') + 0x80, '\204'); end,
     'This game client\'s buff icon painting is not the code Vantage knows');
@@ -100,9 +115,9 @@ refused('a registry that names another slot', function(image)
 end, 'This game client\'s buff window was not found where Vantage looks');
 refused('a rebuild that isn\'t there', function(image) image:write(at(image, 'rebuild'), '\204'); end,
     'This game client\'s buff list rebuild is missing, so the game\'s buff icons stay as they are.');
--- A hook from another addon or plugin: a jump written over the mover's first bytes, alone or with the rest of the
+-- A hook from something else in the game: a jump written over the mover's first bytes, alone or with the rest of the
 -- instructions it cut through filled in. The mover's later bytes are still there, so Vantage says what happened.
-local CHANGED = 'Something else in the game, such as another addon or plugin, has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
+local CHANGED = 'Something else in the game has changed this game client\'s menu mover, so the game\'s buff icons stay as they are.';
 refused('a menu mover with a jump over its start', function(image)
     image:write(at(image, 'menu_move'), '\233' .. fixture.le32(0x1000));
 end, CHANGED);
@@ -125,4 +140,21 @@ refused('a menu mover found twice', function(image)
     assert(not pattern:find('?', 1, true), 'Fixture: the menu mover\'s start has no wildcard.');
     image:write(image.base + #image.data - 64, (pattern:gsub('..', function(pair) return string.char(tonumber(pair, 16)); end)));
 end, 'This game client\'s menu mover matches more than once, so the game\'s buff icons stay as they are.');
+
+-- Two loads in one game process with the mover hooked: the frame searches nothing either time. What a step didn't
+-- find is kept for its load alone, so once the hook is gone, a reload finds the mover.
+local store, hooked = MOCK.pattern_store(), new:copy();
+hooked:write(at(hooked, 'menu_move'), '\233' .. fixture.le32(0x1000));
+for load = 1, 2 do
+    over(hooked);
+    steps(hooked, store);
+    local _, why = game_buffs.update(true);
+    assert(why == CHANGED and hooked.finds == 0, 'Load ' .. load .. ' with the mover hooked: ' .. hooked.finds .. ', ' .. tostring(why));
+end
+local freed = new:copy();
+over(freed);
+steps(freed, store);
+local pick, why = game_buffs.update(true);
+assert(pick == nil and why == nil and game_buffs.status().on and #writes == 2 and freed.finds == 0,
+    'The hook gone, a reload finds the mover and the frame searches nothing: ' .. tostring(why));
 return 'Replace the game\'s buff icons on the decoded clients';

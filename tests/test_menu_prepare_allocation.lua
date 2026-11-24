@@ -56,27 +56,16 @@ for _, state in ipairs(states) do
     assert(state.alpha == 0 or alpha_value == 0, state.name .. ': only the next plain background is hidden.')
 end
 
-local function measure(state, count)
-    jit.off(); jit.flush()
-    run(state, 60)
-    collectgarbage('collect'); collectgarbage('collect')
-    collectgarbage('stop')
-    run(state, 6)
-    local before = collectgarbage('count')
-    run(state, count)
-    local each = (collectgarbage('count') - before) / count
-    collectgarbage('restart')
-    jit.on()
-    return each
-end
+local alloc = require('alloc_fixture')
 for _, state in ipairs(states) do
-    local each = measure(state, 2000)
+    local each = alloc.measure(function(count) run(state, count) end, 2000)
     assert(each < 0.0005, ('%s: preparing a menu makes %.4f KB each time; nothing expected'):format(state.name, each))
 end
 -- The count sees one small table made each time.
 local made
-local each = measure({ name = 'A table each time', look = original, answer = true, alpha = 1,
+local leak = { name = 'A table each time', look = original, answer = true, alpha = 1,
     before = function() gui.SetNextWindowBgAlpha = function(value) made = { value }; set_alpha(value) end end,
-    after = function() gui.SetNextWindowBgAlpha = set_alpha end }, 2000)
+    after = function() gui.SetNextWindowBgAlpha = set_alpha end }
+local each = alloc.measure(function(count) run(leak, count) end, 2000)
 assert(each >= 0.02 and made, ('One table each time shows as %.4f KB'):format(each))
 return true

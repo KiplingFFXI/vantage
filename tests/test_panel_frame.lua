@@ -1,5 +1,5 @@
 -- The shape every display's editor has. A header with the way back, the display's name, On, samples and Locked. The same
--- tabs in the same order, leaving out one a display has nothing for. Reset this display at the foot of every tab. No two
+-- tabs in the same order, leaving out one a display has nothing for. Reset all of this display at the foot of every tab. No two
 -- controls on a tab share an id, or a click would land on both.
 local h = require('panel_fixture')();
 local defaults, custom = require('ui.defaults'), require('core.customization');
@@ -15,7 +15,7 @@ for _, id in ipairs({ 'self_buffs', 'self_debuffs', 'target', 'party', 'watch', 
     for _, tab in ipairs(tab_keys) do
         h.on(id, tab);
         assert(h.called('Button', '< Back##frame'), 'The way back is on ' .. id);
-        assert(h.says(names[id] or 'Recasts'), 'It says which display this is: ' .. id);
+        assert(tostring(h.previews['##frame_switch']):find(names[id] or 'Recasts', 1, true), 'It says which display this is: ' .. id);
         assert(h.called('Checkbox', 'On##frame_display') and h.called('Checkbox', 'Show samples##frame')
             and h.called('Checkbox', 'Locked##frame'), 'On, samples and Locked are in the header of ' .. id);
         local order = {};
@@ -23,7 +23,7 @@ for _, id in ipairs({ 'self_buffs', 'self_debuffs', 'target', 'party', 'watch', 
             if call[1] == 'Button' and tostring(call[2]):find('##frame_tab', 1, true) then order[#order + 1] = call[2]; end;
         end;
         assert(table.concat(order, '|') == table.concat(tab_buttons, '|'), 'Always the same tabs, in order: ' .. table.concat(order, '|'));
-        assert(h.called('Button', 'Reset this display##frame'), 'Reset this display is at the foot of ' .. id .. ' ' .. tab);
+        assert(h.called('Button', 'Reset all of this display##frame'), 'Reset all of this display is at the foot of ' .. id .. ' ' .. tab);
     end;
 end;
 
@@ -56,13 +56,13 @@ assert(not h.called('Button', 'Filters##frame_tab') and not h.called('Button', '
 assert(h.called('Button', 'Show##frame_tab') and h.called('Button', 'Size and place##frame_tab'), 'A tab with rows is not.');
 panels.open('self_buffs');
 
--- Reset this display: asks first, puts it back locked in its first spot, and Undo brings the settings back.
+-- Reset all of this display: asks first, puts it back locked in its first spot, and Undo brings the settings back.
 h.fresh(function(s)
     local p = s.panels.self_debuffs;
     p.x, p.y, p.locked, p.mode, p.sort, p.title = 411, 233, false, 'bars', 'name', 'Mine';
 end);
 h.on('self_debuffs', 'look');
-h.draw('Reset this display##frame');
+h.draw('Reset all of this display##frame');
 assert(h.s.panels.self_debuffs.x == 411, 'The first click only asks.');
 h.draw();
 assert(h.says('Reset Self debuffs? It goes back to how it started: locked, in its first spot.'), 'The line says what it does: ');
@@ -70,7 +70,7 @@ assert(h.called('Button', 'Reset##look_frame_reset_self_debuffs') and h.called('
 h.draw('Cancel##look_frame_reset_self_debuffs');
 h.draw();
 assert(h.s.panels.self_debuffs.x == 411 and not h.says('Reset Self debuffs?'), 'Cancel leaves it.');
-h.draw('Reset this display##frame');
+h.draw('Reset all of this display##frame');
 h.draw();
 h.draw('Reset##look_frame_reset_self_debuffs');
 h.draw();

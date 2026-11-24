@@ -39,35 +39,16 @@ local function checksum(value)
     return sum
 end
 
-local function channels(value)
-    return { math.floor(value / 2048) * 255 / 31, math.floor(value / 32) % 64 * 255 / 63, value % 32 * 255 / 31 }
-end
-
 -- How lit the pixel at x, y is, from 0 to 1. The client's font is a bright core with softer grey pixels at its edges
 -- and a dark shadow. A pixel under half opaque or under half bright is the shadow or nothing, and counts as 0. One at
 -- 224 of 255 or more counts as the core, 1. A grey one between is its brightness times its opacity, so the font keeps
 -- the soft edges the game draws.
 local CORE = 224 / 255
 local function ink_reader(raw)
-    local blocks = {}
+    local blocks, texel = {}, require('ui.client_fonts').texel
     return function(x, y)
-        local block = math.floor(y / 4) * 256 + math.floor(x / 4)
-        local index = y % 4 * 4 + x % 4
-        local alpha = raw.dds:byte(129 + block * 16 + math.floor(index / 2))
-        alpha = index % 2 == 0 and alpha % 16 or math.floor(alpha / 16)
+        local alpha, color = texel(raw, blocks, x, y, 8)
         if alpha < 8 then return 0 end
-        local colors = blocks[block]
-        if not colors then
-            local a, b, c, d = raw.dds:byte(137 + block * 16, 140 + block * 16)
-            colors = { channels(a + b * 256), channels(c + d * 256), {}, {} }
-            for channel = 1, 3 do
-                colors[3][channel] = (2 * colors[1][channel] + colors[2][channel]) / 3
-                colors[4][channel] = (colors[1][channel] + 2 * colors[2][channel]) / 3
-            end
-            blocks[block] = colors
-        end
-        local indices = raw.dds:byte(141 + block * 16 + math.floor(index / 4))
-        local color = colors[math.floor(indices / 4 ^ (index % 4)) % 4 + 1]
         local bright = math.max(color[1], color[2], color[3])
         if bright < 128 then return 0 end
         local lit = bright / 255 * alpha / 15

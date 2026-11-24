@@ -8,7 +8,7 @@
 -- the screen spot, and the player with Dispel learned, so the Target panel and the target's block light its buffs),
 -- 'rolls' (party6 with the Phantom Roll display: your roll and a member's, their members and their Double-Up windows
 -- ticking) or 'pet' (party6 with the pet display: a jug pet with its clock and bars, eight effects with countdowns, two
--- of them blinking, three lines of maneuvers and six pet command recasts), or 'edit' (party6 in edit mode: every display outlined over the grid with the
+-- of them blinking, three lines of maneuvers and six pet command recasts), or 'edit' (party6 in edit mode: every display outlined, with the
 -- edit mode bar, Self debuffs anchored below Self buffs, Target at the screen's top right, the combined recasts above
 -- the chat log and the notices above the game's party list, and every timer panel shown only as RDM in a field). The
 -- harness player is Silenced and Amnesia'd in every scenario, so recast rows draw their locks where the tints are on.
@@ -17,28 +17,30 @@
 -- The settings_ scenarios below are the settings scenario open on another page. A search_ scenario is one of those, or
 -- the settings scenario as search_home, with `effects` held in the settings search box: a plural, which costs the
 -- search most. 'search' is a player typing there: a new word every 25 frames, and a new page every 100.
--- 'main_closed' and 'main_open' are the settings scenario on the main page as a player has it, with More look closed
--- and open. The panel_ scenarios are the settings scenario on a tab of a panel as a player has it, its folds closed:
+-- 'main_closed' and 'main_open' are the settings scenario on the main page as a player has it, with How it looks's folds
+-- closed and open, all but Colors. The panel_ scenarios are the settings scenario on a tab of a panel as a player has it, its folds closed:
 -- panel_show to panel_when on Watched enemy timers, in bars for the most rows, on a panel that draws nothing here so the
 -- scene stays party6's; panel_recasts on Recasts' Show; and panel_look_open with Look's folds open. panel_party to
--- panel_party_when are the tabs of Party list buffs, panel_overhead and panel_overhead_filters those tabs of Overhead icons,
--- panel_cooldowns Party cooldowns' Show with the list on and Abilities to watch open, panel_rolls Phantom Roll's Show,
+-- panel_party_when are the tabs of Party list, panel_overhead and panel_overhead_filters those tabs of Overhead icons,
+-- panel_cooldowns Party cooldowns' Show with the list on, panel_cooldowns_filters its Filters with Abilities and spells to
+-- watch open, panel_rolls Phantom Roll's Show,
 -- panel_pet and panel_pet_filters those tabs of Pet, panel_alerts Alerts' Show, panel_alerts_rule the same with a rule open,
--- and panel_hidden Hidden everywhere.
+-- and panel_hidden the Hide list.
 -- Used by test_draw_digest.py, benchmark_frame.py and jit_flush_guard.py, in the test runtime and in a plain x86
 -- LuaJIT (x86_runtime.lua).
 local SCENARIO = ...;
 local NAME, HELD, TYPING = SCENARIO, SCENARIO:match('^search_(%a+)$'), SCENARIO == 'search';
 if HELD or TYPING then SCENARIO = (TYPING or HELD == 'home') and 'settings' or 'settings_' .. HELD; end;
-local MORE_LOOK = ({ main_closed = false, main_open = true, main_grid = false })[SCENARIO];
-local GRID_FOLD = SCENARIO == 'main_grid';
+local MORE_LOOK = ({ main_closed = false, main_open = true })[SCENARIO];
+local LOOK_FOLDS = { Artwork = true, Sizes = true, Boxes = true, ['Text effects'] = true };
 if MORE_LOOK ~= nil then SCENARIO = 'settings'; end;
 local PANEL_TAB = ({ panel_show = { 'watch', 'show' }, panel_look = { 'watch', 'look' },
     panel_look_open = { 'watch', 'look', true }, panel_filters = { 'watch', 'filters' }, panel_place = { 'watch', 'place' },
     panel_when = { 'watch', 'when' }, panel_recasts = { 'recasts', 'show' }, panel_party = { 'party_ui', 'show' },
     panel_party_look = { 'party_ui', 'look' }, panel_party_filters = { 'party_ui', 'filters' },
     panel_party_place = { 'party_ui', 'place' }, panel_party_when = { 'party_ui', 'when' }, panel_overhead = { 'overhead', 'show' },
-    panel_overhead_filters = { 'overhead', 'filters' }, panel_cooldowns = { 'cooldown_list', 'show', true },
+    panel_overhead_filters = { 'overhead', 'filters' }, panel_cooldowns = { 'cooldown_list', 'show' },
+    panel_cooldowns_filters = { 'cooldown_list', 'filters', true },
     panel_rolls = { 'rolls', 'show' }, panel_pet = { 'pet', 'show' }, panel_pet_filters = { 'pet', 'filters' },
     panel_alerts = { 'notices', 'show' }, panel_alerts_rule = { 'notices', 'show' }, panel_hidden = { 'hidden', 'show' } })[SCENARIO];
 if PANEL_TAB then SCENARIO = 'settings_display'; end;
@@ -259,7 +261,12 @@ local target = {
 local spell_timers = { [57] = 1200, [86] = 3000, [112] = 600 };
 -- The client's names for those three spells. Vantage reads the timers of the spells the client names, and no others.
 local spell_names = { [57] = { Name = { 'Haste' } }, [86] = { Name = { 'Barsleepra' } }, [112] = { Name = { 'Flash' } } };
-local resources = { GetSpellById = function(_, id) return spell_names[id]; end };
+-- And its names for the jug pet's commands, at 512 plus their ability ids, so each command's icon is looked up once,
+-- as in the game, and not again every second as one the client doesn't have.
+local ability_names = { [564] = { Name = { 'Charm' } }, [581] = { Name = { 'Fight' } }, [582] = { Name = { 'Heel' } },
+    [584] = { Name = { 'Sic' } }, [590] = { Name = { 'Reward' } }, [597] = { Name = { 'Call Beast' } } };
+local resources = { GetSpellById = function(_, id) return spell_names[id]; end,
+    GetAbilityById = function(_, id) return ability_names[id]; end };
 AshitaCore.GetResourceManager = function() return resources; end;
 -- With the pet out, slots 4 to 9 hold six of its commands' timers.
 local pet_timers = { [4] = 102, [5] = 103, [6] = 104, [7] = 97, [8] = 100, [9] = 152 };
@@ -342,6 +349,21 @@ for index = 500, 504 do
     bytes[0x0A], bytes[0x20] = 0x0F, 1;
     MOCK.fire('packet_in', MOCK.packet(0x00E, bytes));
 end;
+-- In play the party's effects come by 0x076, and core/client.lua reads the game's party icons only until one comes.
+-- Phoenix sends one listing every member in your zone when any of their effects change (src/map/party.cpp :1219-1247,
+-- src/map/entities/char_entity.cpp :1189-1201). This one lists members 1 to 5 with the icons fill gave them, so the
+-- party scenes measure play and not the first frames after a reload.
+local function party_listing(count)
+    if count < 2 then return; end;
+    local bytes = MOCK.bytes(244);
+    for row = 0, math.min(count, 6) - 2 do
+        local start = 4 + row * 48;
+        MOCK.put(bytes, start, 4, members[row + 1].id); MOCK.put(bytes, start + 4, 2, members[row + 1].index);
+        for slot = 0, 31 do bytes[start + 16 + slot] = party_icons[slot]; end;
+    end;
+    MOCK.fire('packet_in', MOCK.packet(0x076, bytes));
+end;
+party_listing(member_count);
 settings.alerts.enabled = true;
 settings.diagnostics.record = false;
 -- The target's effects and the effects tracked on alliance members (slots 6 on), as the tracker hears of them.
@@ -380,9 +402,8 @@ if SETTINGS_OPEN then
         rawset(imgui, name, function() return true; end);
     end;
     if MORE_LOOK ~= nil then
-        rawset(imgui, 'CollapsingHeader', function(label) return MORE_LOOK and label == 'More look' or GRID_FOLD and label:find('Grid and snapping', 1, true) == 1; end);
+        rawset(imgui, 'CollapsingHeader', function(label) return MORE_LOOK and LOOK_FOLDS[label] == true; end);
     end;
-    if GRID_FOLD then settings.edit_mode.grid_mode = true; end;
     if PANEL_TAB then
         settings.panels.watch.mode = 'bars';
         require('ui.panel_frame').open(PANEL_TAB[1], PANEL_TAB[2]);
@@ -489,7 +510,7 @@ end;
 rolls_on(ROLLS_ON);
 pet_on(PET_ON);
 -- Party cooldowns' list rows show with the watch and the list on. Nobody has used anything, so the scene stays party6's.
-if NAME == 'panel_cooldowns' then
+if NAME == 'panel_cooldowns' or NAME == 'panel_cooldowns_filters' then
     app.state.settings.party_cooldowns.enabled, app.state.settings.party_cooldowns.list.enabled = true, true;
 end;
 if ROLLS_ON or PET_ON then app.refresh(MOCK.now); end;
@@ -552,7 +573,7 @@ end;
 
 -- Moves the running app to another scenario, as one long session moves between them: the party, the player's buffs
 -- and timers (timed from now) and the party's icons that scenario starts with, its target and alliance effects added
--- to what the tracker already holds, and its party list buffs, settings window and hide rules set by the commands a
+-- to what the tracker already holds, and its Party list, settings window and hide rules set by the commands a
 -- player types. Nothing removes what an earlier scene tracked: those effects stay until they wear off, so after
 -- alliance18 every scene draws its 32 target effects. jit_flush_guard.py runs its mixed session with it.
 local function always() return true; end;
@@ -569,6 +590,7 @@ function H.scene(name)
     assert(base == 'solo' or base == 'party6' or base == 'alliance18', 'unknown scenario');
     local count, each, own, aimed = shape(base);
     fill(count, each, own, math.floor(MOCK.now));
+    party_listing(count);
     track(count, each, aimed, placing);
     command('/vg set party_ui.enabled ' .. tostring(base ~= 'solo'));
     for _, section in ipairs(open_sections) do rawset(imgui, section, open and always or nil); end;

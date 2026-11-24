@@ -29,7 +29,7 @@ for _, case in ipairs(cases) do
         matches(scope == 'placement' and captured.party_ui or captured.presentation.party_ui, case);
         assert(saved:save_layout(source, scope));
         target = defaults.make();
-        target.party_ui.style.icon_art, target.party_ui.style.opacity = 'Client', .8;
+        target.party_ui.style.icon_art, target.party_ui.style.opacity = 'Original FFXI', .8;
         local before = copy(target);
         assert(saved:load_layout(target, scope));
         matches(target.party_ui, case);

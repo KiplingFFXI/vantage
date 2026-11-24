@@ -1,7 +1,7 @@
--- A recast sample reads the timer of each spell the client names, here all 1,024, about ten times a second. With
--- everything ready it reuses the table it read into two samples before instead of building a new 2,048-node one: a few
--- KB a sample, not about 50.
--- The rows, the view and the read counts it publishes are still new each sample.
+-- A recast sample reads the timer of each spell on data/actions.lua's list the client names, here all of them, about
+-- ten times a second. With everything ready it reuses the table it read into two samples before instead of building a
+-- new one: a few KB a sample, not about 50.
+-- Each sample still publishes read counts of its own.
 local manager = { GetSpellTimer = function() return 0; end, GetAbilityTimerId = function() return 0; end,
     GetAbilityTimer = function() return 0; end };
 local memory = { GetRecast = function() return manager; end, GetInventory = function() return nil; end };
@@ -16,7 +16,7 @@ local function sample() now = now + 0.1; model:update(snapshot, now, { spells = 
 for _ = 1, 4 do sample(); end;
 local reads = model.capabilities.reads;
 sample();
-assert(model.capabilities.reads ~= reads and model.capabilities.reads.GetSpellTimer == 1024,
+assert(model.capabilities.reads ~= reads and model.capabilities.reads.GetSpellTimer == #require('data.actions').spells,
     'Each sample publishes its own read counts.');
 collectgarbage('collect'); collectgarbage('collect');
 collectgarbage('stop');

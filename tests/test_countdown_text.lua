@@ -101,7 +101,7 @@ end;
 local equal,copy=require('core.customization').equal,require('core.store').copy;
 local function compact_box(name,text,size)
     local width,height=client.measure_countdown(name,text,size,true);
-    calls={};assert(client.draw_countdown(list,name,text,10.2,20.3,size,0x80402010,true));
+    calls={};assert(countdown.draw(list,name,text,10.2,20.3,size,0x80402010,nil,true));
     local left,top,right,bottom;
     for _,call in ipairs(calls) do
         assert(call[1]=='image' and call[7]==0x80402010);
@@ -120,13 +120,13 @@ local function compact_box(name,text,size)
 end;
 for _,name in ipairs({'Original FFXI','XI View'}) do
     for _,size in ipairs({1,8,10,12,14.5,16,24,32,48}) do
-        calls={};client.draw_countdown(list,name,'12m',10.2,20.3,size,0x80402010);
+        calls={};countdown.draw(list,name,'12m',10.2,20.3,size,0x80402010);
         local ordinary=copy(calls);
         local ordinary_width,ordinary_height=client.measure_countdown(name,'12m',size);
         for _,text in ipairs({'1h','4h','24h','12m','9m','59s','1:02','~12m','12m\n9s','1\r\n2m','',' \t\n'}) do
             compact_box(name,text,size);
         end;
-        calls={};client.draw_countdown(list,name,'12m',10.2,20.3,size,0x80402010,false);
+        calls={};countdown.draw(list,name,'12m',10.2,20.3,size,0x80402010,nil,false);
         assert(equal(calls,ordinary),'Compact drawing cannot alter ordinary countdown geometry or UVs.');
         local width,height=client.measure_countdown(name,'12m',size,false);
         assert(width==ordinary_width and height==ordinary_height,'Ordinary line-box measurement is unchanged.');
@@ -169,8 +169,8 @@ assert(filled,'The compact metric cache was exercised beyond its capacity');
 local repeated_width,repeated_height=client.measure_countdown('Original FFXI','12m',12,true);
 assert(first_width==repeated_width and first_height==repeated_height,'Eviction never changes native countdown bounds');
 
--- A countdown's glyphs are walked once and replayed for every pass. That draws exactly what one renderer
--- call per pass draws, in the same order: the shadow, the eight outline offsets, then the fill, each with
+-- A countdown's glyphs are walked once and replayed for every pass. That draws exactly what one plain countdown
+-- per pass draws, in the same order: the shadow, the eight outline offsets, then the fill, each with
 -- its bold copy.
 local outline_ink=require('ui.theme').u32({1,0,0,.5});
 outline_ink=outline_ink%16777216+math.floor(math.floor(outline_ink/16777216)%256*128/255+0.5)*16777216;
@@ -195,8 +195,8 @@ for _,name in ipairs({'Original FFXI','XI View'}) do
                     if outline then for _,offset in ipairs(around) do pass(offset[1],offset[2],outline_ink);end;end;
                     pass(0,0,0x80402010);
                     calls={};
-                    for _,step in ipairs(passes) do client.draw_countdown(list,name,text,x+step[1],y+step[2],size,step[3],compact);end;
-                    assert(#drawn>0 and equal(drawn,calls),'One glyph walk replayed for each pass draws what a renderer call per pass draws.');
+                    for _,step in ipairs(passes) do countdown.draw(list,name,text,x+step[1],y+step[2],size,step[3],nil,compact);end;
+                    assert(#drawn>0 and equal(drawn,calls),'One glyph walk replayed for each pass draws what one plain countdown per pass draws.');
                 end;
             end;
         end;
@@ -212,6 +212,49 @@ current.glyphs=setmetatable({},{__index=function(_,code)looked=looked+1;return g
 calls={};countdown.draw(list,'Original FFXI','12',0,0,16,0xFFFFFFFF,{bold=true,shadow=true,outline=true});
 current.glyphs=glyphs;
 assert(#calls==40 and looked==2,'An outlined bold countdown walks its two glyphs once for all 20 passes.');
+
+-- What one plain pass draws, as the single-pass renderer drew it before the replay was the only way: each glyph's
+-- corners and its place in the 256 by 128 atlas, where '1' sits at 16, 16 and '2' at 32, 16. A glyph is 9 wide and
+-- 16 high, and compact takes its ink, 8 by 11 from its third row. At 24 pixels each of those grows by half and is
+-- rounded, and a second line starts one line height down.
+local recorded={
+    {'Original FFXI','12',16,456,
+        [false]={{10,20,19,36,16/256,16/128,25/256,32/128},{19,20,28,36,32/256,16/128,41/256,32/128}},
+        [true]={{10,20,18,31,16/256,18/128,24/256,29/128},{19,20,27,31,32/256,18/128,40/256,29/128}}},
+    {'XI View','12',16,789,
+        [false]={{10,20,19,36,16/256,16/128,25/256,32/128},{19,20,28,36,32/256,16/128,41/256,32/128}},
+        [true]={{10,20,18,31,16/256,18/128,24/256,29/128},{19,20,27,31,32/256,18/128,40/256,29/128}}},
+    {'Original FFXI','12',24,456,
+        [false]={{10,20,24,44,16/256,16/128,25/256,32/128},{24,20,38,44,32/256,16/128,41/256,32/128}},
+        [true]={{10,20,22,37,16/256,18/128,24/256,29/128},{24,20,36,37,32/256,18/128,40/256,29/128}}},
+    {'Original FFXI','12m\n9s',16,456,
+        [false]={{10,20,19,36,16/256,16/128,25/256,32/128},{19,20,28,36,32/256,16/128,41/256,32/128},
+            {28,20,37,36,208/256,64/128,217/256,80/128},{10,36,19,52,144/256,16/128,153/256,32/128},
+            {19,36,28,52,48/256,80/128,57/256,96/128}},
+        [true]={{10,20,18,31,16/256,18/128,24/256,29/128},{19,20,27,31,32/256,18/128,40/256,29/128},
+            {28,20,36,31,208/256,66/128,216/256,77/128},{10,36,18,47,144/256,18/128,152/256,29/128},
+            {19,36,27,47,48/256,82/128,56/256,93/128}}},
+    {'XI View','12m\n9s',24,789,
+        [false]={{10,20,24,44,16/256,16/128,25/256,32/128},{24,20,38,44,32/256,16/128,41/256,32/128},
+            {38,20,52,44,208/256,64/128,217/256,80/128},{10,44,24,68,144/256,16/128,153/256,32/128},
+            {24,44,38,68,48/256,80/128,57/256,96/128}},
+        [true]={{10,20,22,37,16/256,18/128,24/256,29/128},{24,20,36,37,32/256,18/128,40/256,29/128},
+            {38,20,50,37,208/256,66/128,216/256,77/128},{10,44,22,61,144/256,18/128,152/256,29/128},
+            {24,44,36,61,48/256,82/128,56/256,93/128}}},
+};
+for _,row in ipairs(recorded) do
+    for _,compact in ipairs({false,true}) do
+        calls={};countdown.draw(list,row[1],row[2],10,20,row[3],0xFFFFFFFF,nil,compact);
+        assert(#calls==#row[compact],'A plain countdown draws each of its glyphs once.');
+        for index,call in ipairs(calls) do
+            local want=row[compact][index];
+            assert(call[1]=='image' and call[2]==row[4] and call[7]==0xFFFFFFFF
+                and call[3][1]==want[1] and call[3][2]==want[2] and call[4][1]==want[3] and call[4][2]==want[4]
+                and call[5][1]==want[5] and call[5][2]==want[6] and call[6][1]==want[7] and call[6][2]==want[8],
+                'The countdown draws the recorded corners and atlas places: '..row[1]..' '..row[3]..' '..tostring(compact)..' '..index);
+        end;
+    end;
+end;
 
 -- Check the real stock and configured XI View masks when their local DATs exist.
 -- Two folders up from addons/libs, whatever its case or slashes.

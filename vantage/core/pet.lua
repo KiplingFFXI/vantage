@@ -7,7 +7,7 @@
 -- pet's effects, so they are only what Vantage saw land on it, as on any other unit, and when an effect on a pet ends,
 -- only the player it came from is told, so only effects from you end exactly. It shows the pet the client shows,
 -- whether or not a jug pet stays through a zone change on the server. Nothing here sends anything. ui/pet_display.lua
--- draws it.
+-- draws it. The Show tab's other ticks, all off at first, add lines and notices of their own (core/pet_lines.lua).
 --
 -- A jug's clock and a charm's estimate are also kept for the life of the game process in a process environment variable
 -- (core/patterns.lua's store, VANTAGE_PET), so an /addon reload doesn't lose them. Nothing goes on disk.
@@ -15,8 +15,14 @@ local pet = {};
 local numbers = require('ui.numbers');
 local finite = numbers.finite;
 local DATA = require('data.pets');
+local extra_lines = require('core.pet_lines');
 pet.kinds = { 'all', 'buff', 'debuff' };
+-- The ticks that add a line or a notice, each off at first.
+pet.extras = { 'exact_mp', 'show_target', 'show_action', 'show_distance', 'show_time_out', 'show_attachments', 'show_cooldowns', 'show_build',
+    'show_upkeep', 'show_breath', 'sic_mark', 'show_reward', 'alert_hp', 'alert_tp', 'alert_ending' };
 pet.effect_styles = { 'icons', 'list' };
+-- The display's least width, for its tidy, its Width row and its drag.
+pet.MIN_WIDTH = 160;
 -- The timers by id, and each pet job's two-hour on timer 0.
 local TIMERS, SPECIALS = {}, {};
 for _, info in ipairs(DATA.timers) do
@@ -48,40 +54,14 @@ function pet.make()
         max_effects = 8, max_recasts = 6, kinds = 'all', include = {}, exclude = {}, shared_rules = true,
         countdown_bold = false, countdown_shadow = true, countdown_outline = false,
         countdown_outline_color = { 0, 0, 0, 1 }, hp_color = { 0.4, 0.8, 0.35, 1 }, mp_color = { 0.35, 0.6, 0.95, 1 },
-        tp_color = { 0.95, 0.75, 0.3, 1 } };
+        tp_color = { 0.95, 0.75, 0.3, 1 },
+        exact_mp = false, show_target = false, show_action = false, show_distance = false, show_time_out = false,
+        show_attachments = false, show_cooldowns = false, show_build = false, show_upkeep = false, show_breath = false,
+        sic_mark = false, show_reward = false, alert_hp = false, alert_hp_percent = 25, alert_tp = false, alert_ending = false };
 end
 
-local function table_of(value) return type(value) == 'table' and value or {}; end
-
-local function number(value, low, high, fallback)
-    return numbers.clamp_round(value, low, high, fallback);
-end
-
-local function choice(value, choices, fallback)
-    for _, item in ipairs(choices) do if value == item then return value; end end
-    return fallback;
-end
-
-local function rgba(value, fallback)
-    local color, saved = {}, table_of(value);
-    for i = 1, 4 do color[i] = numbers.clamp(saved[i] or saved[tostring(i)], 0, 1, fallback[i]); end
-    return color;
-end
-
--- Effect ids 1 to 1023 as a sorted list without repeats, from a list or from a set. At most 256 are kept.
-local function effect_list(value)
-    local seen, result = {}, {};
-    value = table_of(value);
-    local function add(id)
-        id = tonumber(id);
-        if finite(id) and id >= 1 and id <= 1023 and id == math.floor(id) and not seen[id] then seen[id], result[#result + 1] = true, id; end
-    end
-    for key, on in pairs(value) do if on == true then add(key); end end
-    for _, id in ipairs(value) do add(id); end
-    table.sort(result);
-    for index = #result, 257, -1 do result[index] = nil; end
-    return result;
-end
+local table_of, number, choice = numbers.table_of, numbers.clamp_round, numbers.choice;
+local rgba, effect_list = numbers.rgba, numbers.effect_list;
 
 -- Keys this doesn't know are kept, as the rest of the settings keep them.
 function pet.tidy(value)
@@ -91,9 +71,13 @@ function pet.tidy(value)
         'show_maneuvers', 'blink_icons', 'shared_rules', 'countdown_bold', 'countdown_shadow', 'countdown_outline' }) do
         if type(value[key]) ~= 'boolean' then value[key] = fresh[key]; end
     end
+    for _, key in ipairs(pet.extras) do
+        if type(value[key]) ~= 'boolean' then value[key] = false; end
+    end
+    value.alert_hp_percent = number(value.alert_hp_percent, 1, 99, fresh.alert_hp_percent);
     value.x = number(value.x, 0, 16000, fresh.x);
     value.y = number(value.y, 0, 16000, fresh.y);
-    value.width = number(value.width, 160, 1400, fresh.width);
+    value.width = number(value.width, pet.MIN_WIDTH, 1400, fresh.width);
     value.height = number(value.height, 0, 16000, 0);
     if value.height > 0 then value.height = math.max(60, value.height); end
     value.max_effects = number(value.max_effects, 1, MAX_EFFECTS, fresh.max_effects);
@@ -102,7 +86,7 @@ function pet.tidy(value)
     value.kinds = choice(value.kinds, pet.kinds, 'all');
     value.effects_as = choice(value.effects_as, pet.effect_styles, 'icons');
     value.include, value.exclude = effect_list(value.include), effect_list(value.exclude);
-    for _, key in ipairs({ 'countdown_outline_color', 'hp_color', 'mp_color', 'tp_color' }) do value[key] = rgba(value[key], fresh[key]); end
+    for _, key in ipairs({ 'countdown_outline_color', 'hp_color', 'mp_color', 'tp_color' }) do value[key] = rgba(value[key], fresh[key], nil, true); end
     -- The samples show in the display, so they are kept only while it is on.
     value.preview = value.preview == true and value.enabled;
     return value;
@@ -130,15 +114,7 @@ local function gear(items, table)
     return total;
 end
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-local function call(object, name, ...)
-    if object == nil then return nil; end
-    local ok, fn = pcall(index_of, object, name);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local done, value = pcall(fn, object, ...);
-    if done then return value; end
-end
+local call = require('core.guard').call;
 local function memory() return call(AshitaCore, 'GetMemoryManager'); end
 
 -- Your CHR as the status screen shows it: the base and what gear, food and effects add (0x061,
@@ -175,8 +151,9 @@ function pet.new(store)
         local ok, text = pcall(store.read);
         kept = ok and kept_text(text) or nil;
     end
-    return setmetatable({ levels = {}, level_count = 0, charms = {}, version = 0, store = store, kept = kept, percents = {}, wards = {},
-        shown = { valid = false, effects = EMPTY, recasts = {}, recast_count = 0, maneuvers = {}, maneuver_count = 0 } }, methods);
+    return setmetatable({ levels = {}, level_count = 0, charms = {}, store = store, kept = kept, percents = {}, wards = {},
+        extras = extra_lines.new(),
+        shown = { valid = false, effects = EMPTY, recasts = {}, recast_count = 0, maneuvers = {}, maneuver_count = 0, lines = EMPTY, line_count = 0 } }, methods);
 end
 
 -- A zone change: charms and /check levels stay in the zone they were seen in. A jug can come along, so with now
@@ -186,13 +163,14 @@ function methods:clear(now)
     self.held = jug and { name = jug.name, seconds = jug.seconds, deadline = jug.deadline, owner = jug.owner, until_at = now + RETURN_WINDOW } or nil;
     self.jug, self.called, self.ward_waiting, self.percents = nil, nil, nil, {};
     self.levels, self.level_count, self.charms = {}, 0, {};
+    self.extras:clear();
     self.shown.valid, self.current = false, nil;
     self.dirty = true;
-    self.version = self.version + 1;
 end
 
 -- What the observer gives this watch.
-methods.takes = { check = true, charm = true, familiar = true, call_beast = true, maneuver = true, ward = true };
+methods.takes = { check = true, charm = true, familiar = true, call_beast = true, maneuver = true, ward = true,
+    pet_start = true, pet_action = true };
 
 -- One observation from core/observer.lua: a /check of a mob ('check'), your Charm that took ('charm'), your Familiar
 -- ('familiar'), your Call Beast ('call_beast'), the overload chance your maneuver reported ('maneuver') or a ward of your
@@ -200,6 +178,11 @@ methods.takes = { check = true, charm = true, familiar = true, call_beast = true
 function methods:observe(observation, now, snapshot)
     local id = observation.entity_id;
     if not finite(id) or not finite(now) then return; end
+    -- What your pet starts and finishes is for the optional lines.
+    if observation.kind == 'pet_start' or observation.kind == 'pet_action' then
+        self.extras:observe(observation, now);
+        return;
+    end
     if observation.kind == 'check' and finite(observation.level) then
         if not self.levels[id] then
             if self.level_count >= LEVELS then self.levels, self.level_count = {}, 0; end
@@ -233,8 +216,7 @@ function methods:observe(observation, now, snapshot)
         if #self.wards >= WARDS then table.remove(self.wards, 1); end
         self.wards[#self.wards + 1] = ward;
         self.ward_waiting = observation.own and ward or nil;
-    else return; end
-    self.version = self.version + 1;
+    end
 end
 
 -- What /vg report says of the pet: the last few wards, with the skill and level read, the length worked out from them
@@ -295,6 +277,7 @@ end
 -- and come back after a reload whenever it is turned on.
 function methods:watch(now, snapshot, subjects)
     if not snapshot or not snapshot.valid then return; end
+    self.extras:track(now, snapshot);
     local mine = snapshot.pet;
     local id, name = mine and mine.id, mine and mine.name;
     local dirty = self.dirty == true;
@@ -402,7 +385,7 @@ function methods:refresh(now, settings, snapshot, subjects, recast_rows)
     if not mine then return nil; end
     local id, index = mine.id, mine.index;
     local entities, player = call(memory(), 'GetEntity'), call(memory(), 'GetPlayer');
-    shown.valid, shown.id, shown.index = true, id, index;
+    shown.valid, shown.id = true, id;
     shown.name = type(mine.name) == 'string' and mine.name ~= '' and mine.name or 'Pet';
     -- Out of your view the client has no unit to read its HP from, so its last 0x068 says.
     local hpp = mine.hpp;
@@ -423,6 +406,18 @@ function methods:refresh(now, settings, snapshot, subjects, recast_rows)
     end
     -- A pet with no MP sends 0 (src/map/entities/battle_entity.cpp GetMPP :328-336), so MP shows once it is above 0.
     shown.has_mp = shown.has_mp or (shown.mpp or 0) > 0;
+    -- An automaton's MP as a number, from the same 0x044 as its HP, only while it agrees with the percent, which the
+    -- server rounds down from the same MP (GetMPP).
+    local mp, most_mp = mine.mp, mine.max_mp;
+    shown.mp, shown.max_mp = nil, nil;
+    if finite(mp) and finite(most_mp) and most_mp > 0 and mp >= 0 and mp <= most_mp and shown.mpp
+        and math.abs(math.floor(mp * 100 / most_mp) - shown.mpp) <= 1 then
+        shown.mp, shown.max_mp = mp, most_mp;
+    end
+    -- Where Sic is ready on the TP bar, for a BST, main or support, with a jug pet or a charmed mob out. Sic commands no
+    -- avatar, wyvern or automaton (modules/era/sql/wotg/job_adjustments.sql :25, src/map/utils/charutils.cpp :6393-6400).
+    local kind = config.sic_mark and (snapshot.job == 9 or snapshot.sub_job == 9) and (extra_lines.kind_of(mine, snapshot) or 'pet');
+    shown.sic_mark = kind and kind ~= 'avatar' and kind ~= 'wyvern' and kind ~= 'automaton' or false;
     shown.charm, shown.jug = self.charms[id], self.jug;
     local subject = subjects and subjects[id];
     shown.effects = subject and subject.effects or EMPTY;
@@ -440,6 +435,7 @@ function methods:refresh(now, settings, snapshot, subjects, recast_rows)
     table.sort(list, sooner);
     shown.recast_count = count;
     fill_maneuvers(self, shown, now, snapshot, config.show_maneuvers and (snapshot.job == 18 or snapshot.sub_job == 18));
+    self.extras:fill(shown, now, config, snapshot, self.announce);
     return shown;
 end
 
@@ -472,6 +468,18 @@ function pet.hp_details()
     return 'Your automaton\'s HP and max HP, from the automaton status the server sends you as a PUP. Every other pet\'s HP only '
         .. 'comes as a percent. Vantage shows the number only while it agrees with the percent the game shows. When they '
         .. 'don\'t agree, like at 0 HP, the bar shows the percent.';
+end
+
+-- The tooltip of an automaton's MP shown as a number.
+function pet.mp_details()
+    return 'Your automaton\'s MP and max MP, from the automaton status the server sends you as a PUP. Vantage shows the number '
+        .. 'only while it agrees with the percent the game shows.';
+end
+
+-- The tooltip of the mark on the TP bar.
+function pet.sic_details()
+    return 'The mark is at 1000 TP, where your pet can use a move when you use Sic. Under it, a pet with spells casts one '
+        .. 'and any other waits for the TP.';
 end
 
 -- The tooltip of one maneuver line.
@@ -524,7 +532,11 @@ local SAMPLES = {
 };
 SAMPLES[9].jug = sample_jug;
 SAMPLES[18].hp, SAMPLES[18].max_hp = 798, 1050;
-function pet.samples(now, job)
+-- The sample pet for your job, and for your support job when your main job has no pet of its own: a support BST, SMN
+-- or PUP has one, a support DRG doesn't.
+local SUPPORT = { [9] = true, [15] = true, [18] = true };
+function pet.samples(now, job, config, sub)
+    if not SAMPLES[job] and SUPPORT[sub] then job = sub; end
     local sample = SAMPLES[job] or charmed;
     sample.hpp, sample.mpp, sample.tp = 76, 40, 1250;
     sample_record.deadline, sample_jug.deadline = now + 754, now + 2400;
@@ -545,6 +557,14 @@ function pet.samples(now, job)
         local line = sample.maneuvers[index];
         line.effect, line.name, line.count, line.status = made[1], made[2], made[3], 'server';
         line.deadline, line.percent, line.at = now + made[4], made[5], now - 12;
+    end
+    -- What the optional ticks add, when config is the display's settings.
+    sample.mp, sample.max_mp, sample.sic_mark = nil, nil, false;
+    sample.lines, sample.line_count = EMPTY, 0;
+    if config then
+        if job == 18 then sample.mp, sample.max_mp = 168, 420; end
+        sample.sic_mark = config.sic_mark and job == 9 or false;
+        extra_lines.samples(sample, now, config, job);
     end
     return sample;
 end

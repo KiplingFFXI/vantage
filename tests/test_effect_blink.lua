@@ -92,7 +92,7 @@ local function paint(now)
 end;
 local equal=require('core.customization').equal;
 for _,mode in ipairs({'icons','bars','expanded'})do
-    for _,art in ipairs({'Client','Original FFXI','XI View'})do
+    for _,art in ipairs({'Original FFXI','XI View'})do
         for _,p in pairs(s.panels)do p.mode=mode;end;
         s.style.icon_art=art;
         local before=store.copy(s);

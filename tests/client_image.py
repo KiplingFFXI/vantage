@@ -9,6 +9,7 @@ from pathlib import Path
 import argparse
 import atexit
 import hashlib
+import os
 import shutil
 import struct
 import sys
@@ -17,7 +18,6 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 OLD_IMAGE = ROOT/'tests/fixtures/clients/client-image-f2245d1c.bin'
 NEW_IMAGE = ROOT/'tests/fixtures/clients/client-image-04288488.bin'
-RESEARCH = ROOT/'tests/out/native-solo-research'
 # Decoded images and the FFXiMain.dll each was decoded from.
 KNOWN = {'45908788c486ae171d40c1b19c745dfcb187123dbb46d0d1a74e6583b934d929':
          'f2245d1c9d06e02c36624942483913f5120c0d40777fc1bb8703c6f4bda823e4',
@@ -28,6 +28,14 @@ BASE = 0x10000000
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def research_folder():
+    """The research decoder's folder: VANTAGE_RESEARCH when it's set, or else research/native-solo-research, which
+    git ignores."""
+    if os.environ.get('VANTAGE_RESEARCH'):
+        return Path(os.environ['VANTAGE_RESEARCH'])
+    return ROOT/'research/native-solo-research'
 
 
 def sections(data):
@@ -60,7 +68,11 @@ def is_mapped(data):
 
 def decode(path):
     """Decode FFXiMain.dll in memory with the research decoder (read only)."""
-    sys.path[:0] = [str(RESEARCH), str(RESEARCH/'vendor')]
+    research = research_folder()
+    if not (research/'xi_core.py').is_file():
+        raise FileNotFoundError("the research decoder isn't in %s. Put it there, or set VANTAGE_RESEARCH to its "
+                                "folder" % research)
+    sys.path[:0] = [str(research), str(research/'vendor')]
     from xi_core import load_and_decompress
     pe, text, section, base, _ = load_and_decompress(Path(path))
     if base != BASE:
@@ -141,7 +153,7 @@ def from_argv(argv=None):
 
 def inspect_namespace(image):
     """The read-only helpers the target drivers used from the research inspector."""
-    sys.path.insert(0, str(RESEARCH/'vendor'))
+    sys.path.insert(0, str(research_folder()/'vendor'))
     import re
     from capstone import Cs, CS_ARCH_X86, CS_MODE_32
     data, base = image.data, image_base(image.data)

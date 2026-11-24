@@ -93,7 +93,7 @@ AshitaCore.GetResourceManager = function()
     end };
 end;
 local icons = require('ui.icons');
-assert(icons.status(33, 'Client') == 1001 and requested == 33, 'A status icon at the status limit loads.');
-assert(icons.status(34, 'Client') == nil and requested == 34 and state.creates == 1, 'A larger status bitmap is refused.');
+assert(icons.status(33, 'Original FFXI') == 1001 and requested == 33, 'A status icon at the status limit loads.');
+assert(icons.status(34, 'Original FFXI') == nil and requested == 34 and state.creates == 1, 'A larger status bitmap is refused.');
 icons.clear();
 assert(state.releases == 1);

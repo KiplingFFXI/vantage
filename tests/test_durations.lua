@@ -21,19 +21,8 @@ local function snapshot(own)
             [MOB2] = { id = MOB2, name = 'Goblin Tinkerer', kind = 'monster' } },
         target = { id = MOB, name = 'Goblin Smithy', kind = 'monster' } };
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function action(actor, category, id, target, message, param)
-    local bytes, at = MOCK.bytes(256), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, 1); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    putbits(bytes, at, 32, target); putbits(bytes, at + 32, 4, 1); at = at + 36;
-    putbits(bytes, at + 27, 17, param); putbits(bytes, at + 44, 10, message); at = at + 87;
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, { { id = target, rows = { { message = message, param = param } } } }));
 end
 local function wearoff(actor, target, icon, message)
     local bytes = MOCK.bytes(28);
@@ -250,13 +239,7 @@ assert(samples(258, 11) == 1, 'A Bind broken by a hit is no sample, in either re
 -- Spikes don't break Bind, so the bound mob's swing into your Blaze Spikes behind its wear-off spoils nothing. The swing
 -- hits you for 30 and the spikes deal 12 back (message 44 in the reaction slot).
 local function spikes()
-    local bytes, at = MOCK.bytes(256), 150;
-    putbits(bytes, 40, 32, MOB); putbits(bytes, 72, 6, 1); putbits(bytes, 82, 4, 1);
-    putbits(bytes, at, 32, SELF); putbits(bytes, at + 32, 4, 1); at = at + 36;
-    putbits(bytes, at + 27, 17, 30); putbits(bytes, at + 44, 10, 1); at = at + 86;
-    putbits(bytes, at, 1, 1); putbits(bytes, at + 11, 14, 12); putbits(bytes, at + 25, 10, 44); at = at + 35;
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(MOB, 1, 0, { { id = SELF, rows = { { message = 1, param = 30, reaction = 44, reaction_param = 12 } } } }));
 end;
 local BLAZE = { { effect = 34, slot = 0 } };
 step(2256, { action(SELF, 4, 258, MOB, 236, 11) }, BLAZE); wear(2258, { wearoff(SELF, MOB, 11), spikes() }, BLAZE);

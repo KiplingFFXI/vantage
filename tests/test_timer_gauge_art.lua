@@ -16,6 +16,8 @@ package.loaded['ui.client_assets'] = {
     status = function() return { available = true } end,
     icon_status = function() return { available = true } end,
     icon_texture = function() return nil end,
+    -- No icon sets: the icons folder can't be listed here.
+    list_folder = function() return nil end,
 }
 local defaults = require('ui.defaults')
 local skin = require('ui.client_skin')
@@ -78,7 +80,8 @@ local window = require('ui.settings_window')
 local hud = require('ui.hud')
 local imgui = require('imgui')
 settings.window.open, settings.window.tab = true, 'Home'
-settings.window.sections['Home/More look'] = true
+-- The test's folds always open, so each is saved open to keep its open state out of the events.
+settings.window.sections['Home/Artwork'], settings.window.sections['Home/Chat line colors'] = true, true
 settings.style.gauge_art, settings.style.font = 'Original FFXI', 'Tahoma Bold'
 local events = {}
 local cb = { now = function() return 100 end,

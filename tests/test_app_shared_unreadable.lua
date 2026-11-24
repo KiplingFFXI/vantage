@@ -1,15 +1,13 @@
--- With sharing on and shared_layout.json unreadable, a change saves this character's own file once and is
+-- With sharing on and shared_layout.json unreadable, the poll says so once. A save that doesn't touch the shared file
+-- leaves that said, so the poll doesn't say it again after each save, and a read of the file that works takes it back.
+-- A shared change saves this character's own file, then once more with
+-- the note that the shared layout is still owed (test_app_shared_unsent.lua), and no more after that. It is
 -- published on its own retry, which backs off while the file stays unreadable. The message names the shared
 -- file, commands don't say the save failed, and the shared poll waits for the publish, so a repaired file
 -- can't replace the change still to be sent: the retry merges it.
 local store = require('core.store');
 local snapshot = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
-package.loaded['core.client'] = { load = function() end, read = function() return store.copy(snapshot); end };
-package.loaded['core.observer'] = { read = function() return {}; end };
-local hud = require('ui.hud');
-hud.draw, hud.draw_notices = function() end, function() end;
-require('ui.party_hud').draw = function() return 0, {}; end;
-require('ui.native_party_hud').draw = function() return 0, {}; end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui'] = { treasure_open = function() return false; end, update = function() end,
     status = function() return { active = false }; end, restore = function() return true; end, suspend = function() end };
 local app = dofile(ADDON_DIR .. '/vantage.lua');
@@ -24,6 +22,49 @@ local good = assert(store.read(layout_path), 'Fixture: the shared layout reads.'
 local function damage() local f = assert(io.open(layout_path, 'wb'), 'Fixture: the file opens.'); f:write('{"self_buffs":{"x":'); f:close(); end;
 damage();
 said();
+local function frames() for _ = 1, 30 do MOCK.frame(.11); end; end;
+local function times(text, part) return select(2, text:gsub(part, '')); end;
+local function put(layout) local f = assert(io.open(layout_path, 'wb'), 'Fixture: the file opens.'); f:write(store.encode(layout)); f:close(); end;
+-- Nothing shared is owed, so the poll reads the file.
+frames();
+local heard = said();
+assert(times(heard, 'contains invalid settings') == 1, 'The poll says the shared file can\'t be read: ' .. heard);
+command('/vg sort name');
+local sorted = said(); assert(sorted:find('now sort', 1, true), 'Fixture: the sort changed something, so it saved: ' .. sorted);
+assert(not app.state.publish_pending, 'Fixture: the sorting isn\'t shared, so there is nothing to publish.');
+frames();
+heard = said();
+assert(not heard:find('contains invalid settings', 1, true) and tostring(app.state.problem):find('contains invalid settings', 1, true),
+    'A save that doesn\'t touch the shared file leaves its problem said, and the poll doesn\'t say it again: ' .. heard);
+put(good);
+frames();
+assert(app.state.problem == nil and said() == '', 'The poll takes the problem back once the shared file reads: ' .. tostring(app.state.problem));
+damage();
+frames();
+heard = said();
+assert(times(heard, 'contains invalid settings') == 1, 'Broken again, it is said again: ' .. heard);
+-- A file that reads but can't be loaded is the same.
+local profiles = require('core.profiles');
+local apply = profiles.apply_layout;
+profiles.apply_layout = function() return false, 'The shared layout could not be read. Your current layout was kept.'; end;
+local moved = store.copy(good);
+moved.self_debuffs.x = moved.self_debuffs.x + 10;
+put(moved);
+frames();
+heard = said();
+assert(times(heard, 'could not be read') == 1, 'The poll says the shared layout couldn\'t be loaded: ' .. heard);
+command('/vg sort remaining');
+said();
+frames();
+heard = said();
+assert(not heard:find('could not be read', 1, true), 'A save that doesn\'t touch the shared file doesn\'t have the poll say that again either: ' .. heard);
+profiles.apply_layout = apply;
+frames();
+assert(app.state.problem == nil and app.state.settings.panels.self_debuffs.x == moved.self_debuffs.x,
+    'The poll takes it back once the shared layout loads: ' .. tostring(app.state.problem));
+damage();
+frames();
+said();
 local real_write, writes, publishes = store.write, 0, 0;
 store.write = function(path, ...)
     if path == app.state.path then writes = writes + 1; end;
@@ -37,14 +78,14 @@ store.read = function(path, ...)
 end;
 command('/vg set panels.self_buffs.x 333');
 local message = said();
-assert(writes == 1 and not app.state.dirty, 'The own file is saved once and nothing is left to save.');
+assert(writes == 2 and not app.state.dirty, 'The own file is saved, then noted as owing the shared layout, and nothing is left to save: ' .. writes);
 assert(message:find('shared layout', 1, true) and message:find('shared_layout.json', 1, true) and message:find('saved', 1, true),
     'The message names the shared file: ' .. message);
 local own = store.read(app.state.path) or {};
 assert(own.panels and own.panels.self_buffs.x == 333, 'The own file has the change.');
 reads = 0;
 for _ = 1, 600 do MOCK.frame(.1); end;
-assert(writes == 1, 'Over 60 s the own file is not written again (' .. writes .. ' writes).');
+assert(writes == 2, 'Over 60 s the own file is not written again (' .. writes .. ' writes).');
 assert(reads >= 3 and reads <= 5, 'The publish is retried, backing off: ' .. reads .. ' reads of the shared file in 60 s.');
 assert(said() == '', 'The same problem is said once.');
 -- /vg sort saves the own file, so it doesn't say the save failed.

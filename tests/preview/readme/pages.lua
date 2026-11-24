@@ -28,7 +28,7 @@ function M.editor(settings)
     require('ui.panel_frame').open('self_buffs', 'look');
 end
 
--- Hidden everywhere with four effects on its list, one of them only on party members.
+-- The Hide list with four effects on its list, one of them only on party members.
 function M.hidden(settings)
     fresh(settings);
     local filters = require('core.effect_filters');
@@ -64,7 +64,7 @@ function M.starters(settings)
     settings.window.tab = 'Home';
 end
 
--- Edit mode on a 1080 by 600 screen with the samples on, Grid mode on for Target timers and Target timers unlocked, so
+-- Arrange on screen on a 1080 by 600 screen with the samples on, Snap while moving on with Target timers ticked and unlocked, so
 -- a Shift drag of it shows the grid. Every display is bars, so each has the heading its name sits under.
 function M.edit(settings)
     red_mage();

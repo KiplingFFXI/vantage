@@ -22,7 +22,7 @@ for _, entry in ipairs(starters.list) do
         and s.panels.ability_recasts.enabled and s.pet.enabled and s.overhead.enabled, entry.name .. ' turns on what all six do.');
     assert(s.panels.target.enabled == want.target and s.panels.party.enabled == want.party and s.panels.watch.enabled == want.watch,
         entry.name .. ' sets its timer panels.');
-    assert(s.party_ui.enabled == (want.list ~= false) and s.party_ui.effects.kind == (want.list or 'all'), entry.name .. ' sets the party list buffs.');
+    assert(s.party_ui.enabled == (want.list ~= false) and s.party_ui.effects.kind == (want.list or 'all'), entry.name .. ' sets Party list.');
     local u = s.overhead.units;
     assert(u.target and u.subtarget, entry.name .. ' keeps icons on your target.');
     assert(u.claimed == want.mobs and u.watched == want.mobs and u.debuffed == want.mobs, entry.name .. ' sets the mobs.');
@@ -79,7 +79,7 @@ assert(starters.apply(fresh(), nil) == nil);
 -- Everything a starter doesn't own stays: the settings of a varied save, walked key by key.
 local owned = { 'enabled', 'preview', 'panels.self_buffs.enabled', 'panels.self_debuffs.enabled', 'panels.self_debuffs.dispel_light',
     'panels.target.enabled', 'panels.target.dispel_light', 'panels.party.enabled', 'panels.party.mine_only', 'panels.party.dispel_light',
-    'panels.party.abilities_only',
+    'panels.party.abilities_only', 'panels.party.include_self', 'panels.party.fold_casts',
     'panels.watch.enabled', 'panels.watch.mine_only', 'panels.watch.dispel_light', 'panels.watch.list_debuffed',
     'panels.spell_recasts.enabled', 'panels.ability_recasts.enabled', 'party_ui.enabled', 'party_ui.preview', 'party_ui.effects.kind',
     'party_ui.effects.cleanse_light', 'party_ui.effects.abilities_only', 'overhead.enabled', 'overhead.preview', 'overhead.units.target', 'overhead.units.subtarget',
@@ -110,6 +110,7 @@ local function varied()
     s.panels.item_recasts.enabled = true;
     s.party_ui.effects.timers, s.party_ui.locked = true, false;
     s.panels.party.abilities_only, s.party_ui.effects.abilities_only = true, true;
+    s.panels.party.include_self, s.panels.party.fold_casts = true, true;
     s.overhead.units.other, s.overhead.units.other_pet, s.overhead.units.self = true, true, true;
     s.overhead.types.party.limit, s.overhead.types.mob.layout = 5, 'lines';
     s.effect_filters.rules[1] = { enabled = true, effect = 33, scope = 'all' };

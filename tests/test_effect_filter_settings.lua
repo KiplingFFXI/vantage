@@ -45,13 +45,13 @@ assert(target.effect_filters.enabled == false and #target.effect_filters.rules =
 assert(custom.reset(target, 'effect_filters'));
 assert(equal(target.effect_filters, filters.make()));
 
--- Hidden everywhere, as a player uses it.
+-- The Hide list, as a player uses it.
 local h = require('panel_fixture')();
 local app = h.app;
 local catalog = {{id=0,name='Ko'},{id=33,name='Haste'},{id=253,name='Signet'},{id=269,name='Level Sync'}};
 h.window.main_helpers.catalog = function() return catalog; end;
 h.imgui.CollapsingHeader = function() return true; end;
-local FIND, PICK, HIDE, ADD = '##frame_Find an effect', '##frame_Effect', 'Hide it everywhere##frame', 'Add a rule##frame';
+local PICK, RULE, HIDE, ADD = '##Effect', '##Effect##_rule', 'Hide it everywhere##frame', 'Add a rule##frame';
 local function rules() return h.s.effect_filters.rules; end;
 local function steps() return #app.state.history; end;
 local function value() return custom.history_value(h.s); end;
@@ -59,13 +59,12 @@ h.fresh(function(s) s.panels.self_buffs.include = {[33]=true}; s.party_ui.effect
 local blank = value();
 h.on('hidden', 'show');
 local original = copy(h.s);
-assert(equal(value(), blank) and steps() == 0, 'Opening Hidden everywhere does not mutate settings.');
+assert(equal(value(), blank) and steps() == 0, 'Opening the Hide list does not mutate settings.');
 
--- With nothing typed or picked, the picker reads Choose an effect, there is nothing to hide yet, and a new rule starts on
--- Any effect, not on an effect the picker doesn't show.
+-- With nothing picked, the picker reads Choose an effect, there is nothing to hide yet, and a new rule starts on Any
+-- effect, not on an effect the picker doesn't show.
 assert(h.previews[PICK] == 'Choose an effect', 'The empty picker says so: ' .. tostring(h.previews[PICK]));
-h.draw(HIDE);
-assert(#rules() == 0 and steps() == 0, 'Hide it everywhere waits for a choice.');
+assert(not h.called('Button', HIDE) and #rules() == 0 and steps() == 0, 'Hide it everywhere waits for a choice.');
 h.draw(ADD);
 assert(#rules() == 1 and rules()[1].effect == 0 and not rules()[1].enabled, 'With nothing chosen the new rule starts on Any effect, turned off.');
 assert(app.callbacks.undo());
@@ -74,11 +73,9 @@ assert(#rules() == 0, 'Fixture: back to no rules.');
 app.state.history, app.state.redo = {}, {};
 blank = value();
 
-h.type(FIND, 'Ko');
-assert(not h.drawn()['Hide it everywhere'] and h.says('No matching effects.'), 'The client KO entry cannot accidentally create an Any effect rule.');
-h.type(FIND, 'Signet');
-h.pick(PICK, 'Signet##253');
-assert(equal(value(), blank) and steps() == 0, 'Effect search and selection are transient.');
+assert(not h.lists('Ko', 0) and h.lists('Signet', 253), 'The client KO entry cannot accidentally create an Any effect rule.');
+h.choose('Signet', 253);
+assert(equal(value(), blank) and steps() == 0, 'Picking an effect is transient.');
 assert(h.previews[PICK] == 'Signet', 'A picked effect shows in the picker.');
 assert(not h.says('Signet'), 'Fixture: nothing reads Signet until it is on the list.');
 h.draw(HIDE);
@@ -90,8 +87,7 @@ assert(app.callbacks.redo());
 h.draw();
 h.draw(HIDE);
 assert(#rules() == 1 and steps() == 1, 'Quick hides do not duplicate an existing rule.');
-h.type(FIND, 'Level Sync');
-h.pick(PICK, 'Level Sync##269');
+h.choose('Level Sync', 269);
 h.draw(HIDE);
 assert(#rules() == 2 and rules()[2].effect == 269, 'Level Sync is hidden the way any effect is.');
 h.draw();
@@ -99,15 +95,15 @@ rules()[2].enabled = false;
 h.bump(); h.draw();
 h.draw(HIDE);
 assert(#rules() == 2 and rules()[2].enabled, 'Quick hide re-enables its existing rule.');
-h.type(FIND, 'Signet');
-h.pick(PICK, 'Signet##253');
+h.choose('Signet', 253);
 
 -- The fold: a new rule waits for its settings, and starts on the effect picked above.
 h.draw(ADD);
 h.draw();
 assert(#rules() == 3 and not rules()[3].enabled, 'A new conditional rule waits for configuration before it can hide effects.');
 assert(rules()[3].effect == 253, 'The next rule starts on the picked effect.');
-h.pick('##frame_Effect_rule', 'Any effect##0');
+assert(h.previews[RULE] == 'Signet', 'The rule shows its effect by name.');
+h.pick(RULE, 'Any effect##all');
 h.pick('##frame_Buffs or debuffs', 'Debuffs##debuff');
 h.pick('##frame_Who', 'Alliance 2##alliance2');
 h.type('##frame_Player name', 'Fennel');
@@ -120,10 +116,8 @@ rules()[2].enabled = false;
 h.bump(); h.draw();
 local before, count = value(), steps();
 h.pick('##frame_Rule', '[Off] Level Sync##2');
-h.type('##frame_Find an effect_rule', 'Level Sync');
-assert(equal(value(), before) and steps() == count, 'Rule selection and catalog searching are transient.');
-assert(h.previews['##frame_Effect_rule'] == 'Level Sync', 'The picked rule shows in the fold.');
-h.type('##frame_Find an effect_rule', '');
+assert(equal(value(), before) and steps() == count, 'Picking a rule is transient.');
+assert(h.previews[RULE] == 'Level Sync', 'The picked rule shows in the fold.');
 rules()[2].enabled = true;
 h.bump(); h.draw();
 
@@ -131,8 +125,7 @@ h.draw('Pause this list##frame');
 assert(not h.s.effect_filters.enabled and #rules() == 3);
 h.draw();
 assert(h.says('This list is paused') and not h.called('Button', 'Pause this list##frame'), 'A paused list says so, and offers the way back.');
-h.type(FIND, 'Haste');
-h.pick(PICK, 'Haste##33');
+h.choose('Haste', 33);
 h.draw(HIDE);
 assert(#rules() == 4 and not h.s.effect_filters.enabled, 'Adding rules does not override a deliberate pause.');
 h.draw('Use it again##frame');
@@ -157,14 +150,13 @@ assert(equal(h.s.panels, original.panels) and equal(h.s.party_ui, original.party
 -- The rule cap is shared by quick and conditional actions.
 h.fresh(function(s) for index = 1, 128 do local rule = filters.rule(); rule.effect = 33; s.effect_filters.rules[index] = rule; end; end);
 h.on('hidden', 'show');
-h.type(FIND, 'Signet');
-h.pick(PICK, 'Signet##253');
+h.choose('Signet', 253);
 h.draw(HIDE); h.draw(ADD);
 assert(#rules() == 128 and steps() == 0);
 assert(h.says('Remove a rule before adding another.'), 'A full list says what to do.');
 assert(#MOCK.commands == 0);
 
--- Shared status rules have the one place, Hidden everywhere, and no other panel offers them.
+-- Shared status rules have the one place, the Hide list, and no other panel offers them.
 for _, query in ipairs({'Hide Signet everywhere','Affected player name','Affected main job'}) do
     local found = {};
     for _, result in ipairs(h.window.search(query)) do if result.tab == 'Display' and result.place then found[result.panel] = true; end; end;

@@ -7,7 +7,7 @@ local frame = require('ui.panel_frame');
 local status = require('ui.status_panel');
 local page = {};
 local ctx = frame.ctx;
-local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local jobs = require('data.shared_ids').jobs;
 -- The rule open in the editor, by id, as Undo puts new tables in place. It lasts the session, so nothing here is saved.
 local open_rule;
 local serial = 0;
@@ -15,6 +15,10 @@ local serial = 0;
 -- which goes once the box is left.
 local thresholds = { id = nil, unit = nil, list = nil, value = { '' }, unread = false };
 local tick = { false };
+-- The alerts added this session, or switched to another Alert type while on, with nothing chosen to watch, by id. Each
+-- starts off, as nothing chosen means every effect or recast, and the first choice turns it on.
+local fresh = {};
+local function unset(rule) return fresh[rule.id] and rule.effect == 0 and not rule.enabled; end;
 
 local function rule_of(c)
     for _, rule in ipairs(c.s.alerts.rules) do
@@ -45,6 +49,7 @@ local repeats = rule_is(function(rule) return rule.event == 'missing' or rule.ev
 -- A threshold crossed always fires, so the minimum only spaces out what comes again.
 local spaced = rule_is(function(rule) return rule.event == 'missing' or rule.event == 'remaining' and rule.repeat_seconds > 0; end);
 local has_sound = rule_is(function(rule) return rule.sound ~= ''; end);
+local shows_notice = rule_is(function(rule) return rule.visual; end);
 -- Who can be narrowed to one member.
 local of_members = { party = true, alliance = true, all = true };
 local narrows = rule_is(function(rule) return rule.domain ~= 'recast' and of_members[rule.scope]; end);
@@ -56,6 +61,8 @@ function page.new_rule(c, template)
     local rule = defaults.rule(id);
     if template then for key, value in pairs(template) do rule[key] = defaults.copy(value); end; end;
     rule.id = id;
+    -- A copy of an alert with nothing chosen yet has nothing chosen either, so it waits for a choice as that alert does.
+    if not template or template.effect == nil or unset(template) then rule.enabled, fresh[id] = false, true; end;
     local rules = ctx.s.alerts.rules;
     c.changed(function()
         rules[#rules + 1] = rule;
@@ -66,18 +73,22 @@ end;
 -- Opens a rule in the editor, or closes the editor.
 function page.edit(id) open_rule = id; end;
 
--- The common reminders.
-local reminders = {
-    { 'Haste reminder', { name = 'Haste ending', effect = 33, thresholds = { 30, 10 }, scope = 'self' }, 'Tells you before your Haste wears off.' },
-    { 'Sleep reminder', { name = 'Sleep ending', effect = 2, thresholds = { 10 }, scope = 'target' }, 'Tells you before the sleep on your target wears off.' },
-    { 'Silence notice', require('core.starters').silenced, 'Tells you when you are silenced.', 'silenced' },
+-- The presets, each an alert set up for one thing. Recast ready has no recast yet, so it adds one each time, off until
+-- one is chosen.
+local presets = {
+    { 'Haste ending', { name = 'Haste ending', effect = 33, thresholds = { 30, 10 }, scope = 'self' }, 'Tells you before your Haste wears off.', 'Haste reminder' },
+    { 'Sleep ending', { name = 'Sleep ending', effect = 2, thresholds = { 10 }, scope = 'target' }, 'Tells you before the sleep on your target wears off.', 'Sleep reminder' },
+    { 'Silenced', require('core.starters').silenced, 'Tells you when you are silenced.', 'Silence notice silenced' },
+    { 'Shadows gone', { name = 'Shadows gone', effect = 66, event = 'removed', scope = 'self' }, 'Tells you when your Utsusemi shadows are gone.', 'Copy Image Utsusemi' },
+    { 'Recast ready', { name = 'Recast ready', domain = 'recast', event = 'ready', scope = 'self' },
+        'Adds an alert for when a recast is ready. It stays off until you choose the recast.', 'A recast is ready' },
 };
 
--- A reminder clicked again turns on and opens the rule it added instead of adding a copy. A rule changed since in any of
--- these is the player's own, and the reminder adds a new one beside it, unless it's now for anything, as a starter's Sleep
--- ending is, and so covers the reminder. Returns false when the rule was there already, and then true if it was off and
--- this turned it back on.
-local function add_reminder(c, template)
+-- A preset clicked again turns on and opens the alert it added instead of adding a copy. An alert changed since in any
+-- of these is the player's own, and the preset adds a new one beside it, unless it's now for anything, as a starter's
+-- Sleep ending is, and so covers the preset. Returns false when the alert was there already, and then true if it was
+-- off and this turned it back on.
+local function add_preset(c, template)
     local made, equal = defaults.rule(), require('core.customization').equal;
     for key, value in pairs(template) do made[key] = value; end;
     for _, rule in ipairs(ctx.s.alerts.rules) do
@@ -97,13 +108,14 @@ local function add_reminder(c, template)
 end;
 
 local add_rows = {};
-for index, entry in ipairs(reminders) do
+for index, entry in ipairs(presets) do
     add_rows[index] = frame.button(entry[1], entry[3], function(c)
-        local added, again = add_reminder(c, entry[2]);
+        if entry[2].effect == nil then page.new_rule(c, entry[2]); return; end;
+        local added, again = add_preset(c, entry[2]);
         if not added then c.note(entry[1] .. (again and ' is on again.' or ' is already on.'), 'done_messages'); end;
     end, { alias = entry[4] });
 end;
-add_rows[#add_rows + 1] = frame.button('New alert', 'Adds an alert for you to set up below.', function(c) page.new_rule(c); end, { alias = 'Add alert' });
+add_rows[#add_rows + 1] = frame.button('New alert', 'Adds an alert for you to set up below. It stays off until you choose what it watches.', function(c) page.new_rule(c); end, { alias = 'Add alert' });
 
 -- The list of rules. Each row's words are worked out when the settings change; what a click does runs after the rows are
 -- drawn, as it changes the list.
@@ -128,7 +140,7 @@ local function act(c, kind, rule)
                 if entry == rule then table.remove(rules, index); break; end;
             end;
             if open_rule == rule.id then open_rule = nil; end;
-        end, true, 'Delete rule');
+        end, true, 'Delete alert');
     end;
 end;
 
@@ -153,7 +165,7 @@ local function draw_rules(imgui, c, item)
         c.tip('Adds a copy of this alert and opens it.');
         imgui.SameLine();
         if imgui.Button('Delete##alert') then kind, chosen = 'delete', rule; end;
-        c.tip('Undo restores a deleted rule.');
+        c.tip('Undo brings a deleted alert back.');
         imgui.PopID();
     end;
     if chosen then act(c, kind, chosen); end;
@@ -202,12 +214,19 @@ local event_names = { gain = 'Effect gained', remaining = 'Time running low', re
 
 local function set_effect(id)
     local rule = rule_of(ctx);
-    ctx.c.changed(function() rule.effect = id; end, true, 'Rule effect');
+    local first = unset(rule);
+    ctx.c.changed(function()
+        rule.effect = id;
+        if first then rule.enabled = true; end;
+    end, true, 'Alert effect');
 end;
 
+-- A new alert reads Choose until something is picked, as its 0 would read as every effect.
 local function draw_effect(imgui, c, item)
-    local rule = rule_of(ctx);
-    c.effect_picker(rule.domain == 'recast' and 'Recast' or 'Effect', rule.effect, set_effect, true, rule.domain, status.plain_name(c, rule.effect, rule.domain));
+    local rule, recast = rule_of(ctx), rule_of(ctx).domain == 'recast';
+    local choose = unset(rule);
+    c.effect_picker(recast and 'Recast' or 'Effect', not choose and rule.effect or nil, set_effect, true, rule.domain,
+        choose and (recast and 'Choose a recast' or 'Choose an effect') or status.plain_name(c, rule.effect, rule.domain));
     frame.lit(c, item);
 end;
 
@@ -244,13 +263,13 @@ local function draw_thresholds(imgui, c, item)
 end;
 
 local function draw_warning(imgui)
-    imgui.TextColored(ctx.s.style.warning_color, 'Choose a specific effect for a missing-effect rule.');
+    imgui.TextColored(ctx.s.style.warning_color, 'Choose an effect for an alert about a missing effect.');
 end;
 
 local job_rows = {};
 for id, name in ipairs(jobs) do
     local text = tostring(id);
-    job_rows[id] = frame.tick(name, nil, 'Runs this rule while this is your main job.', { tag = '_alert',
+    job_rows[id] = frame.tick(name, nil, 'Runs this alert while this is your main job.', { tag = '_alert',
         read = function(c)
             local chosen = rule_of(c).jobs;
             return chosen[id] == true or chosen[text] == true;
@@ -273,19 +292,23 @@ local function jobs_line(c)
 end;
 
 local rule_rows = {
-    frame.text('Rule name', 'name', 'Use a short name that explains what you want to watch.', { of = rule_of,
+    frame.text('Alert name', 'name', 'A short name that says what it watches.', { of = rule_of, alias = 'Rule name',
         -- A name with nothing to read would leave a blank tick in the list, so it becomes Alert, as a rule with no name does
         -- when the settings are read.
         write = function(c, value) rule_of(c).name = value:find('%S') and value or 'Alert'; end }),
     frame.heading('What'),
-    frame.pick('Alert type', 'domain', { 'status', 'recast' }, { status = 'Buff or debuff', recast = 'Recast' }, 'What this rule watches: an effect, or one of your recasts.', {
+    frame.pick('Alert type', 'domain', { 'status', 'recast' }, { status = 'Buff or debuff', recast = 'Recast' }, 'What this alert watches: an effect, or one of your recasts.', {
         of = rule_of,
         write = function(c, value)
             local rule = rule_of(c);
+            -- Only an alert that's on, or still waiting for its first choice, waits for one now. One the player turned off stays off.
+            fresh[rule.id] = rule.enabled or unset(rule) or nil;
             rule.domain, rule.effect, rule.scope, rule.entity_id = value, 0, 'self', 0;
             rule.event = 'remaining';
+            rule.enabled = false;
         end }),
     frame.custom('Effect', nil, draw_effect, { find = 'Effect or recast', alias = 'Recast' }),
+    frame.note('It stays off until you choose what it watches.', { only = rule_is(unset) }),
     frame.heading('Who'),
     frame.pick('Who to watch', 'scope', { 'self', 'party', 'alliance', 'target', 'watch', 'all' }, { self = 'Me', party = 'My party, including me', alliance = 'Other alliance parties',
         target = 'Current target', watch = 'Watched enemies', all = 'Anyone Vantage has seen' }, 'Only information the client received can be tracked. Anyone but you goes by estimates: the notice is marked estimated and may arrive after an effect ended early.', {
@@ -294,9 +317,9 @@ local rule_rows = {
             local rule = rule_of(c);
             rule.scope, rule.entity_id = value, 0;
         end }),
-    frame.pick('Specific member', 'entity_id', nil, member_names, 'Optional: limit the rule to one known party member.', {
+    frame.pick('Specific member', 'entity_id', nil, member_names, 'Optional: keeps the alert to one party member.', {
         of = rule_of, only = narrows, shown_by = 'Who to watch', choices_of = member_choices }),
-    frame.note('Recast rules watch your own client cooldowns. Unavailable data is not treated as ready.', { only = for_recast }),
+    frame.note('Recast alerts watch your own recasts. A recast the game hasn\'t sent isn\'t counted as ready.', { only = for_recast }),
     frame.heading('When to alert'),
     frame.pick('Trigger', 'event', status_events, event_names, 'Removal requires evidence. An estimate reaching zero does not prove the effect wore off.', {
         of = rule_of, alias = 'Recast started Recast ready',
@@ -318,46 +341,87 @@ local rule_rows = {
         draw_thresholds, { only = counting_down, shown_by = 'Trigger' }),
     frame.note('Missing alerts require a current complete status list. Silence from an enemy is never proof that a buff is absent.', { only = when_missing }),
     { kind = 'custom', draw = draw_warning, only = missing_nothing },
-    frame.number('Repeat reminder', 'repeat_seconds', 0, 3600, 'Zero gives one notice. Repeats while the effect is still missing or below a crossed threshold.', { of = rule_of, only = repeats, shown_by = 'Trigger' }),
-    frame.number('Minimum time between repeats', 'cooldown', 0, 3600, 'Seconds before this rule can notify again for the same subject and application. A threshold still fires as it is crossed.', {
-        of = rule_of, only = spaced, shown_by = { 'Trigger', 'Repeat reminder' } }),
+    frame.number('Repeat every', 'repeat_seconds', 0, 3600, 'Seconds between repeats. Zero gives one notice. It repeats while the effect is still missing or below a crossed threshold.', {
+        of = rule_of, only = repeats, shown_by = 'Trigger', alias = 'Repeat reminder' }),
+    frame.number('Minimum time between repeats', 'cooldown', 0, 3600, 'Seconds before this alert can go off again for the same one and the same application. A threshold still fires as it is crossed.', {
+        of = rule_of, only = spaced, shown_by = { 'Trigger', 'Repeat every' } }),
     frame.pick('Combat state', 'combat', { 'any', 'in', 'out' }, { any = 'Any time', ['in'] = 'Only in combat', out = 'Only outside combat' },
-        'Restricts this rule without changing how effects are tracked.', { of = rule_of, alias = 'Conditions' }),
-    frame.fold('Only on these main jobs', 'Leave every job unticked to use this rule on all jobs.', { frame.line(nil, nil, job_rows, { every = 6 }) }),
+        'Keeps this alert to those times. How effects are tracked doesn\'t change.', { of = rule_of, alias = 'Conditions' }),
+    frame.fold('Only on these main jobs', 'Leave every job unticked for any job.', { frame.line(nil, nil, job_rows, { every = 6 }) }),
     frame.note(jobs_line, { live = true }),
-    frame.heading('How to alert'),
+    -- How it tells you, in groups: a notice, the chat log, the effect's bar and a sound.
+    frame.heading('Notice', 'A short notice on the screen. It never sends a game message.', { alias = 'How to alert' }),
     frame.tick('Show a notice', 'visual', 'Shows a short on-screen notice without sending a game message.', { of = rule_of, alias = 'Show local notice' }),
+    frame.number('Notice length', 'duration', 1, 30, 'How long its notice, and its bar standing out, stay up.', { of = rule_of }),
+    frame.color('Notice color', 'text', 'The color of this alert\'s notice text. From Alerts uses Notice text color, above, for every notice.', {
+        of = function(c) local rule = rule_of(c); return rule and rule.notice_colors; end, back = true, only = shows_notice, shown_by = 'Show a notice',
+        unset = 'From Alerts', back_word = 'Use Alerts\' color',
+        alias = 'Alert text color for this rule', fallback = function(c) return c.s.alerts.notice_colors.text or c.s.style.text_color; end }),
+    frame.heading('Chat log'),
     frame.tick('Print in my chat log', 'chat', 'Prints locally. It never sends party, linkshell or other chat messages.', { of = rule_of }),
+    frame.heading('Bar', 'Where a timer panel shows the effect.', { only = has_bar, shown_by = 'Trigger' }),
     frame.tick('Make the effect\'s bar stand out', 'emphasis', 'Briefly highlights its bar or icon, where a timer panel shows it.', { of = rule_of, alias = 'Emphasize the effect bar', only = has_bar, shown_by = 'Trigger' }),
-    frame.tick('Flash the bar', 'flash', 'Briefly flashes it when this rule fires.', { of = rule_of, only = stands_out, shown_by = 'Make the effect\'s bar stand out' }),
+    frame.tick('Flash the bar', 'flash', 'Briefly flashes it when this alert goes off.', { of = rule_of, only = stands_out, shown_by = 'Make the effect\'s bar stand out' }),
     frame.color('Flash color', 'flash_color', nil, { of = rule_of, only = flashes, shown_by = 'Flash the bar', fallback = function(c) return c.s.style.warning_color; end }),
     frame.number('Flash length', 'flash_seconds', 0.1, 30, 'How long the bar flash lasts.', { of = rule_of, only = flashes, shown_by = 'Flash the bar', whole = false }),
-    frame.pick('Sound', 'sound', nil, sound_names, 'Put your WAV or MP3 files in ' .. require('core.identity').relative('sounds') .. ', then refresh the list. No audio is downloaded.', {
+    frame.heading('Sounds'),
+    frame.pick('Sound', 'sound', nil, sound_names, 'Put your WAV or MP3 files in the sounds folder, then refresh the list. No audio is downloaded.', {
         of = rule_of, choices_of = sound_choices, leaves = 'Refresh sounds', alias = 'Local sound' }),
     frame.button('Refresh sounds', 'Reads the sounds folder again.', function(c) c.call('refresh_sounds'); end, { beside = true }),
-    frame.number('Notice length', 'duration', 1, 30, 'How long a visual notice and emphasis stay visible.', { of = rule_of }),
-    frame.number('Volume', 'volume', -1, 100, 'Use -1 to follow Sound volume. Zero mutes this rule\'s sound.', { of = rule_of, only = has_sound, shown_by = 'Sound', special = { [-1] = 'Same as Sound volume' }, alias = 'This rule sound volume' }),
-    frame.button('Test this alert', 'Plays the selected outputs once so you can check this rule. With Alerts off or muted its notice doesn\'t show.', function(c) c.call('test_alert', rule_of(ctx)); end),
+    frame.note('Sounds folder: ' .. require('core.identity').relative('sounds'), { find = 'Sounds folder', alias = 'Where to put sounds WAV MP3' }),
+    frame.number('Volume', 'volume', -1, 100, 'Use -1 to follow Sound volume. Zero mutes this alert\'s sound.', { of = rule_of, only = has_sound, shown_by = 'Sound', special = { [-1] = 'Same as Sound volume' }, alias = 'This rule sound volume' }),
+    frame.button('Test this alert', 'Does what this alert does once, so you can check it. With Alerts off or muted its notice doesn\'t show.', function(c) c.call('test_alert', rule_of(ctx)); end),
+};
+
+-- Your pet's alerts, kept with the pet display's settings. The Pet display raises them, so they fire only while it's on
+-- (methods:refresh in core/pet.lua). Like the rest, they need Alerts on and not muted.
+local function pet_of(c) return c.s.pet; end;
+local pet_rows = {
+    frame.heading('Your pet', 'Alerts about your pet. They all start off.'),
+    frame.tick('Tell me when my pet\'s HP is low', 'alert_hp', 'A notice when your pet\'s HP falls to the percent under this or less.', { of = pet_of, alias = 'Pet HP alert notice low' }),
+    frame.number('Pet HP is low at', 'alert_hp_percent', 1, 99, 'The HP percent the notice goes by.', {
+        of = pet_of, only = function(c) return c.s.pet.alert_hp; end, shown_by = 'Tell me when my pet\'s HP is low' }),
+    frame.tick('Tell me when my pet has 1000 TP', 'alert_tp', 'A notice when your pet\'s TP reaches 1000.', { of = pet_of, alias = 'Pet TP alert notice' }),
+    frame.tick('Tell me when a charm or a jug pet is about to end', 'alert_ending', 'A notice when a charm\'s estimate or a jug pet\'s time has a minute left.', {
+        of = pet_of, alias = 'Charm jug ending alert notice' }),
+    frame.problem(function(c) local p = c.s.pet; return not p.enabled and (p.alert_hp or p.alert_tp or p.alert_ending); end,
+        'The Pet display is off, so your pet\'s alerts don\'t fire.', 'Turn on the Pet display',
+        'Your pet\'s alerts need the Pet display on. It shows while you have a pet out.', 'Tell me when my pet\'s HP is low',
+        function(s) s.pet.enabled = true; end),
+};
+
+-- The notices' own text. At 0 the size is Text size on the main page, and with no color of its own the text has the
+-- shared text color. A rule's Notice color beats the color here.
+local text_rows = {
+    frame.number('Notice text size', 'notice_text_size', 0, 48, 'How big the text in a notice is. Same as Text size follows Text size on the main page.', {
+        special = { [0] = 'Same as Text size' }, alias = 'Alert text size bigger larger smaller font',
+        write = function(c, value) c.p.notice_text_size = value == 0 and 0 or math.max(8, value); end }),
+    frame.color('Notice text color', 'text', 'The color of the text in a notice. An alert can have a color of its own.', {
+        of = function(c) return c.s.alerts.notice_colors; end, back = true, alias = 'Alert text color',
+        fallback = function(c) return c.s.style.text_color; end }),
 };
 
 local show_rows = {
-    frame.problem(function(c) return c.s.alerts.muted; end, 'Alerts are muted, so none of them fires.', 'Unmute',
-        'Notices and sounds come back. Old warnings are not replayed. /vg mute mutes them.', 'Show this display', function(s) s.alerts.muted = false; end),
-    frame.tick('Quiet during cutscenes', 'quiet_events', 'No notices, chat lines, sounds or flashes during cutscenes and events, or while you are dead.', { alias = 'Quiet during events' }),
+    frame.group({ frame.note('Alerts are muted, so none of them fires.', { tone = 'problem_messages' }) }, { only = function(c) return c.s.alerts.muted; end }),
+    frame.tick('Quiet during cutscenes and while dead', 'quiet_events', 'No notices, chat lines, sounds or flashes during cutscenes and events, or while you are dead.', {
+        alias = 'Quiet during events Quiet during cutscenes' }),
     frame.number('Sound volume', 'volume', 0, 100, 'Applies to the sound each rule plays.'),
-    frame.line('Add', 'A reminder clicked again turns its rule back on and opens it.', add_rows, { find = 'Add an alert' }),
+    frame.group(text_rows),
+    frame.line('Add', 'Each preset adds an alert set up for one thing. One clicked again turns its alert back on and opens it.', add_rows, { find = 'Add an alert' }),
     frame.custom('Your alerts', 'Tick an alert to run it. Sounds are always opt-in.', draw_rules, {
         only = function(c) return #c.s.alerts.rules > 0; end, shown_by = 'New alert', alias = 'Your alert rules Rule enabled Edit Done Copy Delete Duplicate rule Delete rule' }),
     frame.group(rule_rows, { only = rule_open, shown_by = { 'Your alerts', 'New alert' } }),
+    frame.group(pet_rows),
 };
 
 local place_rows = {
-    frame.locked_line,
-    frame.number('Width', 'notice_width', 240, 900, 'Long messages wrap within this width.', { locks = true, alias = 'Notice width' }),
-    frame.number('Tallest', 'notice_height', 0, 16000, 'Fit follows what it shows. A fixed height is at least 80 pixels and stays within the game window.', {
-        locks = true, edge = 'y', special = { [0] = 'Fit' }, alias = 'Tallest notice Maximum notice height automatic fixed height resize edges corners Shift left drag',
+    frame.scale_line,
+    frame.number('Width', 'notice_width', 240, 900, 'Long messages wrap within this width.', { alias = 'Notice width' }),
+    frame.number('Height', 'notice_height', 0, 16000, 'Fit follows what it shows. Any other value is a fixed height, at least 80 pixels and within the game window.', {
+        edge = 'y', special = { [0] = 'Fit' }, alias = 'Tallest notice Notice height automatic fixed height resize edges corners Shift left drag',
         write = function(c, value) c.p.notice_height = value == 0 and 0 or math.max(80, value); end }),
-    frame.number('Notices shown at once', 'max_notices', 1, 8, 'Shows the most recent notices when many rules fire together.'),
+    frame.number('Notices shown at once', 'max_notices', 1, 8, 'Shows the most recent notices when many alerts go off together.'),
+    frame.resize_note,
 };
 for _, item in ipairs(frame.place_rows('notices')) do place_rows[#place_rows + 1] = item; end;
 place_rows[#place_rows + 1] = frame.put_back;
@@ -378,7 +442,7 @@ frame.register({
     reset_note = function(c)
         local count = #c.s.alerts.rules;
         if count == 0 then return ''; end;
-        return count == 1 and ' This deletes your alert rule.' or ' This deletes all ' .. count .. ' alert rules.';
+        return count == 1 and ' This deletes your alert.' or ' This deletes all ' .. count .. ' alerts.';
     end,
 });
 

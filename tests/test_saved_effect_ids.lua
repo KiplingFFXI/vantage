@@ -63,30 +63,22 @@ local function begin(tab, setup, editor)
     frame();
     return s;
 end;
-local CHOICE = NAME .. '##280';
+local CHOICE = NAME .. '##effect_280';
 
 -- A fresh save offers none of it: not in the three filter editors, the panel's list or the alert rule's picker.
 begin('Display', nil, 'overhead');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(not drew('Selectable', CHOICE), 'Overhead offers no effect that can\'t exist.');
-frame({ typed = { '##frame_Find an effect', '' } });
 begin('Display', nil, 'party_ui');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(not drew('Selectable', CHOICE), 'The party list offers no effect that can\'t exist.');
-frame({ typed = { '##frame_Find an effect', '' } });
 begin('Display', nil, 'pet');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(not drew('Selectable', CHOICE), 'The pet display offers no effect that can\'t exist.');
-frame({ typed = { '##frame_Find an effect', '' } });
 panels.open('self_buffs', 'filters');
 begin('Display');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(not drew('Selectable', CHOICE), 'A panel offers no effect that can\'t exist.');
-frame({ typed = { '##frame_Find an effect', '' } });
 
 -- A rule's job picker ends at PUP.
 local function hide_rule(s, effect)
@@ -103,51 +95,46 @@ assert(drew('Selectable', 'WAR##1') and drew('Selectable', 'PUP##18') and not dr
 
 -- Overhead icons: the type's lists.
 local s = begin('Display', function(s) s.overhead.types.mob.exclude, s.overhead.types.mob.include = { GONE }, { GONE }; end, 'overhead');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(drew('Selectable', CHOICE), 'A saved overhead effect is in its picker, under the game\'s name.');
+frame({ combo = '##Effect', click = CHOICE });
 frame({ click = 'Hide here##frame' });
 frame({ click = 'Show only##frame' });
 local mob = app.state.settings.overhead.types.mob;
 assert(#mob.exclude == 0 and #mob.include == 0, 'A saved overhead effect can be taken out of both lists.');
-frame({ typed = { '##frame_Find an effect', '' } });
 
 -- The walk over the settings waits for a change, so a frame with none finds nothing new, and the next change does.
 begin('Display', nil, 'overhead');
 frame();
 app.state.settings.overhead.types.mob.exclude = { 279 };
-frame({ typed = { '##frame_Find an effect', '279' } });
-frame({ combo = '##frame_Effect' });
-assert(not drew('Selectable', 'Enstone##279'), 'Frames with no change don\'t walk the settings.');
+frame({ combo = '##Effect' });
+assert(not drew('Selectable', 'Enstone##effect_279'), 'Frames with no change don\'t walk the settings.');
 app.state.settings_revision = app.state.settings_revision + 1;
-frame({ combo = '##frame_Effect' });
-assert(drew('Selectable', 'Enstone##279'), 'A change brings in what it saved.');
+frame({ combo = '##Effect' });
+assert(drew('Selectable', 'Enstone##effect_279'), 'A change brings in what it saved.');
 app.state.settings.overhead.types.mob.exclude = {};
-frame({ typed = { '##frame_Find an effect', '' } });
 
 -- The party list's lists.
 s = begin('Display', function(s)
     local e = s.party_ui.effects;
     e.include, e.exclude, e.pinned = { GONE }, { GONE }, { GONE };
 end, 'party_ui');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(drew('Selectable', CHOICE), 'A saved party effect is in its picker, under the game\'s name.');
+frame({ combo = '##Effect', click = CHOICE });
 for _, label in ipairs({ 'Show only##frame', 'Hide here##frame', 'Pin first##frame' }) do frame({ click = label }); end
 frame({ click = 'Reset selected effect##frame' });
 local e = app.state.settings.party_ui.effects;
 assert(#e.include == 0 and #e.exclude == 0 and #e.pinned == 0, 'A saved party effect can be taken out of every list.');
-frame({ typed = { '##frame_Find an effect', '' } });
 
 -- The pet display's lists.
 s = begin('Display', function(s) s.pet.exclude, s.pet.include = { GONE }, { GONE }; end, 'pet');
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(drew('Selectable', CHOICE), 'A saved pet effect is in its picker, under the game\'s name.');
+frame({ combo = '##Effect', click = CHOICE });
 frame({ click = 'Hide here##frame' });
 frame({ click = 'Show only##frame' });
 assert(#app.state.settings.pet.exclude == 0 and #app.state.settings.pet.include == 0, 'A saved pet effect can be taken out of both lists.');
-frame({ typed = { '##frame_Find an effect', '' } });
 
 -- A timer panel: its lists, its label and color and My order.
 panels.open('self_buffs', 'filters');
@@ -155,12 +142,15 @@ s = begin('Display', function(s)
     local p = s.panels.self_buffs;
     p.include[GONE], p.exclude[GONE], p.pinned[GONE], p.labels[GONE], p.effect_colors[GONE], p.order = true, true, true, 'Mine', { 1, 0, 0, 1 }, { GONE };
 end);
-frame({ typed = { '##frame_Find an effect', tostring(GONE) } });
-frame({ combo = '##frame_Effect' });
+frame({ combo = '##Effect' });
 assert(drew('Selectable', CHOICE), 'A saved panel effect is in the panel\'s list, under the game\'s name.');
 assert(drew('TextUnformatted', NAME) and drew('TextUnformatted', NAME .. ' as Mine'), 'The lists name a saved effect.');
-frame({ typed = { '##frame_Find an effect', '' } });
-for _ = 1, 6 do frame({ click = 'Remove##effect' }); end;
+for _ = 1, 5 do frame({ click = 'Remove##effect' }); end;
+-- My order is under Sort on Show.
+panels.open('self_buffs', 'show');
+frame();
+assert(drew('TextUnformatted', NAME), 'My order names a saved effect.');
+frame({ click = 'Remove##effect' });
 local p = app.state.settings.panels.self_buffs;
 assert(next(p.include) == nil and next(p.exclude) == nil and next(p.pinned) == nil and next(p.labels) == nil and next(p.effect_colors) == nil
     and #p.order == 0, 'A saved panel effect can be taken out of each of them.');
@@ -168,7 +158,7 @@ assert(next(p.include) == nil and next(p.exclude) == nil and next(p.pinned) == n
 -- A shared hide rule.
 panels.open('hidden', 'show');
 s = begin('Display', function(s) hide_rule(s, GONE); end);
-assert(previews['##frame_Rule'] == '[Off] ' .. NAME and previews['##frame_Effect_rule'] == NAME, 'A shared rule names a saved effect.');
+assert(previews['##frame_Rule'] == '[Off] ' .. NAME and previews['##Effect##_rule'] == NAME, 'A shared rule names a saved effect.');
 frame({ click = 'Remove##frame_rule' });
 assert(#app.state.settings.effect_filters.rules == 0, 'A shared rule with a saved effect can be removed.');
 s = begin('Display', function(s) hide_rule(s, GONE).enabled = true; end);
@@ -199,14 +189,14 @@ end;
 s = begin('Durations');
 frame({ combo = '##Override applies to', click = 'A spell##spell' });
 frame({ combo = '##What to override' });
-assert(drew('Selectable', 'Haste##57'), 'Fixture: the spell picker lists a spell players have.');
-assert(not drew('Selectable', 'Geohelix##278') and not drew('Selectable', 'Luminohelix##285'), 'The spell picker has no Helix.');
-assert(not drew('Selectable', 'Spell 1##1'), 'A spell the client has no name for isn\'t offered.');
+assert(drew('Selectable', 'Haste##effect_57'), 'Fixture: the spell picker lists a spell players have.');
+assert(not drew('Selectable', 'Geohelix##effect_278') and not drew('Selectable', 'Luminohelix##effect_285'), 'The spell picker has no Helix.');
+assert(not drew('Selectable', 'Spell 1##effect_1'), 'A spell the client has no name for isn\'t offered.');
 frame({ combo = '##Override applies to', click = 'A job ability##ability' });
 frame({ combo = '##What to override' });
-assert(drew('Selectable', 'Mighty Strikes##16'), 'Fixture: the ability picker lists an ability players have.');
-assert(not drew('Selectable', 'Curing Waltz##190') and not drew('Selectable', 'Divine Waltz##195'), 'The ability picker has no Waltz.');
-assert(not drew('Selectable', 'Ability 32##32'), 'An ability the client has no name for isn\'t offered.');
+assert(drew('Selectable', 'Mighty Strikes##effect_16'), 'Fixture: the ability picker lists an ability players have.');
+assert(not drew('Selectable', 'Curing Waltz##effect_190') and not drew('Selectable', 'Divine Waltz##effect_195'), 'The ability picker has no Waltz.');
+assert(not drew('Selectable', 'Ability 32##effect_32'), 'An ability the client has no name for isn\'t offered.');
 s = begin('Durations', function(s) s.durations.overrides = { override('spell', 278), override('ability', 190), override('effect', GONE) }; end);
 -- It still fits what it was saved for.
 local saved = app.state.settings.durations.overrides;

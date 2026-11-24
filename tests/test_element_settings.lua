@@ -30,7 +30,7 @@ end;
 for _, entry in ipairs({ { 'Show Phantom Roll display', 'Display', 'Show this display' }, { 'Show the bust chance', 'Display' }, { 'Lucky number color', 'Display' },
     { 'lucky', 'Display', 'Phantom Roll: totals, lucky numbers and bust chance' }, { 'double-up', 'Display', 'Phantom Roll: totals, lucky numbers and bust chance' },
     { 'Show pet display', 'Display', 'Show this display' }, { 'Show charm time', 'Display', 'Show charm and jug time' }, { 'Show charm and jug time', 'Display' },
-    { 'Hide on the pet display', 'Display', 'Find an effect' }, { 'TP bar color', 'Display', 'TP bar' }, { 'Show effects as', 'Display' }, { 'Icons', 'Display', 'Show effects as' },
+    { 'Hide on the pet display', 'Display', 'Choose an effect' }, { 'TP bar color', 'Display', 'TP bar' }, { 'Show effects as', 'Display' }, { 'Icons', 'Display', 'Show effects as' },
     { 'List with names', 'Display', 'Show effects as' }, { 'Show maneuvers and overload risk', 'Display' },
     { 'charm', 'Display', 'Pet: HP, TP, effects, recasts and charm time' }, { 'sic', 'Display', 'Pet: HP, TP, effects, recasts and charm time' },
     { 'Phantom Roll', 'Home' }, { 'Edit Pet', 'Home' } }) do
@@ -58,7 +58,7 @@ local function frame(step)
     assert(not slider and not colored, 'The control is on the page.');
     MOCK.clicks = {};
 end;
--- Put it back and Reset this display go where a fresh install's first frame puts a display on this screen.
+-- Put it back and Reset all of this display go where a fresh install's first frame puts a display on this screen.
 local function first_spot(id, chat) return require('ui.setup_defaults').first_spot(id, { width = 1600, height = 900, chat = chat }); end;
 local function begin(tab, setup)
     local s = defaults.tidy(defaults.make());
@@ -94,13 +94,13 @@ local rows = {
     { 'Rolls/place', 'Across', unlocked, slide('frame_Across', 500), function(s) return s.rolls.x == 500; end, 'Across', 'rolls' },
     { 'Rolls/place', 'Down', unlocked, slide('frame_Down', 90), function(s) return s.rolls.y == 90; end, 'Down', 'rolls' },
     { 'Rolls/place', 'Width', unlocked, slide('frame_Width', 400), function(s) return s.rolls.width == 400; end, 'Width', 'rolls' },
-    { 'Rolls/place', 'Tallest', unlocked, slide('frame_Tallest', 30), function(s) return s.rolls.height == 60; end, 'Tallest', 'rolls' },
+    { 'Rolls/place', 'Height', unlocked, slide('frame_Height', 30), function(s) return s.rolls.height == 60; end, 'Height', 'rolls' },
     { 'Rolls/place', 'Put it back where it started', function(s) s.rolls.locked, s.rolls.x = false, 600; end, click('Put it back where it started##frame'),
         function(s) return s.rolls.x == first_spot('rolls') and s.rolls.x ~= 600; end, 'Put Phantom Roll back', 'rolls' },
     { 'Rolls/look', 'Lucky number color', nil, paint('Lucky number color##frame', { 0, 0, 1, 1 }), function(s) return s.rolls.lucky_color[3] == 1 and s.rolls.lucky_color[1] == 0; end, 'Lucky number color', 'rolls' },
     { 'Rolls/look', 'Unlucky number color', nil, paint('Unlucky number color##frame', { 0, 1, 0, 1 }), function(s) return s.rolls.unlucky_color[2] == 1 and s.rolls.unlucky_color[1] == 0; end, 'Unlucky number color', 'rolls' },
     { 'Rolls/look', 'Not reached color', nil, paint('Not reached color##frame', { 1, 0, 0, 1 }), function(s) return s.rolls.missed_color[1] == 1 and s.rolls.missed_color[2] == 0; end, 'Not reached color', 'rolls' },
-    { 'Rolls/show', 'Reset this display', function(s) s.rolls.show_odds, s.rolls.x = false, 9; end, { { click = 'Reset this display##frame' }, { click = 'Reset##look_frame_reset_rolls' } },
+    { 'Rolls/show', 'Reset all of this display', function(s) s.rolls.show_odds, s.rolls.x = false, 9; end, { { click = 'Reset all of this display##frame' }, { click = 'Reset##look_frame_reset_rolls' } },
         function(s) return s.rolls.show_odds and s.rolls.x == first_spot('rolls', app.state.snapshot.chat); end, 'Reset Phantom Roll', 'rolls' },
     { 'Pet/show', 'Show pet display', nil, click('On##frame_display'), function(s) return s.pet.enabled; end, 'Show this display', 'pet' },
     { 'Pet/show', 'Show samples', function(s) s.pet.enabled = true; end, click('Show samples##frame'), function(s) return s.pet.preview and s.pet.enabled; end, 'Show samples', 'pet' },
@@ -121,16 +121,33 @@ local rows = {
     { 'Pet/show', 'Show maneuvers and overload risk', nil, click('Show maneuvers and overload risk##frame'), function(s) return s.pet.show_maneuvers == false; end, 'Show maneuvers and overload risk', 'pet' },
     { 'Pet/show', 'Show pet command recasts', nil, click('Show pet command recasts##frame'), function(s) return s.pet.show_recasts == false; end, 'Show pet command recasts', 'pet' },
     { 'Pet/show', 'Most recasts shown', nil, slide('frame_Most recasts shown', 3), function(s) return s.pet.max_recasts == 3; end, 'Most recasts shown', 'pet' },
-    { 'Pet/filters', 'Use the Hidden everywhere list', nil, click('Use the Hidden everywhere list##frame'), function(s) return s.pet.shared_rules == false; end, 'Use the Hidden everywhere list', 'pet' },
-    { 'Pet/filters', 'Clear this display\'s filters', function(s) s.pet.include, s.pet.exclude = { 33 }, { 4 }; end, click('Clear this display\'s filters##frame'),
-        function(s) return #s.pet.include == 0 and #s.pet.exclude == 0; end, 'Clear this display\'s filters', 'pet' },
+    { 'Pet/show', 'Show what my pet is fighting', nil, click('Show what my pet is fighting##frame'), function(s) return s.pet.show_target == true; end, 'Show what my pet is fighting', 'pet' },
+    { 'Pet/show', 'Show what my pet is doing', nil, click('Show what my pet is doing##frame'), function(s) return s.pet.show_action == true; end, 'Show what my pet is doing', 'pet' },
+    { 'Pet/show', 'Show the distance to my pet', nil, click('Show the distance to my pet##frame'), function(s) return s.pet.show_distance == true; end, 'Show the distance to my pet', 'pet' },
+    { 'Pet/show', 'Show how long my pet has been out', nil, click('Show how long my pet has been out##frame'), function(s) return s.pet.show_time_out == true; end, 'Show how long my pet has been out', 'pet' },
+    { 'Pet/show', 'Show attachment timers', nil, click('Show attachment timers##frame'), function(s) return s.pet.show_attachments == true; end, 'Show attachment timers', 'pet' },
+    { 'Pet/show', 'Show automaton MP as a number', nil, click('Show automaton MP as a number##frame'), function(s) return s.pet.exact_mp == true; end, 'Show automaton MP as a number', 'pet' },
+    { 'Pet/show', 'Show the automaton\'s own cooldowns', nil, click('Show the automaton\'s own cooldowns##frame'), function(s) return s.pet.show_cooldowns == true; end, 'Show the automaton\'s own cooldowns', 'pet' },
+    { 'Pet/show', 'Show the automaton\'s build', nil, click('Show the automaton\'s build##frame'), function(s) return s.pet.show_build == true; end, 'Show the automaton\'s build', 'pet' },
+    { 'Pet/show', 'Show what my avatar costs', nil, click('Show what my avatar costs##frame'), function(s) return s.pet.show_upkeep == true; end, 'Show what my avatar costs', 'pet' },
+    { 'Pet/show', 'Show when Healing Breath would fire', nil, click('Show when Healing Breath would fire##frame'), function(s) return s.pet.show_breath == true; end, 'Show when Healing Breath would fire', 'pet' },
+    { 'Pet/show', 'Mark where Sic is ready', nil, click('Mark where Sic is ready##frame'), function(s) return s.pet.sic_mark == true; end, 'Mark where Sic is ready', 'pet' },
+    { 'Pet/show', 'Show what Reward would heal', nil, click('Show what Reward would heal##frame'), function(s) return s.pet.show_reward == true; end, 'Show what Reward would heal', 'pet' },
+    { 'Notices/show', 'Tell me when my pet\'s HP is low', nil, click('Tell me when my pet\'s HP is low##frame'), function(s) return s.pet.alert_hp == true; end, 'Tell me when my pet\'s HP is low', 'pet' },
+    { 'Notices/show', 'Tell me when my pet has 1000 TP', nil, click('Tell me when my pet has 1000 TP##frame'), function(s) return s.pet.alert_tp == true; end, 'Tell me when my pet has 1000 TP', 'pet' },
+    { 'Notices/show', 'Tell me when a charm or a jug pet is about to end', nil, click('Tell me when a charm or a jug pet is about to end##frame'), function(s) return s.pet.alert_ending == true; end, 'Tell me when a charm or a jug pet is about to end', 'pet' },
+    { 'Notices/show', 'Pet HP is low at', function(s) s.pet.alert_hp = true; end, slide('frame_Pet HP is low at', 40),
+        function(s) return s.pet.alert_hp_percent == 40; end, 'Pet HP is low at', 'pet' },
+    { 'Pet/filters', 'Use the Hide list', nil, click('Use the Hide list##frame'), function(s) return s.pet.shared_rules == false; end, 'Use the Hide list', 'pet' },
+    { 'Pet/filters', 'Reset this tab', function(s) s.pet.include, s.pet.exclude, s.pet.shared_rules = { 33 }, { 4 }, false; end, click('Reset this tab##frame'),
+        function(s) return #s.pet.include == 0 and #s.pet.exclude == 0 and s.pet.shared_rules == true; end, 'Reset this tab', 'pet' },
     { 'Pet/place', 'Width', pet_unlocked, slide('frame_Width', 300), function(s) return s.pet.width == 300; end, 'Width', 'pet' },
-    { 'Pet/place', 'Tallest', pet_unlocked, slide('frame_Tallest', 30), function(s) return s.pet.height == 60; end, 'Tallest', 'pet' },
+    { 'Pet/place', 'Height', pet_unlocked, slide('frame_Height', 30), function(s) return s.pet.height == 60; end, 'Height', 'pet' },
     { 'Pet/place', 'Put it back where it started', function(s) s.pet.locked, s.pet.y = false, 10; end, click('Put it back where it started##frame'), function(s) return s.pet.y == select(2, first_spot('pet')) and s.pet.y ~= 10; end,
         'Put Pet back', 'pet' },
     { 'Pet/look', 'HP bar', nil, paint('HP bar##frame', { 1, 0, 1, 1 }), function(s) return s.pet.hp_color[1] == 1 and s.pet.hp_color[2] == 0; end, 'HP bar', 'pet' },
     { 'Pet/look', 'TP bar', nil, paint('TP bar##frame', { 0, 0, 0, 1 }), function(s) return s.pet.tp_color[1] == 0; end, 'TP bar', 'pet' },
-    { 'Pet/show', 'Reset this display', function(s) s.pet.max_effects = 2; end, { { click = 'Reset this display##frame' }, { click = 'Reset##look_frame_reset_pet' } },
+    { 'Pet/show', 'Reset all of this display', function(s) s.pet.max_effects = 2; end, { { click = 'Reset all of this display##frame' }, { click = 'Reset##look_frame_reset_pet' } },
         function(s) return s.pet.max_effects == 8; end, 'Reset Pet', 'pet' },
     { 'Home', 'Phantom Roll', nil, click('Phantom Roll##main_rolls'), function(s) return s.rolls.enabled; end, 'Phantom Roll', 'rolls' },
     { 'Home', 'Pet', nil, click('Pet##main_pet'), function(s) return s.pet.enabled; end, 'Pet', 'pet' },
@@ -158,6 +175,29 @@ for _, row in ipairs(rows) do
     assert(app.callbacks.redo());
     assert(custom.equal(app.state.settings[key], after), 'Redo does it again: ' .. row[2]);
 end;
+-- Your pet's alerts are on Alerts, where the muted line says when none of them fires, and Pet links there.
+do
+    local MUTED = 'Alerts are muted, so none of them fires.';
+    local wrapped, lines = imgui.TextWrapped, {};
+    imgui.TextWrapped = function(line, ...) if type(line) == 'string' then lines[line] = true; end; return wrapped(line, ...); end;
+    local function says(tab, setup)
+        lines = {};
+        begin(tab, setup);
+        return lines[MUTED] == true;
+    end
+    assert(says('Notices/show', function(s) s.pet.alert_hp, s.alerts.muted = true, true; end), 'Muted, Alerts says so over your pet\'s alerts.');
+    assert(not says('Notices/show', function(s) s.pet.alert_hp = true; end), 'Unmuted, no line.');
+    assert(not says('Pet/show', function(s) s.pet.alert_hp, s.alerts.muted = true, true; end), 'Pet says nothing about Alerts being muted.');
+    imgui.TextWrapped = wrapped;
+    -- Pet HP is low at shows only while its notice is ticked.
+    local sliders, slid = {}, imgui.SliderFloat;
+    imgui.SliderFloat = function(label, ...) sliders[label] = true; return slid(label, ...); end;
+    begin('Notices/show');
+    assert(not sliders['##frame_Pet HP is low at'], 'With the HP notice off, its percent isn\'t on the page.');
+    begin('Notices/show', function(s) s.pet.alert_hp = true; end);
+    assert(sliders['##frame_Pet HP is low at'], 'With it on, the percent is there.');
+    imgui.SliderFloat = slid;
+end
 -- The main page counts their samples as on, and ends them with the rest.
 begin('Home', function(s) on(s); s.rolls.preview, s.pet.preview = true, true; end);
 frame({ click = 'End samples##main' });

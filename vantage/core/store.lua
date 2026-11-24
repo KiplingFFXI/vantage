@@ -63,13 +63,7 @@ function store.encode(value)
     return json.encode(json_value(value));
 end
 
-local function same_value(a, b)
-    if (type(a) ~= type(b)) then return false; end
-    if (type(a) ~= 'table') then return a == b; end
-    for key, value in pairs(a) do if (not same_value(value, b[key])) then return false; end end
-    for key in pairs(b) do if (a[key] == nil) then return false; end end
-    return true;
-end
+local same_value = require('core.tables').same;
 
 function store.equal(a, b)
     local ok_a, normalized_a = pcall(json_value, a);
@@ -136,72 +130,12 @@ local function flush(path)
 end
 if (VANTAGE_TEST_MODE) then store.flush = flush; end
 
--- A third value says why it failed, where a caller tells the cases apart: 'changed' when the file changed since it was
--- read (expected) or while this was written, and 'full' when the settings would pass the size a saved file may have.
-function store.write(path, value, expected)
-    if (type(value) ~= 'table') then return false, 'Settings must be a table.'; end
-    -- Both reads of the file share one cache, so the second decodes it again only when its text changed meanwhile.
-    local file_cache = {};
-    local previous, problem = store.read(path, file_cache);
-    if (previous == nil) then return false, problem; end
-    if (expected ~= nil and not store.equal(previous, expected)) then
-        return false, 'The saved file changed while you were editing it. Review it again before saving.', 'changed';
-    end
-    local ok, encoded = pcall(store.encode, value);
-    if (not ok or type(encoded) ~= 'string') then return false, 'These changes could not be saved.'; end
-    if (#encoded > MAX_BYTES) then return false, 'These changes could not be saved.', 'full'; end
-    local parent = path:match('^(.*)[\\/][^\\/]+$');
-    if (parent) then
-        local made, err = store.ensure_folder(parent);
-        if (not made) then return false, err; end
-    end
-    local process = 0;
-    if (ffi.os == 'Windows') then
-        ok, process = pcall(ffi.C.GetCurrentProcessId);
-        process = ok and tonumber(process) or 0;
-    end
-    local temp;
-    repeat
-        serial = serial + 1;
-        temp = ('%s.%d.%d.tmp'):format(path, process, serial);
-    until not ashita.fs.exists(temp)
-    local file = io.open(temp, 'wb');
-    if (file == nil) then return false, 'The file could not be saved in the Vantage settings folder.'; end
-    local wrote, result = pcall(file.write, file, encoded);
-    local closed, closing = pcall(file.close, file);
-    if (not wrote or not result or not closed or not closing) then
-        os.remove(temp);
-        return false, 'The changes could not be saved. Your previous file was kept.';
-    end
-    flush(temp);
-    local latest, latest_problem = store.read(path, file_cache);
-    if (latest == nil or latest ~= previous and not store.equal(previous, latest)) then
-        os.remove(temp);
-        return false, latest_problem or 'The saved file changed while these changes were being saved. The newer file was kept.',
-            latest ~= nil and 'changed' or nil;
-    end
-    local kept = journal and journal.paths[path] and (journal.files[path] or { value = previous, existed = ashita.fs.exists(path) == true });
-    local moved;
-    if (ffi.os == 'Windows') then
-        -- 9 is MOVEFILE_REPLACE_EXISTING (1) with MOVEFILE_WRITE_THROUGH (8), so the move replaces the file. Write
-        -- through only waits for a move made as a copy, so it's the flush above that asks for the new text to be on the
-        -- disk before the move.
-        ok, result = pcall(ffi.C.MoveFileExA, temp, path, 9);
-        moved = ok and result ~= 0;
-    else
-        ok, result = pcall(os.rename, temp, path);
-        moved = ok and result ~= nil;
-    end
-    if (not moved) then os.remove(temp); return false, 'The saved file could not be replaced. Your previous file was kept.'; end
-    if (kept) then kept.written = encoded; journal.files[path] = kept; end
-    return true;
-end
-
--- Writes text as a new file at path, through a temporary file moved into place. It never replaces a file: when one
--- is there it writes nothing, and a third value of 'exists' says so.
-function store.create(path, text)
-    if (type(text) ~= 'string' or #text > MAX_BYTES) then return false, 'That text could not be saved.'; end
-    if (ashita.fs.exists(path)) then return false, store.name(path) .. ' already exists.', 'exists'; end
+-- Writes text to path through a temporary file beside it, making path's folder when it isn't there. The temporary file
+-- is flushed, check runs when given, and then the move puts it in place, replacing a file there only when replace is
+-- true. Returns true when it was moved. Otherwise it returns false and why: the line when the folder or the file can't
+-- be made, failed when the text can't be written, what check returned when check says no (false, why, code), and no
+-- line when the move fails. The temporary file is removed whenever the save stops.
+local function put(path, text, replace, failed, check)
     local parent = path:match('^(.*)[\\/][^\\/]+$');
     if (parent) then
         local made, err = store.ensure_folder(parent);
@@ -223,24 +157,70 @@ function store.create(path, text)
     local closed, closing = pcall(file.close, file);
     if (not wrote or not written or not closed or not closing) then
         os.remove(temp);
-        return false, 'The file could not be saved.';
+        return false, failed;
     end
     flush(temp);
-    -- Without MOVEFILE_REPLACE_EXISTING (1) the move fails when a file is there, so one made meanwhile stays.
+    if (check) then
+        local fine, why, code = check();
+        if (not fine) then os.remove(temp); return false, why, code; end
+    end
     local moved;
     if (ffi.os == 'Windows') then
-        ok, result = pcall(ffi.C.MoveFileExA, temp, path, 8);
+        -- 9 is MOVEFILE_REPLACE_EXISTING (1) with MOVEFILE_WRITE_THROUGH (8), so the move replaces the file. Without
+        -- MOVEFILE_REPLACE_EXISTING the move fails when a file is there, so one made meanwhile stays. Write through only
+        -- waits for a move made as a copy, so it's the flush above that asks for the new text to be on the disk before
+        -- the move.
+        ok, result = pcall(ffi.C.MoveFileExA, temp, path, replace and 9 or 8);
         moved = ok and result ~= 0;
-    elseif (not ashita.fs.exists(path)) then
+    elseif (replace or not ashita.fs.exists(path)) then
         ok, result = pcall(os.rename, temp, path);
         moved = ok and result ~= nil;
     end
-    if (not moved) then
-        os.remove(temp);
-        if (ashita.fs.exists(path)) then return false, store.name(path) .. ' already exists.', 'exists'; end
-        return false, 'The file could not be saved.';
-    end
+    if (not moved) then os.remove(temp); return false; end
     return true;
+end
+
+-- A third value says why it failed, where a caller tells the cases apart: 'changed' when the file changed since it was
+-- read (expected) or while this was written, and 'full' when the settings would pass the size a saved file may have.
+-- cache, when given, is the one the caller read expected through, so a file still the same isn't decoded or compared.
+function store.write(path, value, expected, cache)
+    if (type(value) ~= 'table') then return false, 'Settings must be a table.'; end
+    -- Both reads of the file share one cache, so the second decodes it again only when its text changed meanwhile.
+    local file_cache = cache or {};
+    local previous, problem = store.read(path, file_cache);
+    if (previous == nil) then return false, problem; end
+    if (expected ~= nil and previous ~= expected and not store.equal(previous, expected)) then
+        return false, 'The saved file changed while you were editing it. Review it again before saving.', 'changed';
+    end
+    local ok, encoded = pcall(store.encode, value);
+    if (not ok or type(encoded) ~= 'string') then return false, 'These changes could not be saved.'; end
+    if (#encoded > MAX_BYTES) then return false, 'These changes could not be saved.', 'full'; end
+    local kept;
+    local moved, why, code = put(path, encoded, true, 'The changes could not be saved. Your previous file was kept.', function()
+        local latest, latest_problem = store.read(path, file_cache);
+        if (latest == nil or latest ~= previous and not store.equal(previous, latest)) then
+            return false, latest_problem or 'The saved file changed while these changes were being saved. The newer file was kept.',
+                latest ~= nil and 'changed' or nil;
+        end
+        -- Kept before the move, which makes the file there.
+        kept = journal and journal.paths[path] and (journal.files[path] or { value = previous, existed = ashita.fs.exists(path) == true });
+        return true;
+    end);
+    if (not moved) then return false, why or 'The saved file could not be replaced. Your previous file was kept.', code; end
+    if (kept) then kept.written = encoded; journal.files[path] = kept; end
+    return true;
+end
+
+-- Writes text as a new file at path, through a temporary file moved into place. It never replaces a file: when one
+-- is there it writes nothing, and a third value of 'exists' says so.
+function store.create(path, text)
+    if (type(text) ~= 'string' or #text > MAX_BYTES) then return false, 'That text could not be saved.'; end
+    if (ashita.fs.exists(path)) then return false, store.name(path) .. ' already exists.', 'exists'; end
+    local moved, why = put(path, text, false, 'The file could not be saved.');
+    if (moved) then return true; end
+    -- A move that failed with a file there found one made meanwhile.
+    if (why == nil and ashita.fs.exists(path)) then return false, store.name(path) .. ' already exists.', 'exists'; end
+    return false, why or 'The file could not be saved.';
 end
 
 -- While a journal is open, a write to one of its paths keeps what the file held before the first

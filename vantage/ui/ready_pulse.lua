@@ -1,5 +1,5 @@
 -- Draws the ready pulses (core/ready_pulse.lua): each recast's icon grows and fades over the pulse's length, ringed
--- in the pulse color, on its row where a recast panel last drew it, or at the spot you placed on the screen. The
+-- in the pulse color, on its row where a recast panel drew it when ready, or at the spot you placed on the screen. The
 -- pulses take no clicks. With the screen spot unlocked, holding Shift shows the spot to drag it, as the alert notices
 -- move; locked, holding Shift outlines it and it stays where it is. Every table a frame uses is kept and refilled.
 local ready_pulse = {};
@@ -9,7 +9,8 @@ local recast_icons = require('ui.recast_icons');
 local elements = require('ui.elements');
 local conditions = require('core.conditions');
 local snap = require('ui.snap');
-local bit = require('bit');
+local layout = require('ui.layout');
+local policy = require('ui.frame_policy');
 local floor = math.floor;
 local LABEL = 'Ready pulse';
 local MOST = 8;
@@ -39,9 +40,12 @@ local function screen_spot(settings, config, scale, width, height)
     spot.width, spot.height = size, size;
     spot.x = config.x < 0 and floor((width - size) / 2) or config.x;
     spot.y = config.y;
+    local own_x = spot.x;
     elements.place(settings, 'pulse', spot, width, height);
     spot.x = math.max(0, math.min(spot.x, width - size));
     spot.y = math.max(0, math.min(spot.y, height - size));
+    -- On a side of the chat log with no room, it is at its own spot.
+    layout.off_chat(settings, 'pulse', spot, own_x, config.y, elements.chat, width, height);
     return spot;
 end
 
@@ -62,16 +66,22 @@ function ready_pulse.draw(pulses, settings, now, callbacks, moving, spots, frame
     -- A press that hasn't moved yet changes nothing, as a timer panel's drag.
     if gesture and (gesture.dirty or moving.mx ~= gesture.mx or moving.my ~= gesture.my) then
         local size = full_size(config, scale);
-        local x, y = gesture.x + moving.mx - gesture.mx, gesture.y + moving.my - gesture.my;
+        -- The mouse's move is worked out first, so along an axis the mouse hasn't moved, the spot snaps from exactly
+        -- where it was drawn, even at a fraction of a pixel.
+        local x, y = gesture.x + (moving.mx - gesture.mx), gesture.y + (moving.my - gesture.my);
         local shift_x, shift_y = snap.move(settings, 'pulse', x, y, size, size, moving.screen_width, moving.screen_height);
         x = floor(math.max(0, math.min(x + shift_x, moving.screen_width - size)));
         y = floor(math.max(0, math.min(y + shift_y, moving.screen_height - size)));
+        -- An axis the drag doesn't go along keeps its number, so Across at Centered, or a number typed past the
+        -- screen's edge for a bigger screen, stays. A drag back to where it started puts it back.
+        if moving.mx - gesture.mx + shift_x == 0 then x = gesture.kept_x; end
+        if moving.my - gesture.my + shift_y == 0 then y = gesture.kept_y; end
         if x ~= config.x or y ~= config.y then
             if not gesture.dirty and callbacks.changed then callbacks.changed('before', 'Ready pulse spot'); end
             config.x, config.y, gesture.dirty = x, y, true;
             -- A Shift drag detaches an anchored display.
             if config.anchor then config.anchor.to = 'none'; end
-            if callbacks.changed then callbacks.changed('after'); end
+            if callbacks.changed then callbacks.changed('after', nil, 'place'); end
         end
     end
     local target = screen_spot(settings, config, scale, moving.screen_width, moving.screen_height);
@@ -88,6 +98,11 @@ function ready_pulse.draw(pulses, settings, now, callbacks, moving, spots, frame
         local cx, cy, from, to;
         if t >= 0 and t < 1 then
             local held = entry.spot ~= 'screen' and (spots[entry.key] or entry.test and any_spot(spots, frame));
+            -- A panel draws a row until about when the recast reader sees it ready, and a gap of over 2 seconds
+            -- between its samples sends no ready (core/recasts.lua). So a row last drawn over 2 seconds before its
+            -- pulse began was hidden by then, by When to show, Most shown or its panel turned off, and its pulse
+            -- doesn't play there.
+            if held and not (held.at and held.at >= entry.started - 2) then held = nil; end
             if held then cx, cy, from = held.x + held.size / 2, held.y + held.size / 2, math.min(held.size, LARGEST); to = math.max(from, top);
             -- A test pulse with no recast row on screen plays at the screen spot.
             elseif entry.spot == 'screen' or entry.test then
@@ -126,12 +141,7 @@ function ready_pulse.draw(pulses, settings, now, callbacks, moving, spots, frame
     imgui.PushStyleVar(ImGuiStyleVar_WindowMinSize, ONE);
     imgui.SetNextWindowPos(place, ImGuiCond_Always);
     imgui.SetNextWindowSize(extent, ImGuiCond_Always);
-    local flags = bit.bor(ImGuiWindowFlags_NoTitleBar or 0, ImGuiWindowFlags_NoResize or 0, ImGuiWindowFlags_NoMove or 0,
-        ImGuiWindowFlags_NoCollapse or 0, ImGuiWindowFlags_NoScrollbar or 0, ImGuiWindowFlags_NoScrollWithMouse or 0,
-        ImGuiWindowFlags_NoSavedSettings or 0, ImGuiWindowFlags_NoBackground or 0, ImGuiWindowFlags_NoFocusOnAppearing or 0,
-        ImGuiWindowFlags_NoNav or 0, ImGuiWindowFlags_NoDocking or 0);
-    if not movable then flags = bit.bor(flags, ImGuiWindowFlags_NoInputs or 0); end
-    if imgui.Begin('##vantage_pulse', true, flags) then
+    if imgui.Begin('##vantage_pulse', true, policy.flags(policy.BOX, movable)) then
         local list = imgui.GetWindowDrawList();
         if on_screen then elements.opened('pulse', list); end
         local art, status_art, color = s.recast_icon_art, recast_icons.status_art(s), config.color;
@@ -160,8 +170,12 @@ function ready_pulse.draw(pulses, settings, now, callbacks, moving, spots, frame
                 if not gesture and imgui.IsMouseClicked(ImGuiMouseButton_Left or 0)
                     and moving.mx >= target.x and moving.mx < target.x + target.width
                     and moving.my >= target.y and moving.my < target.y + target.height then
+                    -- What the drag keeps on an axis it doesn't go along: the spot's own Across and Down, or where its
+                    -- anchor drew it, as the drag ends the anchor.
+                    local anchored = elements.anchored('pulse');
                     gesture = { settings = settings, callbacks = callbacks, mx = moving.mx, my = moving.my, x = target.x, y = target.y,
-                        sw = moving.screen_width, sh = moving.screen_height };
+                        sw = moving.screen_width, sh = moving.screen_height,
+                        kept_x = anchored and floor(target.x) or config.x, kept_y = anchored and floor(target.y) or config.y };
                 end
             end
         elseif marked then

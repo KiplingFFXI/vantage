@@ -160,6 +160,15 @@ end;
 local invalid_snapshot = copy(snapshot); invalid_snapshot.valid = false;
 assert(next(filters.recipients(invalid_snapshot, roster)) == nil);
 assert(next(filters.recipients(nil, { valid = false, id = 100, members = roster.members })) == nil);
+-- Given the table of the call before, the rows are filled again in place, as a new call has them, and a unit gone comes
+-- out.
+local kept = filters.recipients(snapshot, roster);
+local rows = { [100] = kept[100], [101] = kept[101], [103] = kept[103] };
+local fewer = copy(roster); fewer.members[4] = nil;
+local again = filters.recipients(snapshot, fewer, kept);
+assert(again == kept and again[100] == rows[100] and again[101] == rows[101] and again[103] == nil, 'The rows are filled again in place.');
+assert(equal(again, filters.recipients(snapshot, fewer)), 'As a new call has them.');
+assert(next(filters.recipients(invalid_snapshot, roster, kept)) == nil and next(kept) == nil, 'An invalid snapshot empties them.');
 
 -- Filtering only copies the affected containers and retains each effect object.
 local status = { id = 101, name = 'Fennel', known = true, complete = false, effects = { buff, debuff, other }, observed_at = 77 };

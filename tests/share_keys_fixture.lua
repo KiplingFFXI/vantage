@@ -5,10 +5,11 @@ return {
     [''] = 'active_profile alerts chat_colors diagnostics durations edit_mode effect_filters enabled'
         .. ' job_profiles overhead panels party_cooldowns party_ui pet preview ready_pulse recast_display recast_tints'
         .. ' rolls shared_layout shared_scope style tracking visibility watch_ids window window_style',
-    ['alerts'] = 'enabled max_notices muted notice_anchor notice_conditions notice_height notice_locked'
-        .. ' notice_width notice_x notice_y quiet_events rules volume',
+    ['alerts'] = 'enabled max_notices muted notice_anchor notice_colors notice_conditions notice_height notice_locked'
+        .. ' notice_text_size notice_width notice_x notice_y quiet_events rules volume',
     ['alerts.notice_anchor'] = 'align dx dy element gap offset point side to',
-    ['alerts.notice_conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['alerts.notice_conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['chat_colors'] = 'replies tag_brackets tag_word',
     ['diagnostics'] = 'max_entries record',
     ['durations'] = 'learn learn_samples learned overrides',
@@ -19,7 +20,8 @@ return {
         .. ' countdown_outline_color countdown_shadow dispel_color dispel_glow dispel_light distance_cap enabled'
         .. ' fade_alpha fade_start head hide_in_cities layout max_units preview size small_icon_inside_px types units',
     ['overhead.camera'] = 'capture hold_ms max_distance scene_index',
-    ['overhead.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['overhead.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['overhead.head'] = 'chair_factor default_height default_hitbox heights mob_height_base mob_height_max'
         .. ' mob_height_min mob_height_per_hitbox mounted_base mounted_factor offsets race_heights sit_factor sizes',
     ['overhead.layout'] = 'cc_scale gap icon_gap line_gap name_cap name_height placement split_gap target_cap'
@@ -66,8 +68,8 @@ return {
         .. ' show_name show_source show_target show_text show_time show_total sort stack_direction title'
         .. ' warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.ability_recasts.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.ability_recasts.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs'
-        .. ' zones',
+    ['panels.ability_recasts.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.item_recasts'] = 'alignment anchor auto_height auto_width bar_style bar_thickness box colors conditions'
         .. ' countdown_bold countdown_outline countdown_outline_color countdown_shadow direction dock_match_width'
         .. ' effect_colors empty enabled exclude field_alignments field_colors field_dividers field_labels'
@@ -78,20 +80,23 @@ return {
         .. ' show_name show_source show_target show_text show_time show_total sort stack_direction title'
         .. ' warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.item_recasts.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.item_recasts.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.item_recasts.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.party'] = 'abilities_only alignment anchor auto_height auto_width bar_style bar_thickness blink_icons'
         .. ' blink_seconds box colors conditions countdown_bold countdown_outline countdown_outline_color'
         .. ' countdown_shadow direction'
         .. ' dispel_color dispel_glow dispel_light dock_match_width effect_colors empty enabled exclude'
         .. ' field_alignments field_colors field_dividers field_labels field_newlines field_order field_priority'
-        .. ' fill_direction filter gradient group_by groups growth height_limit horizon icon_countdown_gap'
-        .. ' icon_countdown_position icon_countdown_size include item_width known_only label_position label_separator'
+        .. ' fill_direction filter fold_casts gradient group_by groups growth height_limit horizon icon_countdown_gap'
+        .. ' icon_countdown_position icon_countdown_size include include_self item_width known_only label_position'
+        .. ' label_separator'
         .. ' labels locked max_rows max_width members min_width mine_only mode order pinned priority_overflow'
         .. ' row_height separator show_elapsed show_fill show_heading show_icon show_name show_source show_target'
         .. ' show_text show_time show_total sort stack_direction title warning_enabled warning_mark warning_seconds'
         .. ' width wrap x y',
     ['panels.party.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.party.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.party.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.recasts'] = 'alignment anchor auto_height auto_width bar_style bar_thickness box colors conditions'
         .. ' countdown_bold countdown_outline countdown_outline_color countdown_shadow direction dock_match_width'
         .. ' effect_colors empty enabled exclude field_alignments field_colors field_dividers field_labels'
@@ -102,7 +107,8 @@ return {
         .. ' show_heading show_icon show_name show_source show_target show_text show_time show_total sort'
         .. ' stack_direction title warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.recasts.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.recasts.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.recasts.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.recasts.recast_categories'] = 'ability item spell',
     ['panels.self_buffs'] = 'alignment anchor auto_height auto_width bar_style bar_thickness blink_icons blink_seconds'
         .. ' box colors conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow direction'
@@ -114,7 +120,8 @@ return {
         .. ' show_icon show_name show_source show_target show_text show_time show_total sort stack_direction title'
         .. ' warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.self_buffs.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.self_buffs.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.self_buffs.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.self_debuffs'] = 'alignment anchor auto_height auto_width bar_style bar_thickness blink_icons'
         .. ' blink_seconds box colors conditions countdown_bold countdown_outline countdown_outline_color'
         .. ' countdown_shadow direction dispel_color dispel_glow dispel_light dock_match_width effect_colors empty'
@@ -126,7 +133,8 @@ return {
         .. ' show_source show_target show_text show_time show_total sort stack_direction title warning_enabled'
         .. ' warning_mark warning_seconds width wrap x y',
     ['panels.self_debuffs.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.self_debuffs.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.self_debuffs.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.spell_recasts'] = 'alignment anchor auto_height auto_width bar_style bar_thickness box colors conditions'
         .. ' countdown_bold countdown_outline countdown_outline_color countdown_shadow direction dock_match_width'
         .. ' effect_colors empty enabled exclude field_alignments field_colors field_dividers field_labels'
@@ -137,8 +145,8 @@ return {
         .. ' show_name show_source show_target show_text show_time show_total sort stack_direction title'
         .. ' warning_enabled warning_mark warning_seconds width wrap x y',
     ['panels.spell_recasts.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.spell_recasts.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs'
-        .. ' zones',
+    ['panels.spell_recasts.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.target'] = 'alignment anchor auto_height auto_width bar_style bar_thickness blink_icons blink_seconds box'
         .. ' colors conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow direction'
         .. ' dispel_color dispel_glow dispel_light dock_match_width effect_colors empty enabled exclude'
@@ -150,7 +158,8 @@ return {
         .. ' show_text show_time show_total sort stack_direction title warning_enabled warning_mark warning_seconds'
         .. ' width wrap x y',
     ['panels.target.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.target.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.target.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['panels.watch'] = 'alignment anchor auto_height auto_width bar_style bar_thickness blink_icons blink_seconds box'
         .. ' colors conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow direction'
         .. ' dispel_color dispel_glow dispel_light dock_match_width effect_colors empty enabled exclude'
@@ -162,39 +171,47 @@ return {
         .. ' show_target show_text show_time show_total sort stack_direction title warning_enabled warning_mark'
         .. ' warning_seconds width wrap x y',
     ['panels.watch.anchor'] = 'align dx dy element gap offset point side to',
-    ['panels.watch.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['panels.watch.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['party_cooldowns'] = 'enabled ignore list overhead preview strips',
     ['party_cooldowns.list'] = 'abilities anchor conditions enabled height jobs locked max_rows show_heading sort'
         .. ' width x y',
     ['party_cooldowns.list.anchor'] = 'align dx dy element gap offset point side to',
-    ['party_cooldowns.list.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs'
-        .. ' zones',
-    ['party_ui'] = 'conditions effects enabled groups include_self locked name_display name_length native preview'
-        .. ' show_solo strips style',
-    ['party_ui.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['party_cooldowns.list.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
+    ['party_ui'] = 'conditions distance distance_size distance_warn effects enabled groups include_self locked'
+        .. ' name_display name_length native preview show_solo strips style',
+    ['party_ui.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['party_ui.effects'] = 'abilities_only blink_icons blink_seconds cleanse_light countdown_bold countdown_outline'
-        .. ' countdown_outline_color countdown_shadow exclude fit_all growth icon_countdown_gap icon_countdown_position'
-        .. ' icon_countdown_size icon_size include kind max pinned separate show_copy_image show_third_eye sort timers',
+        .. ' countdown_outline_color countdown_shadow dispel_color dispel_glow exclude fit_all growth'
+        .. ' icon_countdown_gap icon_countdown_position icon_countdown_size icon_size include kind max order pinned'
+        .. ' separate show_copy_image show_third_eye sort timers',
     ['party_ui.groups.[]'] = 'detached_height detached_width detached_x detached_y native_detached native_side'
         .. ' native_x native_y order',
-    ['party_ui.native'] = 'gap side snap width',
+    ['party_ui.native'] = 'gap icon_size side snap width',
     ['party_ui.strips'] = 'alliance1 alliance2 party',
     ['party_ui.style'] = 'icon_art opacity',
-    ['pet'] = 'anchor blink_icons blink_seconds conditions countdown_bold countdown_outline countdown_outline_color'
-        .. ' countdown_shadow effects_as enabled exact_hp exclude height hp_color include kinds locked max_effects max_recasts'
-        .. ' mp_color preview shared_rules show_charm show_countdowns show_effects show_maneuvers show_recasts'
-        .. ' show_vitals tp_color width x y',
+    ['pet'] = 'alert_ending alert_hp alert_hp_percent alert_tp anchor blink_icons blink_seconds conditions countdown_bold'
+        .. ' countdown_outline countdown_outline_color'
+        .. ' countdown_shadow effects_as enabled exact_hp exact_mp exclude height hp_color include kinds locked max_effects max_recasts'
+        .. ' mp_color preview shared_rules show_action show_attachments show_breath show_build show_charm show_cooldowns'
+        .. ' show_countdowns show_distance show_effects show_maneuvers show_recasts show_reward show_target show_time_out'
+        .. ' show_upkeep show_vitals sic_mark tp_color width x y',
     ['pet.anchor'] = 'align dx dy element gap offset point side to',
-    ['pet.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['pet.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['ready_pulse'] = 'anchor color conditions early enabled ignore length locked min_seconds size spot x y',
     ['ready_pulse.anchor'] = 'align dx dy element gap offset point side to',
-    ['ready_pulse.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['ready_pulse.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['recast_tints'] = 'ability_lock ability_lock_color mp mp_color spell_lock spell_lock_color',
     ['rolls'] = 'anchor conditions countdown_bold countdown_outline countdown_outline_color countdown_shadow enabled'
         .. ' height locked lucky_color max_rolls missed_color preview show_effect show_heading show_members'
         .. ' show_numbers show_odds unlucky_color width x y',
     ['rolls.anchor'] = 'align dx dy element gap offset point side to',
-    ['rolls.conditions'] = 'engaged group level_max level_min level_sync main_jobs pet sub_jobs zones',
+    ['rolls.conditions'] = 'engaged group level_max level_min level_sync main_except main_jobs pet'
+        .. ' sub_except sub_jobs zones zones_except',
     ['style'] = 'accent_color background background_color bar_height border border_color buff_color debuff_color'
         .. ' detail_color estimate_color font font_size gap gauge_art hover icon_art icon_size label_color minimal'
         .. ' opacity outline_color recast_icon_art recast_icon_source rounding scale status_time_color text_color'

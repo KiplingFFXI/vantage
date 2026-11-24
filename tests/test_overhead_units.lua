@@ -346,19 +346,6 @@ settings.overhead.units.other_pet = true;
 W.frame(pets, settings, alone, false, 0.2);
 assert(W.ids(plan) == tostring(0x100010D) and plan.units[1].kind == 'other_pet', 'Other pets on: ' .. W.ids(plan));
 settings.overhead.units.other, settings.overhead.units.other_pet = false, false;
--- Phoenix has no trusts, so the client's trust owner field isn't read, and an NPC with it set is a unit like any other.
-local owner_read = false;
-AshitaCore:GetMemoryManager():GetEntity().GetTrustOwnerTargetIndex = function() owner_read = true; return W.self; end;
-W.unit(0x10E, 0x100010E, 'npc', 2, -6, { name = 'Helper', type = 1, race = 5 });
-local helper = W.view({ { entity_id = 0x100010E, kind = 'debuff', scope = 'party' } });
-local with_helper = W.snapshot({ members[1], { id = 0x100010E, index = 0x10E, scope = 'party' } });
-W.frame(helper, settings, with_helper, false, 0.2);
-assert(plan.count == 0, 'Other players off: it gets no block: ' .. W.ids(plan));
-settings.overhead.units.other = true;
-W.frame(helper, settings, with_helper, false, 0.2);
-assert(plan.count == 1 and plan.units[1].kind == 'other', 'It goes by Other players: ' .. tostring(plan.units[1] and plan.units[1].kind));
-assert(not owner_read, 'The trust owner field is never read.');
-settings.overhead.units.other = false;
 
 -- Whole pixels hold through a slow bob of under 0.6 px, across the lists made ten times a second, and still follow a
 -- real change.

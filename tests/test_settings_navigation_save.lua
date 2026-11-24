@@ -3,17 +3,12 @@
 -- loads and on unload. An edit still saves at once.
 local store=require('core.store');
 local snapshot={valid=true,id=1001,name='Tester',zone=102,job=3,self_known=true,self_effects={},party={},entities={}};
-package.loaded['core.client']={load=function()end,read=function()return store.copy(snapshot);end};
-package.loaded['core.observer']={read=function()return {};end};
-local hud=require('ui.hud');
-hud.draw,hud.draw_notices=function()end,function()end;
-require('ui.party_hud').draw=function()return 0,{};end;
-require('ui.native_party_hud').draw=function()return 0,{};end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui']={treasure_open=function()return false;end,update=function()end,
     status=function()return {active=false};end,restore=function()return true;end};
 -- A section header is open when the fixture says so.
 local headers,broken={},false;
-local MORE='More look';
+local MORE='Artwork';
 require('imgui').CollapsingHeader=function(label)
     return headers[label]==true;
 end;
@@ -55,17 +50,17 @@ assert(settings().window.tab=='Help','Fixture: the link opened Help.');
 frame('< Back##frame');
 assert(settings().window.tab=='Home','Fixture: Back opened the main page.');
 headers[MORE]=true;frame();
-assert(settings().window.sections['Home/More look']==true,'Fixture: the More look header opened.');
+assert(settings().window.sections['Home/Artwork']==true,'Fixture: the Artwork header opened.');
 for _=1,10 do frame();end;
 assert(written()==before,'Navigation writes nothing, at the click or after the edit autosave delay.');
 assert(not app.state.dirty and #app.state.history==0,'Navigation is no edit: no autosave waits and nothing goes into Undo.');
-assert(disk().window.sections['Home/More look']~=true,'Fixture: the open section is not on disk yet.');
+assert(disk().window.sections['Home/Artwork']~=true,'Fixture: the open section is not on disk yet.');
 
 -- The next save writes it along with the edit, and the edit is saved at once.
 command('/vg set style.font_size 25');
 assert(written()==before+1,'An edit still saves at once.');
 local file=disk();
-assert(file.style.font_size==25 and file.window.open==true and file.window.sections['Home/More look']==true,
+assert(file.style.font_size==25 and file.window.open==true and file.window.sections['Home/Artwork']==true,
     'The next save writes which window, page and sections are open.');
 for _=1,10 do frame();end;
 assert(written()==before+1,'Nothing is left to write after that save.');
@@ -99,17 +94,17 @@ assert(not app.state.navigation_dirty,'Other starts with nothing waiting.');
 -- When that save fails, the next character still starts with nothing waiting.
 local other=app.state.path;
 headers={};open_main();frame();headers[MORE]=true;frame();
-assert(settings().window.sections['Home/More look']==true and app.state.navigation_dirty,'Fixture: Other has unsaved navigation.');
+assert(settings().window.sections['Home/Artwork']==true and app.state.navigation_dirty,'Fixture: Other has unsaved navigation.');
 -- The refresh loads Tester before any draw of Tester's window.
 failing=other;snapshot.id,snapshot.name=1001,'Tester';app.refresh(MOCK.now);failing=nil;
 local other_file=disk(other);
-assert(app.state.path==tester and not (other_file.window and other_file.window.sections['Home/More look']),'Fixture: saving Other failed.');
+assert(app.state.path==tester and not (other_file.window and other_file.window.sections['Home/Artwork']),'Fixture: saving Other failed.');
 assert(not app.state.navigation_dirty,'Tester starts with nothing waiting after saving Other failed.');
 
 -- Unload saves it too.
 headers={};open_main();frame();headers[MORE]=true;frame();
-assert(settings().window.sections['Home/More look']==true and app.state.navigation_dirty,'Fixture: Tester has unsaved navigation.');
+assert(settings().window.sections['Home/Artwork']==true and app.state.navigation_dirty,'Fixture: Tester has unsaved navigation.');
 MOCK.fire('unload');
 file=disk(tester);
-assert(file.window.open==true and file.window.sections['Home/More look']==true,'Unload saves the open window and sections.');
+assert(file.window.open==true and file.window.sections['Home/Artwork']==true,'Unload saves the open window and sections.');
 return true;

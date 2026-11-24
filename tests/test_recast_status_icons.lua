@@ -24,21 +24,10 @@ local self_id, ally = 1001, 1002
 local snapshot = { valid = true, id = self_id, zone = 102, name = 'Tester', level = 75, job = 1, self_known = true,
     self_effects = {}, party = { { id = ally, name = 'Ally', scope = 'party', zone = 102 } },
     entities = { [self_id] = { name = 'Tester' }, [ally] = { name = 'Ally', kind = 'player' } } }
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8) end
-    end
-end
 local function action(actor, category, id, targets)
-    local bytes, at = MOCK.bytes(2048), 150
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id)
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target[1]); putbits(bytes, at + 32, 4, 1); at = at + 36
-        putbits(bytes, at + 27, 17, target[3]); putbits(bytes, at + 44, 10, target[2]); at = at + 87
-    end
-    bytes.n = math.ceil(at / 8)
-    return MOCK.packet(0x028, bytes)
+    local rows = {}
+    for i, target in ipairs(targets) do rows[i] = { id = target[1], rows = { { message = target[2], param = target[3] } } } end
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, rows))
 end
 local function learn(packet)
     local seen = observer.read(packet, 1, snapshot)
@@ -112,6 +101,14 @@ for _, id in ipairs({ 38, 52, 66, 82, 123 }) do
     assert(durations.abilities[id] and recast_icons.effect({ kind = 'ability', ability_id = id + 512 }) == nil,
         'Ability ' .. id .. ' gives its effect only sometimes, so it keeps its own picture.')
 end
+-- A use of your own that only may have put its effect on teaches nothing: Chi Blast's Inhibit TP, which the game never
+-- reports, is taken from its hit (core/observer.lua guessed), and its recast keeps its own picture.
+recast_icons.learn({ { kind = 'apply', action_category = 6, spell = 82, effect = 168, source = self_id, guessed = true } }, snapshot)
+assert(recast_icons.effect({ kind = 'ability', ability_id = 82 + 512 }) == nil, 'A guessed effect of your Chi Blast isn\'t its status.')
+recast_icons.learn({ { kind = 'apply', action_category = 6, spell = 82, effect = 168, source = self_id } }, snapshot)
+assert(recast_icons.effect({ kind = 'ability', ability_id = 82 + 512 }) == 168, 'Fixture: one the game reports is.')
+-- Tomahawk always puts its effect on, which the game has no picture for: its recast shows that effect, drawn as its item.
+assert(recast_icons.effect({ kind = 'ability', ability_id = 150 + 512 }) == 805, 'Tomahawk\'s recast shows its effect.')
 
 local settings = defaults.make()
 assert(settings.style.recast_icon_source == 'effect', 'Recasts show buff and debuff icons by default.')
@@ -180,10 +177,13 @@ settings = defaults.tidy(settings)
 assert(settings.style.recast_icon_source == 'action', 'A saved choice of action icons is kept.')
 settings.style.recast_icon_source = 'other'
 assert(defaults.tidy(settings).style.recast_icon_source == 'effect', 'An unknown saved choice takes the default.')
-local saved = { style = { recast_icon_art = 'XI View', icon_art = 'Client' }, panels = { spell_recasts = { mode = 'icons' } } }
+local saved = { style = { recast_icon_art = 'XI View', icon_art = 'XI View' }, panels = { spell_recasts = { mode = 'icons' } } }
 saved = defaults.tidy(saved)
-assert(saved.style.recast_icon_source == 'effect' and saved.style.recast_icon_art == 'XI View' and saved.style.icon_art == 'Client'
+assert(saved.style.recast_icon_source == 'effect' and saved.style.recast_icon_art == 'XI View' and saved.style.icon_art == 'XI View'
     and saved.panels.spell_recasts.mode == 'icons', 'Settings without it take the default and keep every saved choice.')
+-- Client isn't an icon choice any more, so a saved one becomes Original FFXI, here and on Party list.
+local old = defaults.tidy({ style = { icon_art = 'Client' }, party_ui = { style = { icon_art = 'Client' } } })
+assert(old.style.icon_art == 'Original FFXI' and old.party_ui.style.icon_art == 'Original FFXI', 'A saved Client becomes Original FFXI.')
 
 -- The choice is on the Recasts panel's Show tab and found by search before the page is opened.
 local window, imgui = require('ui.settings_window'), require('imgui')

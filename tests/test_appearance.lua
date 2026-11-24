@@ -76,7 +76,7 @@ for _, name in ipairs(appearance.names) do
     assert(appearance.current(s) == name, 'Every surface agrees after applying ' .. name)
     assert(appearance.candidate(s) == name, 'The selection remains usable for ' .. name)
     assert(equal(nonappearance(before, native, true), nonappearance(s, native, true)), 'The preset preserves every nonappearance setting: ' .. name)
-    -- The party list buffs wear the timer panels' look, window type and all.
+    -- Party list wears the timer panels' look, window type and all.
     assert(s.style.window_type == 6 and theme.window(s).window_type == 6 and party_theme.party(s.party_ui, s.style).window_type == 6,
         'The existing global window type is shared')
     assert(s.style.font_size == 29 and s.style.scale == 1.4 and s.window_style.font_size == 31,
@@ -91,7 +91,7 @@ for kind = 1, 8 do
     assert(appearance.apply(s, 'Original FFXI', { window_type = kind }))
     assert(appearance.current(s) == 'Original FFXI' and theme.window(s).window_type == kind)
     local look = party_theme.party(s.party_ui, s.style)
-    assert(look.theme == 'Original FFXI' and look.window_type == kind and look.font == 'Original FFXI', 'The party list buffs wear the selected native skin')
+    assert(look.theme == 'Original FFXI' and look.window_type == kind and look.font == 'Original FFXI', 'Party list wears the selected native skin')
     assert(equal(theme.window(s).text, theme.window_defaults({ style = { theme = 'Original FFXI', window_type = kind } }).text), 'Menu text uses the selected native skin palette')
 end
 
@@ -113,8 +113,8 @@ local changes = {
     function(v) v.panels.self_buffs.colors.fill_start = { 1, 0, 0, 1 } end,
     function(v) v.style.minimal = true end,
     function(v) v.style.background_color = { 1, 0, 0, 1 } end,
-    -- The party list buffs' own icons.
-    function(v) v.party_ui.style.icon_art = 'Client' end,
+    -- Party list's own icons.
+    function(v) v.party_ui.style.icon_art = 'XI View' end,
 }
 for _, change in ipairs(changes) do
     assert(appearance.apply(s, 'Original FFXI'))
@@ -141,7 +141,7 @@ appearance.apply(s, 'Minimal')
 defaults.tidy(s)
 assert(appearance.current(s) == 'Minimal', 'Minimal survives settings normalization')
 local look = party_theme.party(s.party_ui, s.style)
-assert(look.minimal and not look.background and not look.border, 'The party list buffs are frameless with the rest')
+assert(look.minimal and not look.background and not look.border, 'Party list is frameless with the rest')
 local profiles = require('core.profiles')
 local saved = profiles.capture(s)
 assert(saved.style.minimal, 'Named profiles retain the frameless preset')
@@ -152,7 +152,7 @@ assert(placement.party_ui.style == nil, 'Placement sharing does not impose an ap
 local fresh = defaults.make()
 assert(not party_theme.party(fresh.party_ui, fresh.style).minimal, 'Existing defaults remain framed')
 
--- Every group of the party list buffs wears the skin applied to the timer panels; only the party's icons and opacity
+-- Every group of Party list wears the skin applied to the timer panels; only the party's icons and opacity
 -- are its own.
 s = defaults.make()
 s.party_ui.style.opacity = 0.6
@@ -160,4 +160,4 @@ assert(appearance.apply(s, 'Original FFXI', { window_type = 4 }))
 assert(appearance.current(s) == 'Original FFXI')
 look = party_theme.party(s.party_ui, s.style)
 assert(look.theme == 'Original FFXI' and look.window_type == 4 and look.font == 'Original FFXI' and look.icon_art == 'Original FFXI'
-    and look.opacity == 0.6, 'The party list buffs wear the applied skin with their own opacity')
+    and look.opacity == 0.6, 'Party list wears the applied skin with its own opacity')

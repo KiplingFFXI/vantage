@@ -2,6 +2,11 @@
 -- data/status_effects.yaml flags dispelable, at Phoenix revision 730ac619c0 (180 effects), less the 52 that can't exist
 -- on Phoenix (tools/export_catalog.py), which leaves 128. Each of them calls dispelStatusEffect, whose default flag is
 -- this one (src/map/lua/lua_base_entity.cpp:14903). Built from that file; the name after each id is its name there.
+-- Arrow Shield and Magic Shield are left out too, which leaves 126. At Phoenix 9785020970, the only Arrow Shield a mob
+-- is seen to get is Airy Shield's, which has the flag taken off (scripts/actions/mobskills/airy_shield.lua :19-22). A
+-- mob's Magic Shield goes on with subType 0 (scripts/globals/mobskills.lua :1648-1653,
+-- src/map/lua/lua_base_entity.cpp :14340), and while it's there all four are resisted
+-- (scripts/combat/basic/magic_hit_rate.lua :547-550).
 return {
     [32] = true, -- flee
     [33] = true, -- haste
@@ -80,8 +85,6 @@ return {
     [124] = true, -- mnd_boost_ii
     [125] = true, -- chr_boost_ii
     [150] = true, -- physical_shield
-    [151] = true, -- arrow_shield
-    [152] = true, -- magic_shield
     [153] = true, -- damage_spikes
     [154] = true, -- shining_ruby
     [173] = true, -- dread_spikes

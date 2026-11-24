@@ -61,10 +61,10 @@ local function searched(when)
     end
 end
 searched('Before any page is drawn')
-local names = { shared = 'Shared', both = 'Background and border', background = 'Background only', border = 'Border only',
+local names = { shared = 'From the main page', both = 'Background and border', background = 'Background only', border = 'Border only',
     none = 'None' }
 
--- Status timers: bars and expanded, the pick under the heading rows, reading Shared on a fresh install.
+-- Status timers: bars and expanded, the pick under the heading rows, reading From the main page on a fresh install.
 local heading, box = 'Show its heading##frame', '##frame_Box'
 panels.open('self_buffs', 'look')
 local s = open('Display')
@@ -72,7 +72,7 @@ for _, mode in ipairs({ 'bars', 'expanded' }) do
     s.panels.self_buffs.mode = mode
     frame()
     assert(after(order(), heading) == box, 'Box is drawn under the heading rows: ' .. mode)
-    assert(shown[box] == 'Shared', 'A fresh panel reads Shared: ' .. mode)
+    assert(shown[box] == 'From the main page', 'A fresh panel reads From the main page: ' .. mode)
 end
 
 -- Each pick is one Undo step named for it.
@@ -137,10 +137,10 @@ end
 panels.open('self_buffs', 'look')
 open('Display', function(settings) settings.panels.self_buffs.mode = 'bars' end)
 hovered()
-assert(help_after('BeginCombo', box) == 'Shared follows Background and Border under More look on the main page. The other choices set this panel\'s own background and border. Show its heading still shows or hides the title.',
+assert(help_after('BeginCombo', box) == 'From the main page follows Background and Border under Boxes there. The other choices set this panel\'s own background and border. Show its heading still shows or hides the title.',
     'The Box help says what each choice draws.')
--- More look: the shared switches say a panel's own pick keeps its choice.
-open('Home', function(settings) settings.window.sections['Home/More look'] = true end)
+-- Boxes: the shared switches say a panel's own pick keeps its choice.
+open('Home', function(settings) settings.window.sections['Home/Boxes'] = true end)
 hovered()
 for _, label in ipairs({ 'Background##main_background', 'Border##main_border' }) do
     local help = help_after('Checkbox', label)
@@ -148,7 +148,7 @@ for _, label in ipairs({ 'Background##main_background', 'Border##main_border' })
 end
 
 -- Put every display back on Profiles and sharing and the shared timers reset keep every panel's pick, as they keep
--- Panel heading. Reset selected panel puts its panel back to Shared (test_panel_box_saved).
+-- Panel heading. Reset selected panel puts its panel back to From the main page (test_panel_box_saved).
 local picks = { 'both', 'background', 'border', 'none' }
 local function varied(settings)
     for index, id in ipairs(defaults.panel_order) do settings.panels[id].box = picks[(index - 1) % #picks + 1] end
@@ -162,6 +162,7 @@ end
 -- Each case also moves something its reset puts back, so the reset is one Undo step.
 open('Profiles', function(settings) varied(settings); settings.panels.self_buffs.x = 321 end)
 frame('Put every display back where it started')
+frame('Put them back##look_profiles_put_back')
 assert(app.callbacks.history_status().undo_label == 'Reset displays' and kept(), 'Put every display back keeps every panel\'s pick.')
 open('Home', function(settings) varied(settings); settings.style.font_size = 30 end)
 app.callbacks.reset('appearance')

@@ -31,11 +31,6 @@ assert(s.style.font_size == 48, 'Nonfinite slider input never enters live settin
 sliders['##main_opacity'] = -2;
 frame();
 assert(s.style.opacity == 0.05);
--- Snap distance shows while Grid mode is on.
-s.edit_mode.grid_mode = true;
-sliders['##main_snap_distance'] = 40;
-frame('Home');
-assert(s.edit_mode.snap_distance == 32);
 s.style.font_size = 16;
 frame('Profiles', 'Share settings across my characters');
 assert(called.sharing[1] == true and called.sharing[2] == 'placement');

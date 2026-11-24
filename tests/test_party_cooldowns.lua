@@ -1,7 +1,9 @@
 -- The party cooldown watch (core/party_cooldowns.lua): a party or alliance member seen using a two-hour or a key job
 -- ability (a 0x028 category 6 with its id, Eagle Eye Shot a category 3 told by its messages) counts down that
--- ability's base recast for them. Not you, not other players, not pets. Wild Card resets what it lands
--- on by its roll, a job change keeps only the two-hour, and a member who leaves is dropped. The estimates show on the
+-- ability's base recast for them. Utsusemi (a category 4 with the spell's id) counts down the recast the game sent
+-- with it. Not you, not other players, not pets. Wild Card resets the abilities it lands
+-- on by its roll, a Dismiss or Deactivate with the pet at full HP resets Call Wyvern or Activate, a job change keeps
+-- only the two-hour and the spells, and a member who leaves is dropped. The estimates show on the
 -- member's strip, nearest the game's window, over their head when that option is on, and in the list display,
 -- which moves only unlocked with Shift held, filters by job and ability, sorts by time left and truncates silently.
 -- The strips' samples show sample estimates in the normal look.
@@ -15,22 +17,11 @@ local snapshot = { valid = true, id = self_id, zone = 102, name = 'Tester', leve
         [friend] = { name = 'Friend', kind = 'player' }, [stranger] = { name = 'Stranger', kind = 'player' },
         [npc] = { name = 'Trion', kind = 'npc' }, [0x1000001] = { name = 'Crab', kind = 'monster' } } };
 local function fresh() return defaults.tidy(defaults.make()); end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
--- One action: its actor, category and id, and each target with its message and param.
-local function action(actor, category, id, targets)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets); putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target[1]); putbits(bytes, at + 32, 4, 1); at = at + 36;
-        putbits(bytes, at + 27, 17, target[3]); putbits(bytes, at + 44, 10, target[2]); at = at + 87;
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+-- One action: its actor, category and id, each target with its message and param, and the recast a spell sends.
+local function action(actor, category, id, targets, recast)
+    local rows = {};
+    for i, target in ipairs(targets) do rows[i] = { id = target[1], rows = { { message = target[2], param = target[3] } } }; end
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, rows, recast));
 end
 local function uses(events)
     local out = {};
@@ -61,6 +52,30 @@ assert(#seen == 3 and seen[1].kind == 'cooldown' and seen[2].kind == 'cooldown_r
     and seen[3].entity_id == friend, 'A member\'s Wild Card is a use and resets each member it lands on, never you.');
 seen = uses(observer.read(action(self_id, 6, 96, { { self_id, 435, 2 }, { ally, 435, 2 } }), 1, snapshot));
 assert(#seen == 1 and seen[1].kind == 'cooldown_reset' and seen[1].roll == 2, 'Your own Wild Card resets the members it lands on.');
+-- Sneak Attack and Trick Attack are job abilities like the rest.
+seen = uses(observer.read(action(ally, 6, 44, { { ally, 100, 0 } }), 1, snapshot));
+assert(#seen == 1 and seen[1].ability == 44 and seen[1].recast == nil and seen[1].scope == 'party', 'A party member\'s Sneak Attack is a use.');
+seen = uses(observer.read(action(friend, 6, 76, { { friend, 100, 0 } }), 1, snapshot));
+assert(#seen == 1 and seen[1].ability == 76 and seen[1].scope == 'alliance', 'An alliance member\'s Trick Attack is a use.');
+-- Utsusemi finishes as a category 4 with the spell's id and the recast the game gave it at bit 118. It's watched by
+-- 2048 plus the spell's id, so it never meets an ability's.
+local SPELLS = cooldowns.SPELLS or {};
+local ICHI, NI = SPELLS[338] and SPELLS[338].id, SPELLS[339] and SPELLS[339].id;
+assert(ICHI == 2048 + 338 and NI == 2048 + 339 and cooldowns.WATCHED[NI].name == 'Utsusemi: Ni', 'Utsusemi: Ichi and Ni are watched as spells.');
+seen = uses(observer.read(action(ally, 4, 339, { { ally, 230, 66 } }, 27), 1, snapshot));
+assert(#seen == 1 and seen[1].kind == 'cooldown' and seen[1].entity_id == ally and seen[1].ability == NI and seen[1].recast == 27
+    and seen[1].scope == 'party', 'A party member\'s Utsusemi: Ni is a use with the recast the game sent.');
+seen = uses(observer.read(action(friend, 4, 338, { { friend, 75, 0 } }, 19), 1, snapshot));
+assert(#seen == 1 and seen[1].ability == ICHI and seen[1].recast == 19 and seen[1].scope == 'alliance',
+    'An alliance member\'s Utsusemi: Ichi that took no effect still went on recast.');
+assert(#uses(observer.read(action(ally, 4, 339, { { 0x1000001, 84, 0 } }, 2), 1, snapshot)) == 0,
+    'A cast stopped by Paralysis sends 2 seconds the game never puts on, so it isn\'t a use.');
+assert(#uses(observer.read(action(ally, 4, 339, { { 0x1000001, 106, 0 } }, 2), 1, snapshot)) == 0, 'Nor is one stopped by Intimidate.');
+assert(#uses(observer.read(action(self_id, 4, 339, { { self_id, 230, 66 } }, 27), 1, snapshot)) == 0, 'Your own cast is read from the client.');
+assert(#uses(observer.read(action(stranger, 4, 339, { { stranger, 230, 66 } }, 27), 1, snapshot)) == 0, 'A stranger\'s cast is not watched.');
+assert(#uses(observer.read(action(ally, 4, 43, { { ally, 230, 40 } }, 300), 1, snapshot)) == 0, 'Protect is not on the list.');
+assert(#uses(observer.read(action(ally, 4, 44, { { ally, 7, 30 } }, 5), 1, snapshot)) == 0, 'A spell with Sneak Attack\'s id is not Sneak Attack.');
+assert(#uses(observer.read(action(ally, 6, 339, { { ally, 100, 0 } }), 1, snapshot)) == 0, 'An ability with Utsusemi: Ni\'s id is not Utsusemi.');
 
 -- The watch.
 local s = fresh();
@@ -97,6 +112,33 @@ watch:refresh(170, s, snapshot.party, roster);
 roster.members[1].job = 3;
 shown = watch:refresh(171, s, snapshot.party, roster);
 assert(#shown == 1 and shown[1].ability == 96, 'After a job change only the two-hour is left.');
+-- Under SJ Restriction Phoenix sends no support job (src/map/entities/battle_entity.cpp GetSJob :1764-1772), as in
+-- Dreamlands Dynamis until it's unlocked. The restriction leaves recasts alone, so neither it nor its unlock is a job
+-- change. A change from one support job to another still is.
+do
+    local w = cooldowns.new();
+    local held = { valid = true, members = { { id = ally, job = 7, subjob = 1 } } };
+    local function has(ability)
+        for _, use in ipairs(w:of(ally) or {}) do if use.ability == ability then return true; end end
+        return false;
+    end
+    w:refresh(200, s, snapshot.party, held);
+    w:observe({ kind = 'cooldown', entity_id = ally, ability = 48, entity_name = 'Ally' }, 201);
+    w:refresh(202, s, snapshot.party, held);
+    assert(has(48), 'Fixture: Sentinel counts down.');
+    held.members[1].subjob = nil;
+    w:refresh(203, s, snapshot.party, held);
+    local restricted = has(48);
+    held.members[1].subjob = 1;
+    w:refresh(204, s, snapshot.party, held);
+    assert(restricted and has(48), 'A support job restriction or its unlock is no job change, and Sentinel runs on: kept at restriction '
+        .. tostring(restricted) .. ', at unlock ' .. tostring(has(48)));
+    held.members[1].subjob = nil;
+    w:refresh(205, s, snapshot.party, held);
+    held.members[1].subjob = 13;
+    w:refresh(206, s, snapshot.party, held);
+    assert(not has(48), 'A change to another support job still clears it, even when read straight after a restriction.');
+end
 -- With the job read, a 5 or 6 keeps the two-hour only of a member whose main job is COR, whichever two-hour it is.
 watch:observe({ kind = 'cooldown_reset', entity_id = ally, roll = 6 }, 171);
 assert(#watch:refresh(171, s, snapshot.party, roster) == 0, 'A Corsair who changed to WHM loses their Wild Card to a 6.');
@@ -122,10 +164,7 @@ s.party_cooldowns.ignore = {};
 s.party_cooldowns.list.jobs = { [1] = true };
 shown = watch:refresh(202, s, snapshot.party);
 assert(#shown == 1 and shown[1].ability == 35 and #watch:of(ally) == 1, 'The list shows the jobs picked; the strips show everything.');
-s.party_cooldowns.list.jobs, s.party_cooldowns.list.abilities = {}, { [18] = true };
-shown = watch:refresh(203, s, snapshot.party);
-assert(#shown == 1 and shown[1].ability == 18, 'and the abilities picked.');
-s.party_cooldowns.list.abilities, s.party_cooldowns.list.sort = {}, 'name';
+s.party_cooldowns.list.jobs, s.party_cooldowns.list.sort = {}, 'name';
 shown = watch:refresh(204, s, snapshot.party);
 assert(shown[1].member_name == 'Ally' and shown[2].member_name == 'Friend', 'Sorted by member name.');
 s.party_cooldowns.enabled = false;
@@ -143,9 +182,117 @@ assert(berserk:find('Merits can make it shorter', 1, true) and not tip:find('Mer
 local merited = {};
 for _, info in ipairs(cooldowns.list) do if info.merits then merited[#merited + 1] = info.id; end end
 table.sort(merited);
-assert(table.concat(merited, ',') == '31,32,48,63,74,75,83,85,92,133,136,153,154,157,158',
-    'Merits shorten Berserk, Warcry, the seals, Convert, Sentinel, Rampart, Call Beast, Meditate, Random Deal, Activate, Martyr, Devotion, Fealty and Chivalry: '
+assert(table.concat(merited, ',') == '31,32,44,48,63,74,75,76,83,85,92,133,136,153,154,157,158',
+    'Merits shorten Berserk, Warcry, Sneak Attack, Trick Attack, the seals, Convert, Sentinel, Rampart, Call Beast, Meditate, Random Deal, Activate, Martyr, Devotion, Fealty and Chivalry: '
     .. table.concat(merited, ','));
+local sneak, trick = cooldowns.WATCHED[44], cooldowns.WATCHED[76];
+assert(sneak and sneak.name == 'Sneak Attack' and sneak.job == 6 and sneak.recast == 60 and trick and trick.name == 'Trick Attack'
+    and trick.job == 6 and trick.recast == 60, 'Sneak Attack and Trick Attack are THF\'s, 60 seconds each.');
+
+-- A spell counts the recast the game sent, not its base. One sent with none is ready again. A job change and a Wild
+-- Card leave it, as they reset only abilities (Phoenix src/map/recast_container.cpp :305-316,
+-- src/map/char_recast_container.cpp :137-148).
+do
+    local settings, w = fresh(), cooldowns.new();
+    settings.party_cooldowns.enabled = true;
+    w:observe({ kind = 'cooldown', entity_id = ally, ability = NI, recast = 27, entity_name = 'Ally' }, 100);
+    w:observe({ kind = 'cooldown', entity_id = ally, ability = 74, entity_name = 'Ally' }, 100);
+    local listed = w:refresh(101, settings, snapshot.party);
+    assert(#listed == 2 and listed[1].ability == NI and listed[1].deadline == 127 and listed[1].recast == 27 and listed[1].name == 'Utsusemi: Ni'
+        and listed[1].job == 13, 'Utsusemi: Ni counts the 27 seconds the game sent, not its base 45.');
+    w:observe({ kind = 'cooldown', entity_id = ally, ability = NI, entity_name = 'Ally' }, 102);
+    assert(w:refresh(102, settings, snapshot.party)[1].deadline == 127, 'A spell use with no recast read changes nothing.');
+    w:observe({ kind = 'cooldown_reset', entity_id = ally, roll = 6 }, 103);
+    listed = w:refresh(103, settings, snapshot.party);
+    assert(#listed == 1 and listed[1].ability == NI, 'A Wild Card 6 resets Divine Seal and leaves Utsusemi: Ni.');
+    local roster = { valid = true, members = { { id = ally, job = 13, subjob = 1 } } };
+    w:refresh(104, settings, snapshot.party, roster);
+    roster.members[1].job, roster.members[1].subjob = 1, 13;
+    listed = w:refresh(105, settings, snapshot.party, roster);
+    assert(#listed == 1 and listed[1].ability == NI, 'A job change leaves it too.');
+    w:observe({ kind = 'cooldown', entity_id = ally, ability = NI, recast = 0, entity_name = 'Ally' }, 106);
+    assert(#w:refresh(106, settings, snapshot.party) == 0, 'Cast with no recast, as under Chainspell, it is ready again.');
+    w:observe({ kind = 'cooldown', entity_id = friend, ability = ICHI, recast = 0, entity_name = 'Friend' }, 107);
+    assert(w.members[friend] == nil, 'A member with nothing counting gets no entry for one.');
+    local spell_tip = cooldowns.details({ ability = NI, name = 'Utsusemi: Ni', member_name = 'Ally', recast = 27, deadline = 127 }, 100);
+    assert(spell_tip:find('Ready in 27s', 1, true) and spell_tip:find('recast of 27s', 1, true) and spell_tip:find('30 yalms', 1, true)
+        and not spell_tip:find('stimated', 1, true) and not spell_tip:find('Merits', 1, true),
+        'A spell\'s tooltip gives the game\'s recast and calls it no estimate: ' .. spell_tip);
+    local list_ui = require('ui.cooldown_list');
+    local icon = list_ui.icon(NI);
+    assert(icon.kind == 'spell' and icon.recast_id == 339 and list_ui.icon(44).kind == 'ability',
+        'Its icon is the spell\'s, as the recast panel draws it.');
+end
+
+-- Dismiss with the wyvern at full HP resets Call Wyvern, and Deactivate with the automaton at full HP resets Activate
+-- (Phoenix scripts/actions/abilities/dismiss.lua :21-26, scripts/globals/job_utils/puppetmaster.lua :518-530). The
+-- action is the same either way, so the watch drops the estimate only when the client has the member's pet at 100% HP.
+-- Phoenix rounds a pet's HP percent down (src/map/entities/battle_entity.cpp :290-298), so 99 isn't full. Ally, a DRG,
+-- is at index 0x401 with her wyvern at 0x701, and Friend, a PUP, at 0x402 with his automaton at 0x702.
+do
+    local placed = { valid = true, id = self_id, zone = 102, name = 'Tester', level = 75, job = 1, self_known = true, self_effects = {},
+        party = { { id = ally, index = 0x401, name = 'Ally', scope = 'party', zone = 102, slot = 1 },
+            { id = friend, index = 0x402, name = 'Friend', scope = 'alliance', zone = 102, slot = 6 } },
+        entities = snapshot.entities };
+    local units = { [0x400] = { id = self_id, pet = 0x700 }, [0x401] = { id = ally, pet = 0x701 }, [0x402] = { id = friend, pet = 0x702 },
+        [0x700] = { id = 0x1000700, hpp = 100 }, [0x701] = { id = 0x1000701, hpp = 100 }, [0x702] = { id = 0x1000702, hpp = 100 } };
+    local entity = {
+        GetServerId = function(_, index) return units[index] and units[index].id or 0; end,
+        GetPetTargetIndex = function(_, index) return units[index] and units[index].pet or 0; end,
+        GetHPPercent = function(_, index) return units[index] and units[index].hpp or 0; end,
+    };
+    local manager = AshitaCore.GetMemoryManager;
+    AshitaCore.GetMemoryManager = function(self)
+        local memory = manager(self);
+        memory.GetEntity = function() return entity; end;
+        return memory;
+    end;
+    local settings, w = fresh(), cooldowns.new();
+    settings.party_cooldowns.enabled = true;
+    local function feed(packet, at) for _, o in ipairs(uses(observer.read(packet, at, placed))) do w:observe(o, at); end end
+    local function has(at, member, ability)
+        for _, entry in ipairs(w:refresh(at, settings, placed.party)) do
+            if entry.member == member and entry.ability == ability then return entry; end
+        end
+    end
+    feed(action(ally, 6, 61, { { ally, 100, 0 } }), 100);
+    feed(action(ally, 6, 29, { { ally, 100, 0 } }), 100);
+    feed(action(friend, 6, 136, { { friend, 100, 0 } }), 100);
+    feed(action(friend, 6, 135, { { friend, 100, 0 } }), 100);
+    assert(has(101, ally, 61) and has(101, ally, 61).deadline == 1300 and has(101, ally, 29) and has(101, friend, 136) and has(101, friend, 135),
+        'Fixture: Call Wyvern, Spirit Surge, Activate and Overdrive are counting.');
+    -- At 99% the wyvern isn't at full HP, and Call Wyvern keeps counting.
+    units[0x701].hpp = 99;
+    assert(#uses(observer.read(action(ally, 6, 87, { { ally, 100, 0 } }), 2, placed)) == 0, 'A Dismiss with the wyvern at 99% resets nothing.');
+    units[0x701].hpp = 100;
+    local seen = uses(observer.read(action(ally, 6, 87, { { ally, 100, 0 } }), 2, placed));
+    assert(#seen == 1 and seen[1].kind == 'cooldown_reset' and seen[1].entity_id == ally and seen[1].ability == 61 and seen[1].roll == nil
+        and seen[1].scope == 'party', 'A party member\'s Dismiss with the wyvern at 100% resets their Call Wyvern: ' .. #seen);
+    w:observe(seen[1], 160);
+    assert(not has(160, ally, 61) and has(160, ally, 29) and has(160, friend, 136), 'Only her Call Wyvern goes. Her Spirit Surge and Friend\'s Activate stay.');
+    feed(action(friend, 6, 139, { { friend, 100, 0 } }), 170);
+    assert(not has(170, friend, 136) and has(170, friend, 135), 'An alliance member\'s Deactivate at full HP resets Activate, and Overdrive stays.');
+    -- With the pet unread the estimate stays: no pet in the client's list, a place nobody holds, or a member the client
+    -- has at no place.
+    feed(action(ally, 6, 61, { { ally, 100, 0 } }), 200);
+    units[0x401].pet = 0;
+    feed(action(ally, 6, 87, { { ally, 100, 0 } }), 210);
+    units[0x401].pet = 0x703;
+    feed(action(ally, 6, 87, { { ally, 100, 0 } }), 211);
+    units[0x401].pet, placed.party[1].index = 0x701, 0x403;
+    feed(action(ally, 6, 87, { { ally, 100, 0 } }), 212);
+    placed.party[1].index = 0x401;
+    assert(has(212, ally, 61) and has(212, ally, 61).deadline == 1400, 'With the pet unread, Call Wyvern keeps counting.');
+    -- Your own Dismiss is read from the client, and a stranger isn't watched.
+    assert(#uses(observer.read(action(self_id, 6, 87, { { self_id, 100, 0 } }), 2, placed)) == 0, 'Your own Dismiss is no member\'s.');
+    assert(#uses(observer.read(action(stranger, 6, 87, { { stranger, 100, 0 } }), 2, placed)) == 0, 'A stranger\'s Dismiss is not watched.');
+    -- The tooltips of the two say so, and no other does.
+    local wyvern = cooldowns.details({ ability = 61, name = 'Call Wyvern', member_name = 'Ally', recast = 1200, deadline = 1300 }, 100);
+    local automaton = cooldowns.details({ ability = 136, name = 'Activate', member_name = 'Friend', recast = 1200, deadline = 1300 }, 100);
+    assert(wyvern:find('Dismiss with the wyvern at full HP', 1, true) and automaton:find('Deactivate with the automaton at full HP', 1, true)
+        and not (tip .. berserk):find('full HP', 1, true), 'The tooltip says what resets it: ' .. wyvern .. ' / ' .. automaton);
+    AshitaCore.GetMemoryManager = manager;
+end
 
 -- Settings: fresh saves and saves without it get the watch off, the strips on, over heads off and the list off and locked.
 local old = defaults.tidy({ style = {}, panels = {} });
@@ -156,6 +303,9 @@ end;
 local kept = cooldowns.tidy({ list = { max_rows = 900, sort = 'odd', jobs = { 3, 99 }, height = 10 }, ignore = { ['18'] = true }, preview = true, extra = 1 });
 assert(kept.list.max_rows == 64 and kept.list.sort == 'remaining' and kept.list.jobs[3] and not kept.list.jobs[99] and kept.list.height == 60
     and kept.ignore[18] and not kept.preview and kept.extra == 1, 'Tidy keeps choices in range, samples only with the list on, and unknown keys.');
+kept = cooldowns.tidy({ ignore = { [NI] = true, [3072] = true }, list = { abilities = { NI, 3072 } } });
+assert(kept.ignore[NI] and not kept.ignore[3072] and next(kept.list.abilities) == nil,
+    'Tidy keeps a spell unticked, nothing past the spells, and drops the old ability picks of the list.');
 
 -- The list display.
 local hud = require('ui.hud');
@@ -179,14 +329,15 @@ end;
 local listing = fresh();
 -- The watch is off at first, and the list shows only while it is on.
 listing.party_cooldowns.enabled = true;
-local rows = { entry(35, 'Ally', 20), entry(74, 'Friend', 300), entry(18, 'Ally', 5000) };
+local rows = { entry(35, 'Ally', 20), entry(74, 'Friend', 300), entry(18, 'Ally', 5000), entry(NI, 'Dawn', 25) };
 assert(draw_list(listing, rows) == nil, 'The list is off at first.');
 listing.party_cooldowns.list.enabled = true;
 local flags, texts = draw_list(listing, rows);
 local all = table.concat(texts, '|');
 assert(flags and bit.band(flags, ImGuiWindowFlags_NoMouseInputs) ~= 0, 'Locked, the list takes no clicks.');
 assert(all:find('Ally', 1, true) and all:find('Provoke', 1, true) and all:find('20s', 1, true) and all:find('Divine Seal', 1, true)
-    and all:find('Benediction', 1, true) and all:find('|1h', 1, true), 'Each row shows its member, ability and time left: ' .. all);
+    and all:find('Benediction', 1, true) and all:find('|1h', 1, true) and all:find('Utsusemi: Ni', 1, true) and all:find('25s', 1, true),
+    'Each row shows its member, ability or spell and time left: ' .. all);
 listing.party_cooldowns.list.max_rows = 2;
 flags, texts = draw_list(listing, rows);
 all = table.concat(texts, '|');
@@ -282,11 +433,36 @@ assert(#under > 0 and under[1].width == size and under[1].height == size, 'At th
 own.detached_width = 420;
 row = overlay.plan(r, subjects, p, geometry, 1280, 720)[1].rows[2];
 assert(row.area.y == row.cooldown_area.y and row.area.x == row.cooldown_area.x + row.cooldown_area.width, 'With room, beside them.');
+-- A member's name starts at the panel's inner edge and has the row's whole width, wherever their estimates put the
+-- effects, so it lines up with the names of members with none. That holds with no effects showing too. names() gives
+-- each name drawn, with its x and the width of the clip it was drawn in.
+local function names()
+    local at, clip = {}, nil;
+    for _, call in ipairs(MOCK.imgui_calls) do
+        local drawn = MOCK.drawn[call];
+        if call[1] == 'draw:PushClipRect' then clip = drawn;
+        elseif call[1] == 'draw:AddText' and clip then at[drawn[#drawn]] = { x = drawn[4][1], width = clip[3][1] - clip[2][1] }; end;
+    end;
+    return at;
+end;
+local function where(name) return name and name.x .. ', ' .. name.width .. ' wide' or 'not drawn'; end;
+strips({ enabled = true, strips = true });
+local named = names();
+assert(named.Aster and named.Aster.x == 206 and named.Aster.width == 390,
+    'Fixture: Aster has no estimate, and their name starts 6 px into the panel with its whole width: ' .. where(named.Aster));
+assert(named.Bramble and named.Bramble.x == 206 and named.Bramble.width == 390,
+    'Bramble\'s name, over two estimates, starts where Aster\'s does with the same width: ' .. where(named.Bramble));
+p.effects.kind, own.detached_width = 'none', 110;
+strips({ enabled = true, strips = true });
+named = names();
+assert(named.Bramble and named.Bramble.x == 206 and named.Bramble.width == 80,
+    'With no effects showing and two estimates across a narrow panel, Bramble\'s name still has the whole row: ' .. where(named.Bramble));
+p.effects.kind = 'all';
 own.native_detached = false;
 strips({ enabled = true, strips = false });
 plans = overlay.plan(r, subjects, p, geometry, 1280, 720);
 assert(not plans[1].rows[2].cooldown_area and plans[1].rows[2].area.x == before, 'With the strips option off, the row is as before.');
--- None on Party list buffs leaves the rows to the estimates.
+-- None on Party list leaves the rows to the estimates.
 p.effects.kind = 'none';
 text = strips({ enabled = true, strips = true });
 row = overlay.plan(r, subjects, p, geometry, 1280, 720)[1].rows[2];
@@ -337,5 +513,24 @@ do
     party[1].name = 'Late';
     local listed = unnamed:refresh(12, settings, party);
     assert(#listed == 1 and listed[1].member_name == 'Late', 'It shows once the name comes.');
+end;
+-- A steady refresh with members on cooldown makes no tables: who is in the party and their jobs are kept from one
+-- refresh to the next.
+do
+    local steady, settings = cooldowns.new(), fresh();
+    settings.party_cooldowns.enabled = true;
+    local party = { { id = 1004, name = 'Steady', scope = 'party', zone = 102, slot = 3 }, { id = 1005, name = 'Calm', scope = 'party', zone = 102, slot = 4 } };
+    local roster = { valid = true, members = { { id = 1004, job = 3, subjob = 5 }, { id = 1005, job = 1, subjob = 6 } } };
+    steady:observe({ kind = 'cooldown', entity_id = 1004, ability = 74, entity_name = 'Steady' }, 10);
+    steady:observe({ kind = 'cooldown', entity_id = 1005, ability = 35, entity_name = 'Calm' }, 10);
+    for _ = 1, 5 do steady:refresh(11, settings, party, roster); end;
+    collectgarbage('collect'); collectgarbage('collect'); collectgarbage('stop');
+    local before = collectgarbage('count');
+    for _ = 1, 200 do steady:refresh(11, settings, party, roster); end;
+    local each = (collectgarbage('count') - before) * 1024 / 200;
+    collectgarbage('restart');
+    assert(#steady:refresh(11, settings, party, roster) == 2, 'Both estimates show.');
+    -- The test harness adds a few bytes a call of its own. A refresh that made its lookup tables again took about 290.
+    assert(each < 128, 'A steady refresh makes no tables: ' .. each .. ' bytes');
 end;
 return 'The party cooldown watch counts, shows and moves as its settings say';

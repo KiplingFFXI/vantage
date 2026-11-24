@@ -24,6 +24,12 @@ assertions. Each fixture gets its own temporary settings folder. No game client
 is opened or controlled. Mocks verify behavior. They aren't live-client
 validation.
 
+Shared test helpers: MOCK.putbits and MOCK.action_bytes in mock_ashita.lua
+write packet bits and a whole 0x028. alloc_fixture.lua measures the KB a run
+makes the way the allocation tests count it. dat_fixture.lua builds client DAT
+bytes for the font tests. app_fixture.lua puts in the headless app's client,
+observer and display stand-ins before a test loads vantage.lua.
+
 tests/fixtures/clients holds two decoded client images (f2245d1c and 04288488).
 They're game code, so .gitignore keeps them out of commits.
 test_client_check.py runs tools/client_check.py on both and skips without them.
@@ -43,8 +49,9 @@ into tests/fixtures/clients:
 
 client_image.py refuses to write over the two images in tests/fixtures/clients,
 so write to a new folder and copy by hand. It uses the research decoder in
-tests/out/native-solo-research. The -B option keeps Python from writing its
-cache there. That folder isn't in the repository.
+research/native-solo-research, or in the folder VANTAGE_RESEARCH names, as
+tools/client_check.py does. The -B option keeps Python from writing its cache
+there. That folder isn't in the repository.
 
 The preview runs the addon UI against real Dear ImGui through the local bridge.
 It renders in a hidden window. Generated fonts, screenshots, and Python caches
@@ -82,7 +89,7 @@ grips in bars, expanded and icon layouts, and then actual narrow wrapping. Run
 preview/combined_recasts_gallery.lua with --client-assets to compare the local
 spell, ability and item artwork.
 
-Run python tests/benchmark_runtime.py for a mocked core CPU/read-count report.
+Run python tests/benchmark_runtime.py for a mocked core time and read-count report.
 See docs/PERFORMANCE.md for the scenarios and limitations.
 Run python tests/benchmark_frame.py for the per-frame Lua time and allocation
 of the default look with the installed client art. --runtime x86 runs it in a
@@ -91,22 +98,10 @@ trace limits itself as it does in the game. The x86 LuaJIT is
 tests/luajit-x86/luajit.exe, or the one --exe names. That file is LuaJIT 2.1
 built for 32-bit Windows. Its license is the COPYRIGHT file beside it, and
 .gitignore keeps the folder out of commits. To make one, build LuaJIT 2.1 with
-src/msvcbuild.bat static in an x86 Visual Studio prompt. The benchmark runs
-solo, party6, alliance18, settings, filters, overhead, cooldowns, rolls, pet,
-edit, main_closed, main_open, main_grid, the panel_ scenes, then
-settings_filters to settings_help, search and search_home to search_help. The
-settings scenario has the settings window open, and filters has shared hide
-rules on. overhead is party6 with overhead icons drawn for ten units, eight
-icons each. Those units are the target, four mobs the party debuffed and the
-party. cooldowns is overhead with the party cooldown watch on the strips, over
-heads and in its list. It also has two ready pulses playing and Dispel learned,
-so the target's buffs light. rolls is the Phantom Roll display, pet is the pet
-display, and edit is edit mode with anchors and show conditions. main_closed,
-main_open and main_grid show the main page, and each panel_ scene shows one tab
-of a display. settings_filters to settings_help have the settings window open
-on each other page. search is a player typing in the settings search box, going
-round the pages. search_home to search_help hold a word in the box on each
-page. Each line it prints ends with the single-frame mean, p95, p99 and max and
+src/msvcbuild.bat static in an x86 Visual Studio prompt. The header of
+tests/frame_harness.lua has the scenarios in full, and docs/PERFORMANCE.md sums
+them up under "Frame scenarios". --scenario picks one, and --help lists their
+names. Each line it prints ends with the single-frame mean, p95, p99 and max and
 the count of LuaJIT trace flushes.
 tests/jit_flush_guard.py runs the same way, with the same --exe. It fails on
 any trace flush in alliance18, settings, search, filters, overhead, cooldowns,
@@ -115,12 +110,13 @@ scenarios (H.scene in frame_harness.lua). It also fails when that session
 leaves fewer than 2,500 traces of vantage.lua's limit free, or when a full
 cache of its traces wouldn't fit vantage.lua's machine code limit.
 test_draw_digest.py checks that every draw call of that look stays the same,
-and skips without the client. test_frame_shut_cost.py checks that with the
+and that the party scenes list their members' effects by 0x076, as in play. It
+skips without the client. test_frame_shut_cost.py checks that with the
 settings window shut a frame makes no more than it did with the window loaded,
 and skips without the client. test_frame_window_cost.py checks that with the
 window open its own draw makes nothing a frame once warm, on each page and
-display tab but Timer durations, Profiles and the Place tab of Party list
-buffs, and skips without the client.
+display tab, with a search held on each page and with a question waiting for
+Apply or Cancel, and skips without the client.
 Run python tests/benchmark_recasts.py for the bounded cooldown reader and
 projection measurements. See docs/RECASTS.md for timer contracts and readiness
 evidence.

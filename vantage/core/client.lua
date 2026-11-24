@@ -2,8 +2,7 @@
 local client = {};
 local bit = require('bit');
 local finder = require('core.patterns');
-local jobs = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG', 'SAM',
-    'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP' };
+local jobs = require('data.shared_ids').jobs;
 local party_cache, merit_cache, entity_cache, deadline_cache = {}, {}, {}, {};
 local owner, zone, expected_id, expected_zone, waiting, revision = nil, nil, nil, nil, false, 0;
 -- Counts lifecycle resets only; status packets move revision, not this.
@@ -20,8 +19,9 @@ local party_awaiting_ready = false;
 local roster_snapshot;
 -- Your pet: pet_known as the last read left it, held while it is out of your view (away); pet_sync what the last 0x068
 -- said of it; pet_gone the one a 0x068 said left, which the client can still name for a moment. automaton is what the
--- last 0x044 for PUP said of your automaton: its name, HP and max HP.
-local pet_known, pet_sync, pet_gone, automaton;
+-- last 0x044 for PUP said of your automaton: its name, HP and max HP, and from a whole page its MP, head, frame,
+-- attachments, skills and stats. automaton_page is the part of that 0x044 it was read from.
+local pet_known, pet_sync, pet_gone, automaton, automaton_page;
 -- Your status icons as the last 0x037 gave them, and whether they changed since the last ask.
 local icons_low, icons_high, icons_changed = nil, nil, false;
 -- Ids no index answered, kept until the next read: an observation about someone out of view, or a watched id out of
@@ -31,16 +31,7 @@ local unresolved, unresolved_count = {}, 0;
 -- icons alike. Outside one, every read is fresh.
 local in_frame, flags_held, held_hidden, held_event, held_map = false, false, nil, nil, nil;
 
--- pcall(index_of, object, key) guards a lookup without making a closure for it.
-local function index_of(object, key) return object[key]; end
-
-local function call(object, name, ...)
-    if object == nil then return nil; end
-    local ok, fn = pcall(index_of, object, name);
-    if not ok or type(fn) ~= 'function' then return nil; end
-    local success, result = pcall(fn, object, ...);
-    if success then return result; end;
-end
+local index_of, call = require('core.guard').index_of, require('core.guard').call;
 
 local function finite(n)
     return type(n) == 'number' and n == n and math.abs(n) < math.huge;
@@ -201,7 +192,7 @@ function client.reset()
     native_blocked, native_bootstrap = {}, true;
     pending_party, party_window = nil, nil;
     party_awaiting_ready = false;
-    pet_known, pet_sync, pet_gone, automaton = nil, nil, nil, nil;
+    pet_known, pet_sync, pet_gone, automaton, automaton_page = nil, nil, nil, nil, nil;
     icons_low, icons_high = nil, nil;
     if unresolved_count > 0 then unresolved, unresolved_count = {}, 0; end
 end
@@ -246,33 +237,47 @@ local function current_time()
     if ok and finite(raw) and raw > 0 then return (raw * 60) % 4294967296; end
 end
 
-local function native_party_effects(party, entry)
+-- One member's icon low bytes as native_party_effects last read them, by slot from 1. Each read fills it again.
+local native_low = {};
+-- A member's effects from the client's party icons, with what they were read from: the icons' low bytes as text and the
+-- mask of their top bits. saved is the member's entry from the last read, whose list is handed back when both read the
+-- same, as nothing changes a list once it is made.
+local function native_party_effects(party, entry, saved)
     local icons, mask = call(party,'GetStatusIcons',entry), call(party,'GetStatusIconsBitMask',entry);
     local base=array_base(icons);
     local pointer=positive(icons) and icons>=65536 and icons<=4294967295 and icons or nil;
     if base==nil and not pointer then return nil; end
     if pointer and not readable(pointer, 32) then return nil; end
     if type(mask)~='cdata' and (not finite(mask) or mask<0 or mask>9007199254740991 or mask~=math.floor(mask)) then return nil; end
-    local effects, signature={},{};
     for slot=0,31 do
         local low;
         if pointer then low=native_read('read_uint8',pointer+slot,true); else low=at(icons,slot+base); end
+        if not finite(low) or low<0 or low>255 or low~=math.floor(low) then return nil; end
+        native_low[slot+1]=low;
+    end
+    local signature=table.concat(native_low,',');
+    -- The same low bytes and mask are the same effects. A 64-bit mask compares by its value.
+    if saved and saved.signature==signature and saved.mask==mask then return saved.effects,signature,mask; end
+    local effects={};
+    for slot=0,31 do
         local high;
         if type(mask)=='cdata' then
             local ok,value=pcall(function() return tonumber(bit.band(bit.rshift(mask,slot*2),3)); end);
             if ok then high=value; end
         else high=math.floor(mask/2^(slot*2))%4; end
-        if not finite(low) or low<0 or low>255 or low~=math.floor(low) or high==nil then return nil; end
-        local effect=low+high*256;
-        signature[#signature+1]=tostring(effect);
+        if high==nil then return nil; end
+        local effect=native_low[slot+1]+high*256;
         if effect>0 and effect~=255 then effects[#effects+1]={effect=effect,slot=slot}; end
     end
-    return effects,table.concat(signature,',');
+    return effects,signature,mask;
 end
 
+-- The members bootstrap_party read icons for, emptied by each call.
+local native_seen = {};
 local function bootstrap_party(party, members, here, now)
     if not native_bootstrap then return; end
-    local readable={};
+    local readable=native_seen;
+    for id in pairs(readable) do readable[id]=nil; end
     for entry=0,4 do
         local id,index=call(party,'GetStatusIconsServerId',entry),call(party,'GetStatusIconsTargetIndex',entry);
         local member=members[id];
@@ -280,13 +285,18 @@ local function bootstrap_party(party, members, here, now)
             local saved=party_cache[id];
             -- Packets remain authoritative once this load has received them.
             if not saved or saved.source=='native' then
-                local effects,signature=native_party_effects(party,entry);
+                local effects,signature,mask=native_party_effects(party,entry,saved);
                 if effects then
                     readable[id]=true;
-                    if not saved or saved.signature~=signature then party_revision=party_revision+1; end
-                    local changed=not saved or saved.signature~=signature;
-                    party_cache[id]={zone=here,index=index,effects=effects,at=now,revision=changed and party_revision or saved.revision,
-                        source='native',signature=signature};
+                    if saved and effects==saved.effects then
+                        -- The same icons keep the entry, its list and the time they were first read, and only where they
+                        -- were read moves on.
+                        saved.zone,saved.index=here,index;
+                    else
+                        party_revision=party_revision+1;
+                        party_cache[id]={zone=here,index=index,effects=effects,at=now,revision=party_revision,
+                            source='native',signature=signature,mask=mask};
+                    end
                 end
             end
         end
@@ -308,12 +318,15 @@ end
 -- word of it, the longest a jug lasts, as a pet left on Stay sends nothing while it is idle. It has kind 'pet' here
 -- whatever its spawn flags say, as a charmed mob can keep the Monster flag.
 local PET_AWAY = 5400;
+-- Your pet's row from the last read. A read hands it on while every field reads the same, and never changes it, so a
+-- reader that kept the last snapshot still reads what that read gave.
+local pet_row;
 local function read_pet(out, entities, now)
     local index = call(entities, 'GetPetTargetIndex', out.entities[out.id].index);
     local id = finite(index) and index > 0 and index <= 0x8FF and call(entities, 'GetServerId', index) or nil;
     if pet_gone and now - pet_gone.at > 2 then pet_gone = nil; end
     if positive(id) and not (pet_gone and pet_gone.id == id) then
-        if not pet_known or pet_known.id ~= id then pet_known = { id = id, at = now }; end
+        if not pet_known or pet_known.id ~= id then pet_known = { id = id, at = now, since = now }; end
         pet_known.index = index;
         pet_known.name = unit_name(entities, index) or pet_known.name;
         if not pet_known.away then pet_known.at = now; end
@@ -323,12 +336,28 @@ local function read_pet(out, entities, now)
     if pet_known and pet_known.away and now - pet_known.at > PET_AWAY then pet_known = nil; end
     if not pet_known then return; end
     local sync = pet_sync and pet_sync.index == pet_known.index and pet_sync or nil;
-    local row = { id = pet_known.id, index = pet_known.index, name = pet_known.name or sync and sync.name, kind = 'pet',
-        away = pet_known.away, hpp = sync and sync.hpp, mpp = sync and sync.mpp, tp = sync and sync.tp };
+    local name, hpp, mpp, tp = pet_known.name or sync and sync.name, sync and sync.hpp, sync and sync.mpp, sync and sync.tp;
+    -- What it is fighting, which the 0x068 names only while it attacks.
+    local target = sync and sync.target or nil;
+    -- Where it is, while the game shows it at its index: core/tracker.lua takes a pet that moves as awake.
+    local x, y, z;
+    if positive(id) and id == pet_known.id and not pet_known.away then
+        x, y, z = call(entities, 'GetLocalPositionX', index), call(entities, 'GetLocalPositionY', index),
+            call(entities, 'GetLocalPositionZ', index);
+        if not (finite(x) and finite(y) and finite(z)) then x, y, z = nil, nil, nil; end
+    end
     -- The 0x044 tells of your automaton whatever your pet is, so only a pet with its name takes its HP. The server names
     -- the automaton from the same field (src/map/utils/petutils.cpp :641).
-    if automaton and (automaton.name == row.name or sync and automaton.name == sync.name) then
-        row.hp, row.max_hp = automaton.hp, automaton.max_hp;
+    local made = automaton and (automaton.name == name or sync and automaton.name == sync.name) and automaton or nil;
+    -- Nothing changes an automaton once it is read, so the same one has the same HP and MP.
+    local row = pet_row;
+    if not row or row.id ~= pet_known.id or row.index ~= pet_known.index or row.name ~= name or row.away ~= pet_known.away
+        or row.hpp ~= hpp or row.mpp ~= mpp or row.tp ~= tp or row.target_id ~= target or row.since ~= pet_known.since
+        or row.x ~= x or row.y ~= y or row.z ~= z or row.automaton ~= made then
+        row = { id = pet_known.id, index = pet_known.index, name = name, kind = 'pet', away = pet_known.away, hpp = hpp,
+            mpp = mpp, tp = tp, target_id = target, since = pet_known.since, x = x, y = y, z = z };
+        if made then row.hp, row.max_hp, row.mp, row.max_mp, row.automaton = made.hp, made.max_hp, made.mp, made.max_mp, made; end
+        pet_row = row;
     end
     out.pet, out.entities[row.id] = row, row;
 end
@@ -343,17 +372,60 @@ local function read_ammo()
     end
 end
 
+-- Whose pet a unit is: the id of the player whose pet it is, or nil. A pet the game made for its owner sits 0x100
+-- under the place its id names, and a charmed monster keeps its own. The players' places are looked through for one
+-- whose pet is at the unit's place. What is found is kept and checked again each time. A unit found with no owner, such
+-- as a mob fighting a pet, isn't looked for again for half a minute, or until an update of it marks a player as its
+-- master (client.accept). A charm sends that update: it gives the mob's HP part (src/map/utils/battleutils.cpp :4217),
+-- which marks a mob a player is master of (src/map/packets/entity_update.cpp :406-410), so one charmed since is found
+-- by its next move. now is the caller's clock.
+local OWNER_RETRY = 30;
+local owners, owner_count = {}, 0;
+function client.pet_owner(id, now, entities)
+    if not positive(id) or id < 0x1000000 then return nil; end
+    entities = entities or call(memory(), 'GetEntity');
+    local index = id % 0x1000;
+    if index >= 0x800 then index = index - 0x100; end
+    if index <= 0 or index > 0x8FF or call(entities, 'GetServerId', index) ~= id then return nil; end
+    local kept = owners[id];
+    if kept then
+        if kept.at then
+            if call(entities, 'GetServerId', kept.at) == kept.owner and call(entities, 'GetPetTargetIndex', kept.at) == index then return kept.owner; end
+        elseif finite(now) and finite(kept.missed) and now >= kept.missed and now - kept.missed < OWNER_RETRY then return nil; end
+    else
+        if owner_count >= 128 then owners, owner_count = {}, 0; end
+        owner_count = owner_count + 1;
+    end
+    for at = 0x400, 0x6FF do
+        if call(entities, 'GetPetTargetIndex', at) == index then
+            local owner = call(entities, 'GetServerId', at);
+            if positive(owner) then
+                owners[id] = { at = at, owner = owner };
+                return owner;
+            end
+        end
+    end
+    owners[id] = { missed = now };
+    return nil;
+end
+
 function client.resolve(id, index, entities)
     entities = entities or call(memory(), 'GetEntity');
     if positive(index) and index <= 0x8FF and call(entities, 'GetServerId', index) == id then
         local flags = call(entities, 'GetSpawnFlags', index) or 0;
-        local row = { id = id, index = index, name = unit_name(entities, index),
-            kind = id < 0x1000000 and 'player' or bit.band(flags, 0x10) ~= 0 and 'monster' or 'pet' };
+        local name = unit_name(entities, index);
+        local kind = id < 0x1000000 and 'player' or bit.band(flags, 0x10) ~= 0 and 'monster' or 'pet';
+        -- A named unit as it was keeps its row. Nothing changes a row once it has its name, and one with none yet can be
+        -- named in place below, so it isn't handed on.
+        local row = entity_cache[id];
+        if not (name and row and row.name == name and row.index == index and row.kind == kind) then
+            row = { id = id, index = index, name = name, kind = kind };
+        end
         cache_entity(row);
         return row;
     end
     local saved = entity_cache[id];
-    if saved and call(entities, 'GetServerId', saved.index) == id then
+    if saved and positive(saved.index) and saved.index <= 0x8FF and call(entities, 'GetServerId', saved.index) == id then
         saved.name = saved.name or unit_name(entities, saved.index);
         return saved;
     end
@@ -364,7 +436,7 @@ function client.resolve(id, index, entities)
         local low = id % 4096;
         if low > 0 and low <= 0x8FF and call(entities, 'GetServerId', low) == id then return client.resolve(id, low, entities); end
         low = low - 0x100;
-        if low > 0 and call(entities, 'GetServerId', low) == id then return client.resolve(id, low, entities); end
+        if low > 0 and low <= 0x8FF and call(entities, 'GetServerId', low) == id then return client.resolve(id, low, entities); end
     end
     local row = { id = id, kind = id and id >= 0x1000000 and 'monster' or 'player' };
     if positive(id) then
@@ -445,6 +517,29 @@ function client.identity()
     if positive(id) and name then return id, name; end
 end
 
+-- Your effects' rows from the last read, by slot. A read hands on the row of a slot whose effect, raw timer and deadline
+-- are the same, and never changes a row, so a reader that kept the last snapshot still reads what that read gave.
+local self_rows = {};
+-- The deadlines the next read fills, emptied first. It and deadline_cache trade places at each read.
+local next_deadlines = {};
+-- The effects of a member with no listing. Nothing writes into it.
+local NO_EFFECTS = {};
+-- The slots of your buff array the last read couldn't use, for /vg report: each one's row by slot, the ones this read
+-- found in order, and the diagnostics it handed on. A read hands on a row, and the diagnostics, when it finds the same
+-- again, and never changes either, as with your effects' rows.
+local diagnosed = { rows = {}, found = {} };
+-- What a read finds of your party and alliance: each member by id and in slot order, the ids it lists, and one table a
+-- slot for them. Only client.read and bootstrap_party read these, within the read, so each read empties them and fills
+-- them again.
+local party_read = { members = {}, ordered = {}, active = {}, slots = {} };
+-- What client.roster_members hands roster.read: your own row at 0 and each member's row by slot, with the read they
+-- came from. roster.read reads them only in the refresh that made them, so each read fills them again.
+local roster_held = { members = { [0] = {} } };
+-- Each member's row and unit row from the last read by slot, and your own unit row at 0. A read hands on the row of a
+-- slot that reads the same, and never changes a row, as with your effects' rows. A unit row with no name yet is new each
+-- read, as client.resolve can name one in place.
+local member_rows, member_units = {}, {};
+
 function client.read(now, settings)
     roster_snapshot = nil;
     if unresolved_count > 0 then unresolved, unresolved_count = {}, 0; end
@@ -468,7 +563,7 @@ function client.read(now, settings)
         party_cache, merit_cache, entity_cache, deadline_cache = {}, {}, {}, {};
         cached_entities=0;
         native_blocked,native_bootstrap={},false;
-        pet_known, pet_sync, pet_gone, automaton = nil, nil, nil, nil;
+        pet_known, pet_sync, pet_gone, automaton, automaton_page = nil, nil, nil, nil, nil;
     end
     owner, zone, expected_id, expected_zone = id, here, nil, nil;
     local status = entity.StatusServer;
@@ -504,10 +599,9 @@ function client.read(now, settings)
     -- The tracker must not read instance identity from a listing whose timers are still pending.
     out.self_timers_pending = id_base ~= nil and not agree;
     out.self_known = id_base ~= nil;
-    out.self_diagnostics = { source = icon_source, icon_type = type(ids), timer_type = type(timers),
-        icon_base = id_base, timer_base = timer_base, clock_available = clock_now ~= nil,
-        index_base_known = id_base ~= nil, rejected_slots = {} };
-    local current_deadlines = {};
+    local rejected_count = 0;
+    local current_deadlines = next_deadlines;
+    for raw in pairs(current_deadlines) do current_deadlines[raw] = nil; end
     for slot = 0, 31 do
         local number, value, readable;
         if id_base ~= nil then number, value, readable = at(ids, slot + id_base); end
@@ -516,9 +610,15 @@ function client.read(now, settings)
         if not valid then
             out.self_known = false;
             if id_base ~= nil then
-                local rejected = out.self_diagnostics.rejected_slots;
-                rejected[#rejected + 1] = { slot = slot, index = slot + id_base, readable = readable,
-                    raw_type = type(value), raw_value = diagnostic_value(value, number) };
+                local index, raw_type, raw_value = slot + id_base, type(value), diagnostic_value(value, number);
+                local rejected = diagnosed.rows[slot];
+                if not rejected or rejected.index ~= index or rejected.readable ~= readable or rejected.raw_type ~= raw_type
+                    or rejected.raw_value ~= raw_value then
+                    rejected = { slot = slot, index = index, readable = readable, raw_type = raw_type, raw_value = raw_value };
+                    diagnosed.rows[slot] = rejected;
+                end
+                rejected_count = rejected_count + 1;
+                diagnosed.found[rejected_count] = rejected;
             end
         end
         if valid and effect > 0 and effect ~= 255 then
@@ -530,20 +630,43 @@ function client.read(now, settings)
             -- keeps it. Worked out again, it would land on the game clock's whole second, up to one off.
             local deadline = finite(raw) and deadline_cache[raw] or seconds and now + seconds or nil;
             if finite(raw) then current_deadlines[raw] = deadline; end
-            out.self_effects[#out.self_effects + 1] = { effect = effect, slot = slot, raw_timer = raw,
-                deadline = deadline };
+            local row = self_rows[slot];
+            if not row or row.effect ~= effect or row.raw_timer ~= raw or row.deadline ~= deadline then
+                row = { effect = effect, slot = slot, raw_timer = raw, deadline = deadline };
+                self_rows[slot] = row;
+            end
+            out.self_effects[#out.self_effects + 1] = row;
         end
     end
-    deadline_cache = current_deadlines;
-    local active,members,ordered,roster_members = {},{},{},{};
+    next_deadlines, deadline_cache = deadline_cache, current_deadlines;
+    local last = diagnosed.last;
+    local same = last and last.source == icon_source and last.icon_type == type(ids) and last.timer_type == type(timers)
+        and last.icon_base == id_base and last.timer_base == timer_base and last.clock_available == (clock_now ~= nil)
+        and #last.rejected_slots == rejected_count;
+    for n = 1, same and rejected_count or 0 do same = same and last.rejected_slots[n] == diagnosed.found[n]; end
+    if not same then
+        local rejected = {};
+        for n = 1, rejected_count do rejected[n] = diagnosed.found[n]; end
+        diagnosed.last = { source = icon_source, icon_type = type(ids), timer_type = type(timers), icon_base = id_base,
+            timer_base = timer_base, clock_available = clock_now ~= nil, index_base_known = id_base ~= nil, rejected_slots = rejected };
+    end
+    out.self_diagnostics = diagnosed.last;
+    local active,members,ordered,roster_members = party_read.active,party_read.members,party_read.ordered,roster_held.members;
+    for key in pairs(active) do active[key]=nil; end
+    for key in pairs(members) do members[key]=nil; end
+    for n=#ordered,1,-1 do ordered[n]=nil; end
+    for slot=1,17 do roster_members[slot]=nil; end
     for slot = 1, 17 do
         local member_id = call(party, 'GetMemberServerId', slot);
         local member_active=call(party,'GetMemberIsActive',slot);
         if positive(member_id) and member_id ~= id and not members[member_id] and (member_active==nil or truth(member_active)) then
             local member_zone = call(party, 'GetMemberZone', slot);
             local index = call(party, 'GetMemberTargetIndex', slot);
-            members[member_id]={id=member_id,index=index,zone=member_zone,slot=slot};
-            ordered[#ordered+1]=members[member_id];
+            local member=party_read.slots[slot] or {};
+            party_read.slots[slot]=member;
+            member.id,member.index,member.zone,member.slot=member_id,index,member_zone,slot;
+            members[member_id]=member;
+            ordered[#ordered+1]=member;
         end
     end
     bootstrap_party(party,members,here,now);
@@ -555,15 +678,27 @@ function client.read(now, settings)
             local valid = slot<=5 and member_zone == here and cached ~= nil and cached.zone == here and cached.index == index;
             -- A member whose name hasn't come yet has none, never the id.
             local member_name = call(party, 'GetMemberName', slot);
-            local row = { id = member_id, index = index, zone = member_zone,
-                name = type(member_name) == 'string' and member_name ~= '' and member_name or nil,
-                slot=slot,group=math.floor(slot/6)+1,scope=slot<=5 and 'party' or 'alliance',hpp=call(party,'GetMemberHPPercent',slot),
-                valid = valid, effects = valid and cached.effects or {}, observed_at = valid and cached.at or nil,
-                revision = valid and cached.revision or nil };
+            local name = type(member_name) == 'string' and member_name ~= '' and member_name or nil;
+            local hpp, effects = call(party,'GetMemberHPPercent',slot), valid and cached.effects or NO_EFFECTS;
+            local observed_at, listed = valid and cached.at or nil, valid and cached.revision or nil;
+            local row = member_rows[slot];
+            if not row or row.id ~= member_id or row.index ~= index or row.zone ~= member_zone or row.name ~= name
+                or row.hpp ~= hpp or row.valid ~= valid or row.effects ~= effects or row.observed_at ~= observed_at
+                or row.revision ~= listed then
+                row = { id = member_id, index = index, zone = member_zone, name = name,
+                    slot=slot,group=math.floor(slot/6)+1,scope=slot<=5 and 'party' or 'alliance',hpp=hpp,
+                    valid = valid, effects = effects, observed_at = observed_at, revision = listed };
+                member_rows[slot] = row;
+            end
             out.party[#out.party + 1] = row;
             roster_members[slot] = row;
             active[member_id] = true;
-            out.entities[member_id] = { id = member_id, index = index, name = row.name, kind = 'player' };
+            local unit = member_units[slot];
+            if not (name and unit and unit.id == member_id and unit.index == index and unit.name == name) then
+                unit = { id = member_id, index = index, name = name, kind = 'player' };
+                member_units[slot] = unit;
+            end
+            out.entities[member_id] = unit;
             if member_zone ~= here or (cached and cached.index~=index) then party_cache[member_id],native_blocked[member_id] = nil,true; end
         end
     end
@@ -576,9 +711,16 @@ function client.read(now, settings)
         local target_id = call(entity_memory, 'GetServerId', index);
         if positive(target_id) then out.target = client.resolve(target_id, index, entity_memory); out.entities[target_id] = out.target; end
     end
-    out.entities[id] = { id = id, index = call(party, 'GetMemberTargetIndex', 0), name = out.name, kind = 'player' };
-    roster_members[0] = {id=id,name=out.name,zone=here};
-    roster_snapshot = {snapshot=out,at=now,id=id,zone=here,members=roster_members};
+    local own_index, own = call(party, 'GetMemberTargetIndex', 0), member_units[0];
+    if not (out.name and own and own.id == id and own.index == own_index and own.name == out.name) then
+        own = { id = id, index = own_index, name = out.name, kind = 'player' };
+        member_units[0] = own;
+    end
+    out.entities[id] = own;
+    local mine = roster_members[0];
+    mine.id,mine.name,mine.zone = id,out.name,here;
+    roster_held.snapshot,roster_held.at,roster_held.id,roster_held.zone = out,now,id,here;
+    roster_snapshot = roster_held;
     for _, row in pairs(out.entities) do cache_entity(row); end
     -- After those, so a charmed mob you release is known by its flags again.
     read_pet(out, entity_memory, now);
@@ -665,13 +807,21 @@ function client.accept(e, now, snapshot, size, data)
             local start = 4 + row * 48;
             local id, index = u32(data, start), u16(data, start + 4);
             if id ~= 0 and positive(index) and index<=0x8FF and members[id]==index then
-                local effects = {};
-                for slot = 0, 31 do
-                    local high = math.floor(data:byte(start + 8 + math.floor(slot / 4) + 1) / 2 ^ ((slot % 4) * 2)) % 4;
-                    local effect = data:byte(start + 16 + slot + 1) + high * 256;
-                    if effect ~= 255 and effect > 0 then effects[#effects + 1] = { effect = effect, slot = slot }; end
+                -- Phoenix sends the row of each member in your zone when any member's effects change (src/map/party.cpp
+                -- :1219-1247), so most read as they did. The same 40 bytes at the same index and zone keep the member's last
+                -- list, as nothing changes a list once it is made.
+                local bytes, saved = data:sub(start + 9, start + 48), party_cache[id];
+                local effects = saved and saved.bytes == bytes and saved.index == index and saved.zone == snapshot.zone and saved.effects;
+                if not effects then
+                    effects = {};
+                    for slot = 0, 31 do
+                        local high = math.floor(data:byte(start + 8 + math.floor(slot / 4) + 1) / 2 ^ ((slot % 4) * 2)) % 4;
+                        local effect = data:byte(start + 16 + slot + 1) + high * 256;
+                        if effect ~= 255 and effect > 0 then effects[#effects + 1] = { effect = effect, slot = slot }; end
+                    end
                 end
-                next_cache[id] = { zone = snapshot.zone, index = index, effects = effects, at = now, revision = party_revision,source='packet' };
+                next_cache[id] = { zone = snapshot.zone, index = index, effects = effects, at = now, revision = party_revision,source='packet',
+                    bytes = bytes };
                 native_blocked[id]=false;
             end
         end
@@ -685,18 +835,50 @@ function client.accept(e, now, snapshot, size, data)
             pet_known, pet_sync = nil, nil;
         elseif size >= 0x18 then
             local name = data:sub(0x19, size):match('^[^%z]*');
-            pet_sync = { index = index, hpp = data:byte(0x0F), mpp = data:byte(0x10), tp = u16(data, 0x10), name = name ~= '' and name or nil };
+            local target = u32(data, 0x14);
+            pet_sync = { index = index, hpp = data:byte(0x0F), mpp = data:byte(0x10), tp = u16(data, 0x10), name = name ~= '' and name or nil,
+                target = target ~= 0 and target or nil };
             if pet_known and pet_known.index == index then pet_known.at = now; end
         end
     elseif id == 0x044 and size >= 0x6C and data:byte(5) == 18 then
         -- Your automaton, on the job extra's PUP page (src/map/packets/s2c/0x044_extended_job_pup.h :53-55): its name in
         -- 16 bytes at 0x58, then its HP and max HP. A PUP, main or support, gets it each time the automaton changes
         -- (src/map/entities/automaton_entity.cpp :140-151), in the same tick as its HP percent.
+        -- A step it walks is a change too (src/map/ai/helpers/pathfind/entity_path_owner.cpp :61), and any change of your
+        -- own effects sends the page as well (src/map/entities/char_entity.cpp :1190-1196), so in a fight it comes again
+        -- and again, often with what is read below as it was. A page whose bytes after the header, up to the last one
+        -- read below, are the same as the last keeps the automaton read from it, which nothing changes once made.
+        local page = data:sub(5, size >= 0x9C and 0x9C or 0x6C);
+        if page == automaton_page then return; end
+        automaton_page = page;
         local name = data:sub(0x59, 0x68):match('^[^%z]*');
         automaton = name ~= '' and { name = name, hp = u16(data, 0x68), max_hp = u16(data, 0x6A) } or nil;
-    elseif id == 0x00E and size >= 11 and pet_known and u32(data, 4) == pet_known.id then
+        -- The rest of the page (0x044_extended_job_pup.h :44-78): the head and frame at 0x08 and 0x09, the twelve
+        -- attachments from 0x0A, MP and max MP after the HP, the three skills each with its cap from 0x70, and the seven
+        -- stats each with its bonus from 0x80.
+        if automaton and size >= 0x9C then
+            automaton.mp, automaton.max_mp = u16(data, 0x6C), u16(data, 0x6E);
+            automaton.head, automaton.frame = data:byte(0x09), data:byte(0x0A);
+            local attachments, skills, stats = {}, {}, {};
+            for slot = 1, 12 do attachments[slot] = data:byte(0x0A + slot); end
+            for index = 1, 3 do skills[index] = { u16(data, 0x6C + index * 4), u16(data, 0x6E + index * 4) }; end
+            -- A stat's bonus is a signed number in its two bytes (0x044_extended_job_pup.cpp :98-111, getMod).
+            for index = 1, 7 do
+                local bonus = u16(data, 0x7E + index * 4);
+                stats[index] = { u16(data, 0x7C + index * 4), bonus >= 0x8000 and bonus - 0x10000 or bonus };
+            end
+            automaton.attachments, automaton.skills, automaton.stats = attachments, skills, stats;
+        end
+    elseif id == 0x00E and size >= 11 then
+        local unit = u32(data, 4);
         -- Any other update of it says it is back in view.
-        pet_known.away = bit.band(data:byte(11), 0x20) ~= 0 or nil;
+        if pet_known and unit == pet_known.id then pet_known.away = bit.band(data:byte(11), 0x20) ~= 0 or nil; end
+        -- An update with the HP part (0x04 at 0x0A) marks a unit a player is master of with 0x08 at 0x27. Then
+        -- pet_owner looks again for the owner of a unit it found none for.
+        local kept = owners[unit];
+        if kept and kept.missed and size >= 0x28 and bit.band(data:byte(11), 0x04) ~= 0 and bit.band(data:byte(0x28), 0x08) ~= 0 then
+            kept.missed = nil;
+        end
     elseif id == 0x08C and size >= 8 then
         local count = u16(data, 4);
         if 8 + count * 4 <= size then
@@ -734,22 +916,46 @@ function client.member_job(snapshot, id)
     end
 end
 
--- Capture equipment and buffs at the action, before the player swaps gear again.
-function client.sample_modifiers(snapshot)
-    local out = { items = {}, buffs = {}, merits = {}, level = snapshot and snapshot.level, job = snapshot and snapshot.job, complete = true };
-    for _, row in ipairs(snapshot and snapshot.self_effects or {}) do out.buffs[row.effect] = true; end
-    for id, value in pairs(merit_cache) do out.merits[id] = value; end
-    local inventory = call(memory(), 'GetInventory');
-    out.enhancing_skill = call(call(call(memory(), 'GetPlayer'), 'GetCombatSkill', 34), 'GetSkill');
-    out.summoning_skill = call(call(call(memory(), 'GetPlayer'), 'GetCombatSkill', 38), 'GetSkill');
-    for slot = 0, 15 do
-        local equipped = call(inventory, 'GetEquippedItem', slot);
-        if equipped == nil then out.complete = false;
-        elseif finite(equipped.Index) and equipped.Index ~= 0 then
-            local item = call(inventory, 'GetContainerItem', bit.rshift(equipped.Index, 8), bit.band(equipped.Index, 0xFF));
-            if item and positive(item.Id) then out.items[slot] = item.Id; else out.complete = false; end
+-- A party or alliance member's pet's HP percent as the client last had it, or nil while it can't be read: a member the
+-- client has at no place, no pet out, or a pet at a place nobody holds. A pet's entity update gives the percent Phoenix
+-- rounds down (src/map/packets/entity_update.cpp :400, src/map/entities/battle_entity.cpp :290-298).
+function client.member_pet_hpp(snapshot, id)
+    for _, member in ipairs(snapshot and snapshot.party or {}) do
+        if member.id == id then
+            local entities, index = call(memory(), 'GetEntity'), member.index;
+            if not positive(index) or index > 0x8FF or call(entities, 'GetServerId', index) ~= id then return nil; end
+            local pet = call(entities, 'GetPetTargetIndex', index);
+            if not positive(pet) or pet > 0x8FF or not positive(call(entities, 'GetServerId', pet)) then return nil; end
+            local hpp = call(entities, 'GetHPPercent', pet);
+            return finite(hpp) and hpp or nil;
         end
     end
+end
+
+-- The id of the item in each equipment slot, by slot, into out, a table the caller keeps. False when a slot couldn't
+-- be read.
+function client.worn_items(out)
+    local inventory, complete = call(memory(), 'GetInventory'), true;
+    for slot = 0, 15 do
+        out[slot] = nil;
+        local equipped = call(inventory, 'GetEquippedItem', slot);
+        if equipped == nil then complete = false;
+        elseif finite(equipped.Index) and equipped.Index ~= 0 then
+            local item = call(inventory, 'GetContainerItem', bit.rshift(equipped.Index, 8), bit.band(equipped.Index, 0xFF));
+            if item and positive(item.Id) then out[slot] = item.Id; else complete = false; end
+        end
+    end
+    return complete;
+end
+
+-- Capture equipment and buffs at the action, before the player swaps gear again. merits are the client's own, with no
+-- copy: their readers look one up within the packet's callback, and a reset gives the client new ones.
+function client.sample_modifiers(snapshot)
+    local out = { items = {}, buffs = {}, merits = merit_cache, level = snapshot and snapshot.level, job = snapshot and snapshot.job, complete = true };
+    for _, row in ipairs(snapshot and snapshot.self_effects or {}) do out.buffs[row.effect] = true; end
+    out.enhancing_skill = call(call(call(memory(), 'GetPlayer'), 'GetCombatSkill', 34), 'GetSkill');
+    out.summoning_skill = call(call(call(memory(), 'GetPlayer'), 'GetCombatSkill', 38), 'GetSkill');
+    out.complete = client.worn_items(out.items);
     return out;
 end
 

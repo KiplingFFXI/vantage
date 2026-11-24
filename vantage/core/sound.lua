@@ -15,8 +15,11 @@ local function mci(command)
     return ok and result == 0;
 end
 
+-- A tidy of the settings (ui/defaults.lua), as at a reload, Undo or an import, cuts a rule's sound to 160 characters and
+-- takes out any ##. So a longer name, or one with ##, isn't listed, as a rule couldn't keep it.
 local function valid(name)
-    if (type(name) ~= 'string' or name == '' or #name > 200 or name:find('[%c"\\/:]') or name:find('..', 1, true)) then return false; end
+    if (type(name) ~= 'string' or name == '' or #name > 160 or name:find('[%c"\\/:]') or name:find('..', 1, true)
+        or name:find('##', 1, true)) then return false; end
     local lower = name:lower();
     return lower:match('%.mp3$') ~= nil or lower:match('%.wav$') ~= nil;
 end
@@ -80,6 +83,29 @@ local function open(name)
     slots[index], by_name[name] = { name = name, alias = alias, used = used }, index;
     current, failed[name], problem = index, nil, nil;
     return true;
+end
+
+-- Opens a sound ahead of its first play, so the open's stall isn't in the frame an alert fires in. Which sound plays
+-- next stays as it was. With every place taken, it takes the place of the sound played longest ago that keep doesn't
+-- name and that isn't the one in use. keep names the sounds to leave open, by file name. Returns whether the sound is
+-- open.
+function sound.prepare(name, keep)
+    if (by_name[name] ~= nil) then return true; end
+    if (name == '' or failed[name]) then return false; end
+    local free, oldest;
+    for index = 1, LIMIT do
+        local slot = slots[index];
+        if (slot == nil) then free = true;
+        elseif (index ~= current and not (keep and keep[slot.name]) and (oldest == nil or slot.used < slots[oldest].used)) then oldest = index; end
+    end
+    if (not free) then
+        if (oldest == nil) then return false; end
+        close(oldest);
+    end
+    local was, said = current, problem;
+    local ok = open(name);
+    current, problem = was, said;
+    return ok == true;
 end
 
 function sound.use(name, retry)

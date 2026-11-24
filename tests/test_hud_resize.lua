@@ -207,6 +207,64 @@ for _, kind in ipairs({ 'timer', 'notice' }) do
     assert(kind == 'timer' and p.auto_height or kind == 'notice' and settings.alerts.notice_height == 0,
         'A corner changes automatic sizing only after that axis actually moves.');
 end;
+-- Across at Centered stays Centered while a move or a pull leaves the notices' left edge and width as they were: a move
+-- straight down, or a pull of the top or bottom edge. A move across and back puts it back. A pull of the right edge
+-- sets Across to where they are, so they stay put. Down typed past the screen's edge stays on a move straight across.
+for _, case in ipairs({ { 'center', 40, 40, 0 }, { 'top', -20, -20, 20 }, { 'bottom', 30, 0, 30 } }) do
+    fresh('notice'); settings.alerts.notice_x = -1; render();
+    local first = start(case[1]);
+    my = my + case[2]; render(); release();
+    assert(rects[name].y == first.y + case[3] and rects[name].height == first.height + case[4] and saves == 1,
+        'Fixture: the ' .. case[1] .. ' gesture moves or pulls the notices.');
+    assert(settings.alerts.notice_x == -1 and rects[name].x == first.x,
+        'A ' .. case[1] .. ' gesture straight up or down keeps Across at Centered: ' .. settings.alerts.notice_x);
+end;
+fresh('notice'); settings.alerts.notice_x = -1; render();
+local centered = start('center');
+mx = mx + 30; render();
+assert(settings.alerts.notice_x == centered.x + 30, 'Fixture: the move goes across: ' .. settings.alerts.notice_x);
+mx = mx - 30; render(); release();
+assert(settings.alerts.notice_x == -1 and rects[name].x == centered.x and saves == 1, 'A move across and back puts Centered back: ' .. settings.alerts.notice_x);
+fresh('notice'); settings.alerts.notice_x = -1; render();
+centered = start('right'); mx = mx + 40; render(); release();
+assert(settings.alerts.notice_x == centered.x and rects[name].x == centered.x and rects[name].width == centered.width + 40,
+    'A pull of the right edge sets Across to where the notices are, so they stay put: ' .. settings.alerts.notice_x);
+fresh('notice'); settings.alerts.notice_y = 5000; render();
+centered = start('center'); mx = mx - 30; render(); release();
+assert(settings.alerts.notice_y == 5000 and rects[name].y == centered.y and rects[name].x == centered.x - 30,
+    'A move straight across keeps a Down typed past the screen\'s edge: ' .. settings.alerts.notice_y);
+-- At Size 0.85, as a save writes it and a load reads it back, notices at an Across typed past the screen's edge are
+-- drawn at a fraction of a pixel. A move straight down from a whole pixel, as a mouse gives, keeps that Across, also
+-- with the notices ticked to snap, sitting on the screen's edge they snap to. A move right and down pushes into
+-- the edge they sit on, so it goes across and Across becomes where they are drawn, as edit mode's drag does.
+local small = tonumber(string.format('%.14g', 0.85000002384185791015625));
+-- A Shift move of the notices at Across 5000 and Size scale, 40 px down and across px to the right. Returns where they
+-- were drawn before it.
+local function move(scale, across, grid)
+    fresh('notice'); settings.style.scale, settings.alerts.notice_x = scale, 5000;
+    if grid then
+        settings.edit_mode.grid_mode = true;
+        require('ui.snap').tick(settings, 'notices', true);
+        for _, switch in ipairs({ 'snap_grid', 'snap_elements', 'snap_party', 'snap_chat' }) do settings.edit_mode[switch] = false; end;
+        assert(require('ui.snap').on(settings, 'notices'), 'Fixture: Snap while moving is on and the notices are ticked for it.');
+    end;
+    render();
+    local box = rects[name];
+    mx, my = math.floor(box.x) + 30, math.floor(box.y + box.height / 2);
+    down, pressed = true, true; render(); pressed = false;
+    mx, my = mx + across, my + 40; render(); release();
+    assert(settings.alerts.notice_y == 190 and saves == 1, 'Fixture: the move goes down: ' .. settings.alerts.notice_y);
+    return box;
+end;
+local box = move(small, 0);
+assert(box.x ~= math.floor(box.x) and settings.alerts.notice_x == 5000 and rects[name].x == box.x,
+    'At Size 0.85 a move straight down keeps an Across typed past the screen\'s edge: ' .. settings.alerts.notice_x);
+box = move(small, 0, true);
+assert(settings.alerts.notice_x == 5000 and rects[name].x == box.x,
+    'Ticked to snap, on the screen\'s edge they snap to, a move straight down at Size 0.85 keeps that Across: ' .. settings.alerts.notice_x);
+box = move(1, 20);
+assert(settings.alerts.notice_x == 1300 and box.x == 1300 and rects[name].x == 1300,
+    'A move right and down that pushes into the edge sets Across to where the notices are drawn: ' .. settings.alerts.notice_x);
 fresh('notice'); settings.alerts.notice_width = 900; render();
 local constrained = copy(settings);
 start('right'); mx = mx + 50; render(); release();
@@ -215,7 +273,7 @@ assert(equal(settings, constrained) and not before and changes == 0 and saves ==
 -- A resize snaps only the edge it pulls, here to another display's edge 3 pixels away; the edges across stay put.
 local snap, elements = require('ui.snap'), require('ui.elements');
 fresh('timer');
--- Self buffs ticked for Grid mode, which is on, snapping to the other displays only.
+-- Self buffs ticked to snap, which is on, snapping to the other displays only.
 settings.edit_mode.grid_mode = true;
 snap.tick(settings, 'self_buffs', true);
 for _, switch in ipairs({ 'snap_grid', 'snap_screen', 'snap_party', 'snap_chat' }) do settings.edit_mode[switch] = false; end;
@@ -246,4 +304,12 @@ for _, kind in ipairs({ 'timer', 'notice' }) do
     release();
 end;
 imgui.IsItemActive = active;
+-- On a screen wide enough, a timer panel's drag goes past 1400 and stops at 2400.
+do
+    local p = fresh('timer');
+    MOCK.screen, p.x = { 2560, 1440 }, 0;
+    render();
+    start('right'); mx = mx + 3000; render(); release();
+    assert(p.width == 2400 and rects[name].width == 2400, 'A timer panel drags out to 2400 wide: ' .. tostring(p.width));
+end;
 assert(#MOCK.font_stack == 0, 'Resize drawing leaves the font stack balanced.');

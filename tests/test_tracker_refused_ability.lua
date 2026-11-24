@@ -6,21 +6,10 @@ local observer=require('core.observer');
 local client=require('core.client');
 local SELF,MAIN,SUB,BOB=1001,2001,2002,1002;
 local names={[SELF]='Tester',[MAIN]='Main',[SUB]='Sub',[BOB]='Bob'};
-local function bits(bytes,offset,length,value)
-    for i=0,length-1 do
-        local at=offset+i;
-        if math.floor(value/2^i)%2==1 then bytes[math.floor(at/8)]=bytes[math.floor(at/8)]+2^(at%8); end;
-    end;
-end;
 local function action(actor,category,id,targets)
-    local bytes,at=MOCK.bytes(2048),150;
-    bits(bytes,40,32,actor);bits(bytes,72,6,#targets);bits(bytes,82,4,category);bits(bytes,86,32,id);
-    for _,target in ipairs(targets) do
-        bits(bytes,at,32,target[1]);bits(bytes,at+32,4,1);at=at+36;
-        bits(bytes,at+27,17,target[3]);bits(bytes,at+44,10,target[2]);at=at+87;
-    end;
-    bytes.n=math.ceil(at/8);
-    return MOCK.packet(0x028,bytes);
+    local rows={};
+    for i,target in ipairs(targets) do rows[i]={id=target[1],rows={{message=target[2],param=target[3]}}}; end;
+    return MOCK.packet(0x028,MOCK.action_bytes(actor,category,id,rows));
 end;
 -- Warcry (32) used by one, reported on all four with its effect (68).
 local function warcry(user)

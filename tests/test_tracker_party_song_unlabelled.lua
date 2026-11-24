@@ -20,25 +20,8 @@ party.GetMemberHPPercent=function() return 100; end;
 party.GetStatusIconsServerId=function() return 0; end;
 party.GetStatusIconsTargetIndex=function() return 0; end;
 mm.GetEntity=function() return {GetServerId=function() return 0;end,GetName=function() return '';end,GetSpawnFlags=function() return 0;end};end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function action(category, id, targets, actor)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor); putbits(bytes, 72, 6, #targets);
-    putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target.id); putbits(bytes, at + 32, 4, #target.rows); at = at + 36;
-        for _, row in ipairs(target.rows) do
-            putbits(bytes, at + 27, 17, row.param or 0); putbits(bytes, at + 44, 10, row.message or 0); at = at + 85;
-            at = at + 1; at = at + 1;
-        end
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor, category, id, targets));
 end
 -- 0x076 listing Bob (row 0) and Dave (row 1) with the given effect lists.
 local function group(bob, dave)

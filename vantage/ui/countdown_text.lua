@@ -9,12 +9,28 @@ local function non_negative(value)
 end
 
 -- Every time Vantage shows reads as the game's own: whole hours from an hour, whole minutes from a minute, then
--- seconds rounded up, so 59.5 seconds shows 60s.
+-- seconds rounded up, so 59.5 seconds shows 60s. Each text is made once, by what it shows, so a ticking countdown
+-- makes nothing. Bounded, as a long timer's hours each make one. A time that isn't one is turned away first, so it
+-- never takes a slot.
+local texts, text_count = {}, 0
 function countdown.time(seconds)
     if not non_negative(seconds) then return '' end
-    if seconds >= 3600 then return tostring(math.floor(seconds / 3600)) .. 'h' end
-    if seconds >= 60 then return tostring(math.floor(seconds / 60)) .. 'm' end
-    return tostring(math.ceil(seconds)) .. 's'
+    local key = seconds >= 3600 and 20000 + math.floor(seconds / 3600) or seconds >= 60 and 10000 + math.floor(seconds / 60)
+        or math.ceil(seconds)
+    local text = texts[key]
+    if text then return text end
+    if seconds >= 3600 then text = tostring(math.floor(seconds / 3600)) .. 'h'
+    elseif seconds >= 60 then text = tostring(math.floor(seconds / 60)) .. 'm'
+    else text = tostring(math.ceil(seconds)) .. 's' end
+    if text_count < 16384 then texts[key], text_count = text, text_count + 1 end
+    return text
+end
+
+-- An effect's countdown: nothing for Level Sync (269) outside the recasts, the time since it landed for a duration
+-- override that counts up (core/durations.lua), else the time left.
+function countdown.effect_text(effect)
+    if tonumber(effect.effect) == 269 and effect.domain ~= 'recast' then return '' end
+    return countdown.time(effect.count_up == true and effect.elapsed or effect.remaining)
 end
 
 -- 269 is Level Sync, which runs with no countdown.
@@ -85,9 +101,8 @@ end
 
 -- point, when given, is a table the caller keeps and the text position is written into, so a pass makes nothing
 -- (the binding copies a vector when it is called and keeps none).
-local function draw_pass(list,renderer,face,text,x,y,size,compact,dx,dy,ink,point)
-    if renderer then renderer(list,text,x+dx,y+dy,size,ink,compact)
-    elseif point then
+local function draw_pass(list,face,text,x,y,size,dx,dy,ink,point)
+    if point then
         point[1],point[2]=x+dx,y+dy
         list:AddText(face,size,point,ink,text)
     else list:AddText(face,size,{x+dx,y+dy},ink,text) end
@@ -102,9 +117,8 @@ function countdown.draw(list,font,text,x,y,size,color,options,compact,point)
     x,y=math.floor(x+0.5)+left,math.floor(y+0.5)+top
     color=rgba(color)
     local alpha=math.floor(color/16777216)%256
-    local renderer,replay
-    if fonts.is_bitmap(font) then renderer,replay=fonts.countdown_renderer(font) end
-    local face=not renderer and fonts.face(font)
+    local replay=fonts.is_bitmap(font) and fonts.countdown_renderer(font)
+    local face=not replay and fonts.face(font)
     passes=0
     if shadow then add_pass(1,1,alpha*16777216,bold) end
     if outline then
@@ -119,7 +133,7 @@ function countdown.draw(list,font,text,x,y,size,color,options,compact,point)
         replay(list,text,x,y,size,compact,passes,pass_x,pass_y,pass_ink)
         return true
     end
-    for pass=1,passes do draw_pass(list,renderer,face,text,x,y,size,compact,pass_x[pass],pass_y[pass],pass_ink[pass],point) end
+    for pass=1,passes do draw_pass(list,face,text,x,y,size,pass_x[pass],pass_y[pass],pass_ink[pass],point) end
     return true
 end
 

@@ -84,7 +84,8 @@ assert(rect.shown==32 and rect.height<=600, 'Compact icons fit without reserving
 p.x,p.y = 9000,9000
 rect = hud.bounds(p, s.style, 2, 800, 600)
 assert(rect.x + rect.width <= 800 and rect.y + rect.height <= 600)
-assert(#window.search('sound') > 0 and window.search('party')[1].tab == 'Display')
+-- party leads first to the main page's Party group, which holds every party display.
+assert(#window.search('sound') > 0 and window.search('party')[1].tab == 'Home' and window.search('party')[1].label == 'Party')
 assert(#window.search('sound impossible-word') == 0)
 for _, name in ipairs(theme.names) do theme.apply(s, name); assert(theme.current(s) == name) end
 s.style.buff_color[1] = s.style.buff_color[1] + 0.123

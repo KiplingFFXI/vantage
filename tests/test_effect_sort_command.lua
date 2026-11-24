@@ -21,6 +21,12 @@ local function other_settings(value)
     return result;
 end;
 MOCK.fire('load'); app.refresh(1);
+-- Fresh settings already sort every effect display longest remaining first, so this sort changes nothing and makes no
+-- Undo step. Its line says so and promises no Undo.
+command('/vg sort longest');
+local fresh_line = MOCK.printed[#MOCK.printed];
+assert(app.callbacks.history_status().undo == 0 and fresh_line:find('Buffs and debuffs already sort longest remaining first.', 1, true)
+    and not fresh_line:find('/vg undo', 1, true), 'A sort that changes nothing says so and promises no Undo: ' .. fresh_line);
 local seeded = store.copy(app.state.settings);
 seeded.shared_layout = false;
 seeded.party_ui.effects.sort = 'remaining';
@@ -94,9 +100,13 @@ for _, choice in ipairs({'longest', 'oldest', 'remaining', 'name'}) do
     assert(equal(before, app.state.settings) and persisted_matches(before), 'Undo restores every previous per-display sort choice.');
     command('/vg redo');
     assert(equal(applied, app.state.settings) and persisted_matches(applied), 'Redo restores and persists the chosen sorting.');
+    previous_writes = writes;
     command('/vg sort ' .. choice);
     assert(equal(applied, app.state.settings) and app.callbacks.history_status().undo == history + 1,
         'Repeating the same sort does not add a redundant Undo step.');
+    message = MOCK.printed[#MOCK.printed];
+    assert(message:find('Buffs and debuffs already sort ' .. sort_labels[choice] .. '.', 1, true) and not message:find('/vg undo', 1, true)
+        and writes == previous_writes, 'So it says it already sorts that way, promises no Undo and saves nothing: ' .. message);
     invalid_commands(applied);
 end;
 command('/vg sort LONGEST');

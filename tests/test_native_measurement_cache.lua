@@ -13,7 +13,7 @@ for _,member in ipairs(roster.members) do
 end;
 local calls={};
 fonts.measure=function(_,value,size) calls[value]=(calls[value] or 0)+1;return #value*size/2;end;
--- The party list buffs wear the timer panels' font.
+-- Party list wears the timer panels' font.
 local style=require('ui.defaults').make().style;
 local function plan()
     return overlay.plan(roster,subjects,config,{available=false},1600,900,nil,style)[1];

@@ -7,6 +7,7 @@ local overhead = {};
 local bit = require('bit');
 local camera = require('core.camera');
 local client = require('core.client');
+local effect_filters = require('core.effect_filters');
 local name_anchor = require('core.name_anchor');
 local warmup = require('core.warmup');
 local band, floor, ceil, sqrt, abs, huge, min = bit.band, math.floor, math.ceil, math.sqrt, math.abs, math.huge, math.min;
@@ -34,7 +35,7 @@ local plan = { count = 0, units = {}, order = {}, valid = false, hidden = 'Off.'
 -- placed from on screen: the game's name point above the name, or the middle of the guessed name, the head under it),
 -- anchor_x and anchor_y (the middle of the block's bottom edge, or of its top edge under the head), name_px and arrow_px
 -- (on the guess, the name's and the target cursor's height it leaves room for), size (icon px), alpha, depth (view
--- depth), distance (yalms), ppy (px per yalm at that point), head (yalms) and head_source. path is 'name point' or
+-- depth), distance (yalms), ppy (px per yalm at that point) and head (yalms). path is 'name point' or
 -- 'guess', why the reason a unit took the guess above the name; the np_ fields keep its name point's skeleton values
 -- between list rebuilds and this frame's placement for /vg report. ui is DisplaySize height / 1080 times the style
 -- scale, k the same without the style scale, as the game's own names don't follow it.
@@ -46,7 +47,7 @@ local last_ids, last_sizes, last_count = {}, {}, 0;
 for i = 1, CANDIDATES do
     last_ids[i], last_sizes[i] = 0, 0;
     pool[i] = { id = 0, index = 0, kind = 'mob', level = OTHER, target = false, subtarget = false, name = '', race = 0,
-        hitbox = 0, model_size = 0, spawn_flags = 0, type = 0, status = 0, head = 0, head_source = 'hitbox', rows = 0,
+        hitbox = 0, status = 0, head = 0,
         distance = 0, x = 0, y = 0, depth = 0, size = 0, alpha = 1, anchor_x = 0, anchor_y = 0, ppy = 0, name_px = 0, arrow_px = 0,
         visible = false, player = false, path = 'guess', why = false, np_node = 0, np_gen = -1, np_bad = false, np_gx = 0,
         np_gy = 0, np_gz = 0, np_bone = 0, np_count = 0, np_rise = 0, np_ai = 0, np_ax = 0, np_ay = 0, np_ndc = 0, np_s = 0,
@@ -57,7 +58,7 @@ local sample_cache = { np_node = 0, np_gen = -1, np_bad = false, np_gx = 0, np_g
     np_rise = 0, np_ai = 0, np_ax = 0, np_ay = 0, np_ndc = 0, np_s = 0, np_t = 0, np_name_top = 0, np_icon_top = 0,
     np_arrow_top = 0, np_arrow = false };
 local picked = {};
-local party_ids, party_scope, rows_of, scope_of, debuffed = {}, {}, {}, {}, {};
+local party_ids, party_scope, scope_of, debuffed = {}, {}, {}, {};
 -- Each unit's rows in the view the list was made from: first_row[id] is one of them, next_row[i] the next (0 ends).
 local first_row, next_row, survey_rows = {}, {}, {};
 -- The party cooldown estimates by member id (core/party_cooldowns.lua) while they go over heads, or none.
@@ -94,8 +95,20 @@ local function truth(value) return value == true or value == 1; end
 local function u16(data, pos) return data:byte(pos + 1) + data:byte(pos + 2) * 256; end
 local function u32(data, pos) return u16(data, pos) + u16(data, pos + 2) * 65536; end
 
+-- Each pet seen out with its owner, yours and your party's: its id and its owner's. A debuff it put on a mob is still
+-- its owner's after the pet is gone, as a released avatar's is. A zone change forgets them.
+local pet_owners, pets_seen = {}, 0;
+-- Where you and each party member are in the game's list, by id, as the survey last read the party.
+local owner_at = {};
+-- When the survey first saw each remembered pet alive in the list while its owner, in view, no longer had it.
+local unowned_since = {};
 local function forget()
     wipe(index_of); wipe(claimer_of); wipe(status_of); wipe(masked_of); known = 0;
+    wipe(pet_owners); wipe(unowned_since); pets_seen = 0;
+end
+local function own_pet(pet, owner)
+    if pet_owners[pet] == nil then pets_seen = pets_seen + 1; end
+    pet_owners[pet] = owner;
 end
 
 -- 0x00D and 0x00E carry each entity's server id at 0x04 and index at 0x08. An 0x00E with its claim bit (0x02 at 0x0A)
@@ -107,13 +120,25 @@ end
 -- it is invisible, 2 as it disappears and 6 for a cutscene only. One with its HP bit (0x04) carries the entity flags at
 -- 0x21 too, untargetable 0x800, and its name display at 0x2B, hide name 0x08 (data/enums/entity_flags.yaml and
 -- name_vis.yaml). Those two stay as last sent until the next update with that bit.
+-- From a 0x00D, which comes many times a second in a town, only the id, index and flags are taken. With no data read
+-- for it, they are read where the packet is, as core/observer.lua reads a 0x028, since each read of an event's data
+-- copies the whole packet.
 function overhead.packet(e, size, data)
     local id = e.id;
     if id == 0x00A or id == 0x00B then forget(); return; end
     if id ~= 0x00D and id ~= 0x00E or e.injected or e.blocked then return; end
-    if data == nil then size, data = client.packet_size(e); end
-    if size < 0x0B then return; end
-    local unit, index, flags = u32(data, 4), u16(data, 8), data:byte(0x0B);
+    local raw = id == 0x00D and data == nil and ashita and ashita.bits and e.data_raw;
+    local unit, index, flags;
+    if raw then
+        size = e.size;
+        if type(size) ~= 'number' or size < 0x0B then return; end
+        local unpack = ashita.bits.unpack_be;
+        unit, index, flags = unpack(raw, 0, 32, 32), unpack(raw, 0, 64, 16), unpack(raw, 0, 80, 8);
+    else
+        if data == nil then size, data = client.packet_size(e); end
+        if size < 0x0B then return; end
+        unit, index, flags = u32(data, 4), u16(data, 8), data:byte(0x0B);
+    end
     if unit == 0 or index == 0 or index > 0x8FF then return; end
     if band(flags, 0x20) ~= 0 then
         if index_of[unit] then known = known - 1; end
@@ -210,16 +235,22 @@ function overhead.fade(distance, target, config)
     return 1;
 end
 
+-- Whether index is a place in the game's entity list, 1 to 0x8FF, that holds this server id. The game is asked about
+-- no other place.
+local function holds(entities, index, id)
+    return index ~= nil and index > 0 and index <= 0x8FF and entities:GetServerId(index) == id;
+end
+
 -- The index of a server id: from the packets, the snapshot, or a mob's id, whose low 12 bits are its index.
 local function index_for(entities, snapshot, id)
     local index = index_of[id];
-    if index and entities:GetServerId(index) == id then return index; end
+    if holds(entities, index, id) then return index; end
     local entity = snapshot.entities and snapshot.entities[id];
-    if entity and entity.index and entity.index > 0 and entities:GetServerId(entity.index) == id then return entity.index; end
+    if entity and holds(entities, entity.index, id) then return entity.index; end
     if id >= 0x1000000 then
         index = id % 4096;
-        if entities:GetServerId(index) == id then return index; end
-        if index > 0x100 and entities:GetServerId(index - 0x100) == id then return index - 0x100; end
+        if holds(entities, index, id) then return index; end
+        if holds(entities, index - 0x100, id) then return index - 0x100; end
     end
 end
 
@@ -265,11 +296,52 @@ function overhead.keeps(kind, effect)
         and (#include > 0 and listed(include, id) or #include == 0 and (kind.kinds == 'debuff' or kind[SWITCH[id]] ~= false));
 end
 
--- Whether a unit has a row its type's filters keep.
-local function showing(kind, id)
+-- The hide rule scope of each unit type; the party and the alliance take theirs from the roster.
+local SCOPES = { mob = 'enemy', other = 'other', pet = 'pet', other_pet = 'pet', party = 'party', alliance = 'alliance',
+    self = 'self' };
+local OWN_SCOPE = { mob = true, other = true, pet = true, other_pet = true };
+
+-- Fills subject as the shared hide rules' subject for a unit of this type: the roster's, when it has one, with the
+-- unit's own type deciding enemy, other and pet. lower is the unit's name in lowercase. Returns subject.
+function overhead.rule_subject(subject, kind, id, lower, player, recipients)
+    local known = recipients and recipients[id];
+    subject.id, subject.is_self = id, kind == 'self';
+    if known then
+        subject.name, subject.job, subject.group, subject.player = known.name, known.job, known.group, known.player;
+        subject.scope = known.scope;
+    else
+        subject.name, subject.job, subject.group, subject.player = lower, nil, nil, player == true;
+        subject.scope = SCOPES[kind];
+    end
+    if OWN_SCOPE[kind] then subject.scope = SCOPES[kind]; end
+    return subject;
+end
+
+-- The shared hide rules and who they name, as the frame's drawing has them, and the subject of the unit being looked
+-- at. Names in lowercase are kept, a few hundred at most.
+local hide_rules, hide_recipients, candidate = effect_filters.compile(nil), nil, {};
+local lowered, lowered_count = {}, 0;
+local function lower_name(name)
+    local lower = lowered[name];
+    if not lower then
+        if lowered_count >= 256 then wipe(lowered); lowered_count = 0; end
+        lower = name:lower();
+        lowered[name], lowered_count = lower, lowered_count + 1;
+    end
+    return lower;
+end
+
+-- Whether a unit has a row to draw: one its type's filters keep and, for a type that uses them, the shared hide rules
+-- leave. Both are what ui/overhead_icons.lua picks its icons by, so a unit that shows nothing takes no place.
+local function showing(kind, id, type_name, entities, index)
     local at = first_row[id];
+    local subject;
+    if at and at > 0 and kind.shared_rules and hide_rules.active then
+        subject = overhead.rule_subject(candidate, type_name, id, lower_name(entities:GetName(index) or ''), id < 0x1000000, hide_recipients);
+    end
     while at and at > 0 do
-        if overhead.keeps(kind, survey_rows[at]) then return true; end
+        local row = survey_rows[at];
+        if overhead.keeps(kind, row) and not (subject and effect_filters.hide(hide_rules, row, subject)) then return true; end
         at = next_row[at];
     end
     return false;
@@ -284,11 +356,9 @@ local function fill(unit, entities, config, index, id, kind, level, distance)
     for i = 1, last_count do if last_ids[i] == id then unit.size = last_sizes[i]; break; end end
     unit.player = id < 0x1000000;
     unit.name = entities:GetName(index) or '';
-    unit.race, unit.hitbox, unit.model_size = entities:GetRace(index) or 0, entities:GetModelHitboxSize(index) or 0, entities:GetModelSize(index) or 0;
-    unit.spawn_flags, unit.type, unit.status = entities:GetSpawnFlags(index) or 0, entities:GetType(index) or 0, entities:GetStatus(index) or 0;
-    unit.head, unit.head_source = overhead.head_height(unit.player, unit.race, unit.status, unit.hitbox, unit.name, config.head,
+    unit.race, unit.hitbox, unit.status = entities:GetRace(index) or 0, entities:GetModelHitboxSize(index) or 0, entities:GetStatus(index) or 0;
+    unit.head = overhead.head_height(unit.player, unit.race, unit.status, unit.hitbox, unit.name, config.head,
         config.types[kind].world_offset);
-    unit.rows = rows_of[id] or 0;
 end
 
 -- Takes a unit as a candidate for a reason: the target, the subtarget and a watched unit (any unit), a mob claimed or
@@ -316,7 +386,7 @@ local function add(entities, snapshot, config, index, id, reason, level, city)
     elseif reason ~= 'target' and reason ~= 'subtarget' and reason ~= 'watched' and kind ~= 'mob' then return; end
     if city and not flagged and kind ~= 'party' and kind ~= 'self' then return; end
     -- A party or alliance member with party cooldowns over heads takes a block for that line.
-    if not flagged and not showing(config.types[kind], id) and not ((kind == 'party' or kind == 'alliance') and cooling[id]) then
+    if not flagged and not showing(config.types[kind], id, kind, entities, index) and not ((kind == 'party' or kind == 'alliance') and cooling[id]) then
         return;
     end
     local squared = entities:GetDistance(index);
@@ -336,38 +406,74 @@ local function add(entities, snapshot, config, index, id, reason, level, city)
     if level == TARGET then unit.target = true; elseif level == SUBTARGET then unit.subtarget = true; end
 end
 
--- Who is in the party (and so whose claims and debuffs count), each unit's effect rows and how many, which mobs
+-- Who is in the party (and so whose claims and debuffs count), each unit's effect rows, which mobs
 -- the party has debuffed, and who has party cooldowns to show over heads, from the frame's tracker view.
-local function survey(entities, view, snapshot, settings)
-    wipe(party_ids); wipe(party_scope); wipe(rows_of); wipe(scope_of); wipe(debuffed); wipe(first_row);
+local function survey(entities, view, snapshot, settings, now)
+    wipe(party_ids); wipe(party_scope); wipe(scope_of); wipe(debuffed); wipe(first_row); wipe(owner_at);
     local watch = settings.party_cooldowns;
     cooling = type(watch) == 'table' and watch.enabled and watch.overhead and view and view.member_cooldowns or NONE;
-    party_ids[snapshot.id] = true;
+    party_ids[snapshot.id], owner_at[snapshot.id] = true, self_index;
+    -- At most 64 pets are kept. Once a survey has added a 65th, they are all forgotten at the next, before the pets out
+    -- then are read, so each of those is still its owner's in that survey.
+    if pets_seen > 64 then wipe(pet_owners); wipe(unowned_since); pets_seen = 0; end
     for _, member in ipairs(snapshot.party or NONE) do
         party_ids[member.id], party_scope[member.id] = true, member.scope == 'alliance' and 'alliance' or 'party';
+        -- A member's pet counts as theirs, as yours does below, so what it puts on a mob is the party's.
+        local at = member.index;
+        owner_at[member.id] = at;
+        local theirs = at and at > 0 and at <= 0x8FF and entities:GetPetTargetIndex(at) or 0;
+        if theirs > 0 and theirs <= 0x8FF then
+            local id = entities:GetServerId(theirs);
+            if id > 0 then own_pet(id, member.id); end
+        end
     end
     pet_index = self_index > 0 and entities:GetPetTargetIndex(self_index) or 0;
     local pet = pet_index > 0 and entities:GetServerId(pet_index) or 0;
-    if pet > 0 then party_ids[pet] = true; end
+    if pet > 0 then own_pet(pet, snapshot.id); end
+    -- Every pet seen with an owner who is still you or in your party, out now or not. One alive in the list while its
+    -- owner is in view and no longer has it is forgotten: a stranger may have charmed it since, or it is a stranger's
+    -- new pet with the id a party pet had. A charmed mob let go and still in view goes the same way. One that has left
+    -- the list stays the party's, as a released avatar does, and so does one in its despawn (2) or death (3) animation
+    -- (data/enums/animation.yaml). Phoenix keeps a released or slain pet in its death animation for 2.5 s while its
+    -- owner already has none (src/map/entities/pet_entity.cpp :228-252, src/map/ai/states/death_state.cpp :57).
+    -- But the owner's update with no pet (src/map/packets/char_update.cpp :444-447) can come first. Pets tick before
+    -- players, so when an owner sends a pet away, as with Release or Leave, that update can go out a whole tick
+    -- (400 ms, src/map/map_constants.h :47-50) before the pet's with its death animation (src/map/zone_entities.cpp
+    -- :2009, :2039, src/map/entities/pet_entity.cpp :201-220). A client gets what is queued for it only in reply to a
+    -- packet it sends (src/map/map_networking.cpp :121-123), so it can see the two further apart than that. A pet is
+    -- forgotten only once it has been that way for a second.
+    for id, owner in pairs(pet_owners) do
+        local at = owner_at[owner];
+        local index = at and holds(entities, at, owner) and index_for(entities, snapshot, id);
+        local since;
+        if index and entities:GetPetTargetIndex(at) ~= index then
+            local status = entities:GetStatus(index);
+            if status ~= 2 and status ~= 3 then since = unowned_since[id] or now; end
+        end
+        if since and now - since >= 1 then pet_owners[id], pets_seen, since = nil, pets_seen - 1, nil; end
+        -- Set only when it changes, so a survey with no pet waiting out its second writes nothing here.
+        if unowned_since[id] ~= since then unowned_since[id] = since; end
+        if pet_owners[id] and party_ids[owner] then party_ids[id] = true; end
+    end
     survey_rows = view and view.rows or NONE;
     for index, row in ipairs(survey_rows) do
         local id = row.entity_id;
         if row.domain ~= 'recast' and id then
-            rows_of[id], scope_of[id] = (rows_of[id] or 0) + 1, row.scope;
+            scope_of[id] = row.scope;
             next_row[index], first_row[id] = first_row[id] or 0, index;
             if row.kind == 'debuff' and row.scope == 'enemy' and row.source and party_ids[row.source] then debuffed[id] = true; end
         end
     end
 end
 
-local function rebuild(entities, view, settings, snapshot, main, sub)
+local function rebuild(entities, view, settings, snapshot, main, sub, now)
     local config = settings.overhead;
     for i = 1, pool_count do
         local unit = pool[i];
         by_id[unit.id], last_ids[i], last_sizes[i] = nil, unit.id, unit.size;
     end
     last_count, pool_count = pool_count, 0;
-    survey(entities, view, snapshot, settings);
+    survey(entities, view, snapshot, settings, now);
     local units, city = config.units, config.hide_in_cities and CITIES[snapshot.zone] == true;
     if units.target and main > 0 then add(entities, snapshot, config, main, entities:GetServerId(main), 'target', TARGET, city); end
     if units.subtarget and sub > 0 then add(entities, snapshot, config, sub, entities:GetServerId(sub), 'subtarget', SUBTARGET, city); end
@@ -511,7 +617,7 @@ local function place(unit, entities, config, ui, cap, first_person)
     if distance > cap then return false; end
     if status ~= unit.status then
         unit.status = status;
-        unit.head, unit.head_source = overhead.head_height(unit.player, unit.race, status, unit.hitbox, unit.name, config.head,
+        unit.head = overhead.head_height(unit.player, unit.race, status, unit.hitbox, unit.name, config.head,
             config.types[unit.kind].world_offset);
     end
     local kind = config.types[unit.kind];
@@ -543,9 +649,12 @@ local function place(unit, entities, config, ui, cap, first_person)
     return true;
 end
 
+-- Frames with the icons off or hidden make no list, so no survey sees a pet still waiting out its second. Its wait
+-- starts over.
 local function clear()
     local units, order = plan.units, plan.order;
     for i = #units, 1, -1 do units[i], order[i] = nil, nil; end
+    wipe(unowned_since);
 end
 
 local function first(a, b) return a.level < b.level or a.level == b.level and a.depth < b.depth; end
@@ -637,7 +746,9 @@ end
 -- Works out this frame's plan. displays_hidden is /vg hide or Ashita's hidden interface; conditions_hidden is the
 -- overhead icons' show conditions failing here, which hides the blocks but not the samples. Returns the calibrate
 -- lines on the frame that reads them, for the caller to print and keep in the report.
-function overhead.update(view, settings, snapshot, now, displays_hidden, conditions_hidden)
+-- rules and recipients are the frame's shared hide rules, compiled, and who they name (core/effect_filters.lua). With no
+-- rules given, the settings' own are compiled here.
+function overhead.update(view, settings, snapshot, now, displays_hidden, conditions_hidden, rules, recipients)
     plan.count, plan.valid, pointed = 0, false, false;
     name_anchor.release_pages();
     local config = settings.overhead;
@@ -693,7 +804,8 @@ function overhead.update(view, settings, snapshot, now, displays_hidden, conditi
     end
     plan.hidden = nil;
     if now - rebuilt_at >= 0.1 or now < rebuilt_at or view ~= rebuilt_view or settings ~= rebuilt_settings or main ~= main_seen or sub ~= sub_seen then
-        rebuild(entities, view, settings, snapshot, main, sub);
+        hide_rules, hide_recipients = effect_filters.compile(rules or settings.effect_filters), recipients;
+        rebuild(entities, view, settings, snapshot, main, sub, now);
         rebuilt_at, rebuilt_view, rebuilt_settings, main_seen, sub_seen = now, view, settings, main, sub;
         -- Once a frame: a list made between ticks starts the next tenth of a second.
         if not ticked then ticked_at, generation = now, generation + 1; end
@@ -740,7 +852,7 @@ function overhead.sample(unit, settings, snapshot, kind)
             if px then sx, sy, depth, ndc = camera.project(px, py, pz);
             else
                 local head = overhead.head_height(true, unit.race, entities:GetStatus(self_index) or 0, 0, '', config.head, types.world_offset);
-                -- The name under it is yours, so above the name it takes your own type's name height.
+                -- The name under it is yours, so above the name it takes your own type's name lift.
                 sx, sy, depth = camera.project(world_point(entities, self_index, head + lift(config.types.self)));
             end
             if sx and (sx < 0 or sx > plan.width or sy < 0 or sy > plan.height) then sx = nil; end

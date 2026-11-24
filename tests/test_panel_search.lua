@@ -20,19 +20,28 @@ imgui.InputTextWithHint = function(label, hint, value, ...)
 end;
 local opened = {};
 imgui.SetNextItemOpen = function(value) opened.next = value; end;
-imgui.CollapsingHeader = function(label) opened[label] = opened.next; return opened.next; end;
--- What each frame lights, by the words of the row.
-local lit, looking_for = {}, nil;
+-- A fold titled with what it holds now goes by its key too.
+imgui.CollapsingHeader = function(label)
+    opened[label] = opened.next;
+    local key = label:match('##(.+)$');
+    if key then opened[key] = opened.next; end;
+    return opened.next;
+end;
+-- What each frame lights, by the words of the row, and the name its result goes by.
+local lit, names, looking_for = {}, {}, nil;
 local light = window.main_helpers.light;
-window.main_helpers.light = function(text, named)
-    if looking_for and window.matches(looking_for, text) then lit[#lit + 1] = named; end;
-    return light(text, named);
+window.main_helpers.light = function(text, named, label)
+    if looking_for and window.matches(looking_for, text) then
+        lit[#lit + 1] = named;
+        names[#lit] = label;
+    end;
+    return light(text, named, label);
 end;
 local function draw(s, click)
     s.window.open = true;
     app.state.settings = s;
     MOCK.imgui_calls = {};
-    lit = {};
+    lit, names = {}, {};
     if click then MOCK.clicks[click] = true; end;
     window.draw(s, view, app.callbacks);
     if click then assert(not MOCK.clicks[click], 'The control is on screen: ' .. click); end;
@@ -49,8 +58,16 @@ local function lights(label)
     end;
     return false;
 end;
+-- The name of the match the line says is picked.
+local function picked()
+    for _, call in ipairs(MOCK.imgui_calls) do
+        local shown = call[1] == 'TextUnformatted' and tostring(call[2]):match('^(%d+) of %d+ matching controls on this page$');
+        if shown then return names[tonumber(shown)]; end;
+    end;
+end;
 local function display_of(panel) return defaults.recast_panels[panel] and 'recasts' or panel; end;
-local fold_pages = { party_ui = 'Party & alliance', overhead = 'Overhead', cooldown_list = 'Cooldowns', rolls = 'Rolls', pet = 'Pet', notices = 'Alerts', hidden = 'Filters' };
+local fold_pages = { party_ui = 'Party & alliance', overhead = 'Overhead', cooldown_list = 'Cooldowns', rolls = 'Rolls', pet = 'Pet', notices = 'Alerts', hidden = 'Filters',
+    pulse = 'Ready pulse' };
 local function fold_key(result)
     return (fold_pages[result.panel] or defaults.recast_panels[result.panel] and 'Recasts' or 'Panels') .. '/' .. result.fold.key;
 end;
@@ -76,6 +93,7 @@ local function follow(s, typed, result)
     assert(panels.context() == display_of(result.panel) .. '/' .. result.place, when .. ' opens its tab: ' .. panels.context());
     assert(seen('TextUnformatted', 'matching controls on this page'), when .. ' lights something up.');
     assert(lights(result.label), when .. ' lights up what it named.');
+    assert(picked() == result.label, when .. ' picks what it named, not ' .. tostring(picked()));
     if result.fold then
         assert(s.window.sections[fold_key(result)] == true, when .. ' saves its fold open.');
         looking_for = nil;
@@ -125,7 +143,7 @@ every_name(fresh(function(s)
     end;
     s.recast_display, s.ready_pulse.enabled, s.ready_pulse.spot = 'combined', true, 'screen';
     s.panels.self_buffs.anchor.to, s.panels.self_debuffs.anchor.to, s.panels.target.anchor.to = 'screen', 'chat', 'party';
-    -- An alert rule open with all it can show, and a rule in the fold of Hidden everywhere.
+    -- An alert rule open with all it can show, and a rule in the fold of the Hide list.
     local rule = defaults.rule('alert_search');
     rule.event, rule.emphasis, rule.flash = 'remaining', true, true;
     s.alerts.rules = { rule };
@@ -134,7 +152,7 @@ every_name(fresh(function(s)
 end));
 require('ui.alert_panel').edit(nil);
 
--- With a recast panel for each kind, a result goes to the one being edited, and only that way's rows are offered.
+-- With the pulse off, its rows find the switch that turns it on, on its own editor.
 do
     local s = fresh();
     draw(s);
@@ -142,8 +160,8 @@ do
     for _, result in ipairs(window.search('Never pulse for')) do
         if result.tab == 'Display' and result.panel then found = result; end;
     end;
-    assert(found and found.label == 'Pulse when a long recast is ready' and found.place == 'show' and found.panel == 'spell_recasts',
-        'With the pulse off, its rows find the tick that turns it on.');
+    assert(found and found.label == 'Pulse when a long recast is ready' and found.place == 'show' and found.panel == 'pulse',
+        'With the pulse off, its rows find the switch that turns it on.');
     follow(s, 'Never pulse for', found);
 end;
 

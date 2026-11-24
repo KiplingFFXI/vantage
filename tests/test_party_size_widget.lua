@@ -1,4 +1,4 @@
--- The size control for the party list buffs (ui/party_size_widget.lua), drawn first in Party & alliance's member
+-- The size control for Party list (ui/party_size_widget.lua), drawn first in Party & alliance's member
 -- effects and, while it has a control to show, in Home's Look and size on the same keys. The icons beside the rows fill
 -- the step from one row to the next with no space between them, whatever icon size a save holds, so there is no room
 -- to pick and no button for more room: Party & alliance says so with the size they draw at once the step is measured,
@@ -81,7 +81,7 @@ p.strips.party = false; assert(not widget.in_panels(p), 'Not for a hidden strip\
 p.strips.party, p.groups[1].native_detached = true, false;
 
 -- A panel of its own where the strip is drawn now. Before the strips were ever planned it is tall enough for one line
--- of effects per member: 6 px at the top, then per member a name in the timer panels' font, which the party list buffs
+-- of effects per member: 6 px at the top, then per member a name in the timer panels' font, which Party list
 -- wear, 2 + 3 px, the icon with its countdown under it, and 8 px. Countdowns start off; a player can turn them on, as
 -- here.
 p.effects.timers = true;
@@ -212,8 +212,11 @@ app.callbacks.party_native_status = function()
 end;
 local sliders, typed, radios, chosen, texts = {}, {}, {}, {}, {};
 local slider_float, radio, wrapped, unformatted = imgui.SliderFloat, imgui.RadioButton, imgui.TextWrapped, imgui.TextUnformatted;
+-- Each slider keeps the width set for it, as SetNextItemWidth goes to the next item only.
+local item_width, next_width = imgui.SetNextItemWidth, nil;
+imgui.SetNextItemWidth = function(width, ...) next_width = width; return item_width(width, ...); end;
 imgui.SliderFloat = function(label, value, low, high)
-    sliders[label] = { low = low, high = high, value = value[1] };
+    sliders[label], next_width = { low = low, high = high, value = value[1], width = next_width }, nil;
     if typed[label] ~= nil then value[1], typed[label] = typed[label], nil; return true; end;
     return false;
 end;
@@ -260,7 +263,7 @@ local function fresh(change)
     return s;
 end;
 
--- Party list buffs with the game's rows 14 px tall and 20 px apart, and the icon size at 37 px.
+-- Party list with the game's rows 14 px tall and 20 px apart, and the icon size at 37 px.
 local SIZE, BACK = '##frame_Icon size in a panel of its own', 'Put party buffs back beside the party list##frame';
 game_rows = geometry({ { 14, 20 } });
 local s = fresh();
@@ -306,7 +309,7 @@ s = fresh();
 s.party_ui.locked = true;
 app.state.history = {};
 elements.record('strip_1', { x = 1375, y = 977, width = 420, height = 54 });
-draw('Display', 'place', { ['Your party in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Your party in a panel of its own##frame'] = true });
 local group = s.party_ui.groups[1];
 steps = history();
 assert(group.native_detached and group.detached_x == 1375 and group.detached_width == 420
@@ -336,14 +339,14 @@ s = fresh(function(value) value.party_ui.groups[1].native_detached = true; end);
 draw('Display', 'place');
 assert(sliders[SIZE].high == 128 and not texts['In a panel of its own: 37 px.'], 'In a panel the icon size shows before the rows are read too.');
 
--- Party list buffs is the one place for this control: the main page draws none of it, whatever the groups do.
+-- Party list is the one place for this control: the main page draws none of it, whatever the groups do.
 game_rows = geometry({ { 14, 20 } });
 s = fresh(function(value) value.party_ui.groups[1].native_detached = true; end);
 draw('Home');
 assert(not texts[STEP] and not sliders[SIZE] and not buttons()[BACK],
     'The main page has no party size control.');
 draw('Display', 'place');
-assert(sliders[SIZE].high == 128 and buttons()[BACK], 'Party list buffs has it, with the way back.');
+assert(sliders[SIZE].high == 128 and buttons()[BACK], 'Party list has it, with the way back.');
 typed[SIZE] = 40;
 draw('Display', 'place');
 assert(s.party_ui.effects.icon_size == 40 and s.party_ui.effects.icon_scale == nil
@@ -354,7 +357,7 @@ assert(s.party_ui.effects.icon_size == 40 and s.party_ui.effects.icon_scale == n
 s = fresh(function(value) value.party_ui.locked = false; end);
 app.state.history = {};
 elements.record('strip_2', { x = 1200, y = 700, width = 300, height = 40 });
-draw('Display', 'place', { ['Alliance 1 in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Alliance 1 in a panel of its own##frame'] = true });
 steps = history();
 assert(s.party_ui.groups[2].native_detached and s.party_ui.groups[2].detached_x == 1080 and s.party_ui.groups[2].detached_width == 420
     and s.party_ui.groups[2].detached_y == 700 and s.party_ui.groups[2].detached_height == 240
@@ -365,7 +368,7 @@ assert(sliders['##frame_Panel width'] and sliders['##frame_Panel height'] and sl
 typed['##frame_Across the screen'] = 333;
 draw('Display', 'place');
 assert(s.party_ui.groups[2].detached_x == 333 and s.party_ui.groups[2].native_x == 0, 'Across the screen is the panel\'s own place.');
-draw('Display', 'place', { ['Alliance 1 in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Alliance 1 in a panel of its own##frame'] = true });
 assert(not s.party_ui.groups[2].native_detached and s.party_ui.groups[2].detached_x == 333, 'Off puts the strip back and keeps the panel.');
 draw('Display', 'place');
 assert(not sliders['##frame_Panel width'] and not sliders['##frame_Across the screen'], 'No panel, no panel fields.');
@@ -387,7 +390,12 @@ assert(combos['##frame_Buff side'], 'Buff side stays.');
 draw('Display', 'place');
 assert(not combos['##frame_Row width'] and sliders['##frame_Longest row'], 'No fixed width; Longest row stays.');
 imgui.BeginCombo = begin_combo;
+-- Longest row is a row like the others, its name on the left and its slider across the rest, so its number fits at
+-- any text size.
+assert(texts['Longest row'] and not texts['Row width'] and sliders['##frame_Longest row'].width == -1,
+    'Longest row has its own row: ' .. tostring(sliders['##frame_Longest row'].width));
 
 imgui.SliderFloat, imgui.RadioButton, imgui.TextWrapped, imgui.TextUnformatted = slider_float, radio, wrapped, unformatted;
+imgui.SetNextItemWidth = item_width;
 MOCK.fire('unload');
 return 'The party size control says the step and keeps the icon size for panels of their own';

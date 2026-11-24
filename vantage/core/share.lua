@@ -1,4 +1,4 @@
--- Exports: one display, where every display is, the Hidden everywhere list, the alert rules or a whole profile,
+-- Exports: one display, where every display is, the Hide list, the alert rules or a whole profile,
 -- as text to copy and import. The text is the prefix VG, the version, a checksum of the data and then the data as JSON:
 -- "VG:1:1a2b3c4d:{...}". It is data only. Reading it uses the strict JSON reader and never loads or runs anything, and
 -- refuses another version, a checksum that doesn't match, text past share.MOST and any key the settings don't have.
@@ -8,7 +8,7 @@
 -- displays. The text never holds your character's name, character or entity ids, file paths or your Windows name, and
 -- leaves out every hide rule that names a character. A whole profile also leaves out the names of the other
 -- characters with settings on this PC. Names are looked for in text you typed and in sound and font names, not in the
--- settings' own keys or choices, so a character named Party keeps the party list buffs.
+-- settings' own keys or choices, so a character named Party keeps Party list.
 -- The text holds no display's lock either.
 -- Replace puts what the string holds in place of yours; Add keeps what you changed and takes the rest, or adds the
 -- string's rules after yours. This file builds and reads the text, and writes and reads it as a file in the shared
@@ -21,7 +21,7 @@ local copy = store.copy;
 
 share.PREFIX, share.VERSION, share.MOST, share.DEEPEST = 'VG', 1, 262144, 40;
 share.kinds = { 'profile', 'element', 'layout', 'filters', 'alerts' };
-share.kind_names = { element = 'One display', layout = 'Where everything is', filters = 'Hidden everywhere list',
+share.kind_names = { element = 'One display', layout = 'Where everything is', filters = 'Hide list',
     alerts = 'Alert rules', profile = 'Whole profile' };
 share.modes = { 'add', 'replace' };
 -- What a string from another version or with a setting Vantage doesn't have says.
@@ -57,6 +57,8 @@ local function own_fields(id)
 end
 
 local notice_keys = { 'notice_x', 'notice_y', 'notice_width', 'notice_height', 'max_notices', 'notice_anchor', 'notice_conditions' };
+-- The notices' own text, which the Alerts display's string holds too and a layout doesn't.
+local notice_look_keys = { 'notice_text_size', 'notice_colors' };
 local box_keys = { 'x', 'y', 'width', 'height', 'anchor' };
 
 -- The settings an element's string holds, from settings. whole takes the notices' lock too.
@@ -68,6 +70,7 @@ local function element_root(settings, id, whole)
     if id == 'notices' then
         local out = {};
         for _, key in ipairs(notice_keys) do out[key] = settings.alerts[key]; end
+        for _, key in ipairs(notice_look_keys) do out[key] = settings.alerts[key]; end
         if whole then out.notice_locked = settings.alerts.notice_locked; end
         return out;
     end
@@ -217,24 +220,54 @@ local function named(value, names)
     return false;
 end
 
--- Where the settings take text you type: fresh settings with one alert rule, hide rule and duration override, every
--- string set to MARK, then tidied. A choice from a list goes back to what tidy picks; typed text, such as a title, a
--- rule's name or a font, keeps MARK. Worked out once, then each kind's data of it.
+-- Where the settings take text you type: fresh settings with one alert rule, hide rule and duration override, each map
+-- keyed by choices holding every key it can, every string set to MARK, then tidied. A choice from a list goes back to
+-- what tidy picks; typed text, such as a title, a rule's name or a font, keeps MARK. Worked out once, then each kind's
+-- data of it.
 local MARK = 'vantagesharemark';
 local marked_settings;
 local function marked()
-    local defaults = require('ui.defaults');
+    local defaults, elements = require('ui.defaults'), require('ui.elements');
     local value = defaults.make();
     value.alerts.rules, value.effect_filters.rules = { defaults.rule('rule_1') }, { require('core.effect_filters').rule() };
     value.durations.overrides = { require('core.durations').override() };
+    -- A map keyed by choices is empty in fresh settings, so its keys would be looked at for names, and a character
+    -- named Party would lose In a party. These hold every key they can: When to show's kinds of zone and groups on every
+    -- display, a panel's own colors, its part maps and the kinds of effect it shows, and the notices' and a rule's own
+    -- text color. A part's label and divider are typed, so they keep MARK. Maps keyed by names, such as the overhead
+    -- icons' heights, stay empty, so their keys are still looked at.
+    local conditions, color = require('core.conditions'), { 1, 1, 1, 1 };
+    for _, element in ipairs(elements.list) do
+        local set = elements.conditions(value, element.id);
+        if set then
+            for _, kind in ipairs(conditions.zone_kinds) do set.zones[kind] = true; end
+            for _, group in ipairs(conditions.groups) do set.group[group] = true; end
+        end
+    end
+    local kinds = {};
+    for _, entry in pairs(require('data.catalog')) do if type(entry) == 'table' and entry.group then kinds[entry.group] = true; end end
+    for _, panel in pairs(value.panels) do
+        for _, part in ipairs(defaults.color_parts) do panel.colors[part] = copy(color); end
+        for _, field in ipairs(defaults.field_ids) do
+            panel.field_labels[field], panel.field_dividers[field], panel.field_colors[field] = '', '', copy(color);
+            panel.field_priority[field], panel.field_newlines[field] = 50, true;
+        end
+        for kind in pairs(kinds) do panel.groups[kind] = true; end
+    end
+    value.alerts.notice_colors.text, value.alerts.rules[1].notice_colors.text = copy(color), copy(color);
     local function mark(node)
         for key, child in pairs(node) do
             if type(child) == 'string' then node[key] = MARK; elseif type(child) == 'table' then mark(child); end
         end
     end
     mark(value);
-    -- A display ticked for Grid mode is a choice from a list, by its id.
-    value.edit_mode.grid_displays = { require('ui.elements').movable[1].id };
+    -- A display ticked to snap is a choice from a list, by its id, and so is a part's alignment.
+    value.edit_mode.grid_displays = { elements.movable[1].id };
+    for _, panel in pairs(value.panels) do
+        for _, field in ipairs(defaults.field_ids) do panel.field_alignments[field] = 'left'; end
+    end
+    -- So are a hide rule's kind and scope. Tidy drops a rule with MARK in them, which would leave no hide rule here.
+    value.effect_filters.rules[1].kind, value.effect_filters.rules[1].scope = 'all', 'all';
     return value;
 end
 local function typed_of(kind, id)
@@ -250,8 +283,12 @@ end
 -- says whether there is one. A path is looked for everywhere. Your names are looked for in text you typed (MARK in
 -- typed, the same data from typed_of), in sound and font names, which tidy reads as choices though each can be a
 -- file you named, and in the entries of lists and maps, never in the settings' own keys, a key that reads as a number,
--- which is an id, or a choice from a list, which a character can share a name with.
-local function scrub(value, typed, names, find)
+-- which is an id, or a choice from a list, which a character can share a name with. Given blanked, it counts in
+-- blanked.paths each string it blanks because it looks like a path.
+-- An icon choice that isn't a set of your own is a built-in name, which a character can share a word with. So is a
+-- built-in font's name, which a font file of your own never takes (ui/fonts.lua built_in).
+local built_in_icons = { ['Original FFXI'] = true, ['XI View'] = true };
+local function scrub(value, typed, names, find, blanked)
     if type(value) ~= 'table' then return false; end
     local fields = record(typed);
     local item = not fields and type(typed) == 'table' and typed[1] or nil;
@@ -261,11 +298,15 @@ local function scrub(value, typed, names, find)
             if find then return true; end
             value[key] = nil;
         elseif type(child) == 'string' then
-            if path_like(child) or (shape == nil or shape == MARK or key == 'sound' or key == 'font') and named(child, names) then
+            local path = path_like(child);
+            if path or (shape == nil or shape == MARK or key == 'sound' or key == 'font')
+                and not (key == 'icon_art' and built_in_icons[child])
+                and not (key == 'font' and require('ui.fonts').built_in[child:lower()]) and named(child, names) then
                 if find then return true; end
                 value[key] = '';
+                if path and blanked then blanked.paths = blanked.paths + 1; end
             end
-        elseif scrub(child, shape, names, find) then return true; end
+        elseif scrub(child, shape, names, find, blanked) then return true; end
     end
     return false;
 end
@@ -351,7 +392,8 @@ local function all_names(character)
     return names;
 end
 
--- The string for kind (and the display id for one display), or nil and why. The second value says what was left out.
+-- The string for kind (and the display id for one display), or nil and why. The second value says what was left out
+-- or left empty.
 function share.export(settings, kind, id, character)
     local elements = require('ui.elements');
     if kind == 'element' and not (elements.by_id[id] and not elements.by_id[id].strip) then return nil, 'Choose a display to share.'; end
@@ -360,8 +402,8 @@ function share.export(settings, kind, id, character)
     local names = kind == 'profile' and all_names(character) or private_names(character);
     local left = narrow_rules(data, names);
     walk(data, template_of(kind, id), '', true);
-    local typed = typed_of(kind, id);
-    scrub(data, typed, names);
+    local typed, blanked = typed_of(kind, id), { paths = 0 };
+    scrub(data, typed, names, false, blanked);
     local payload = { kind = kind, data = data };
     if kind == 'element' then payload.element = id; end
     local ok, body = pcall(store.encode, payload);
@@ -373,7 +415,13 @@ function share.export(settings, kind, id, character)
     if not read or type(back) ~= 'table' or scrub(back.data, typed, names, true) then
         return nil, 'The export would hold your name or a file path, so it was not made.';
     end
-    return text, left > 0 and (left == 1 and '1 rule that names one character was left out.' or left .. ' rules that name one character were left out.') or nil;
+    -- A backslash may be in a title or a divider and not a path at all, so the page says how many were left empty.
+    local notes, paths = {}, blanked.paths;
+    if left > 0 then notes[1] = left == 1 and '1 rule that names one character was left out.' or left .. ' rules that name one character were left out.'; end
+    if paths > 0 then
+        notes[#notes + 1] = paths == 1 and '1 setting that looks like a file path was left empty.' or paths .. ' settings that look like file paths were left empty.';
+    end
+    return text, #notes > 0 and table.concat(notes, ' ') or nil;
 end
 
 -- How deep the data's brackets go, outside strings, so the reader never meets more than share.DEEPEST.
@@ -395,14 +443,32 @@ local function depth(body)
 end
 
 -- What chat and Discord add around a pasted string: text before and after it, code marks (`), quote marks (> ) and
--- line breaks. The string is taken from its VG: to the last }, without those marks before its data. The last } is
--- looked for from the start only: unanchored, text with none would take time by the square of its length.
+-- line breaks. The string is taken from its VG: to the } that closes its data's first {, outside strings, without
+-- those marks before its data. So a } in a note after it, or a second string, is left out, and two strings in one
+-- paste read the first. That } is found in one pass like depth's. Data that never closes, as a damaged string's can,
+-- ends at the last } instead, so it reads as damaged. The last } is looked for from the start only: unanchored, text
+-- with none would take time by the square of its length.
 local function unwrap(text)
-    local from, to = text:find(share.PREFIX .. ':[`>%s]*%d'), text:match('^.*()}');
-    if not from or not to or to < from then return nil; end
-    local head, body = text:sub(from, to):match('^(.-)({.*)$');
-    if not head then return nil; end
-    return (head:gsub('[`>%s]', '')) .. body;
+    local from = text:find(share.PREFIX .. ':[`>%s]*%d');
+    local open = from and text:find('{', from, true);
+    if not open then return nil; end
+    local to, current, quoted, escaped = nil, 0, false, false;
+    for index = open, #text do
+        local character = text:sub(index, index);
+        if quoted then
+            if escaped then escaped = false;
+            elseif character == '\\' then escaped = true;
+            elseif character == '"' then quoted = false; end
+        elseif character == '"' then quoted = true;
+        elseif character == '{' then current = current + 1;
+        elseif character == '}' then
+            current = current - 1;
+            if current == 0 then to = index; break; end
+        end
+    end
+    to = to or text:match('^.*()}');
+    if not to or to < open then return nil; end
+    return (text:sub(from, open - 1):gsub('[`>%s]', '')) .. text:sub(open, to);
 end
 
 -- Reads a pasted string. Returns its payload ({ kind, element, data }), or nil and why. A string from a newer Vantage
@@ -466,15 +532,17 @@ local function untouched(target, fresh, keys, first)
 end
 
 -- The two numbers of each spot, which go in together or not at all, so Add never puts a display at your x and the
--- string's y. A display's anchor goes in whole the same way.
+-- string's y. A display's anchor goes in whole the same way, the alert notices' too, which they keep as notice_anchor.
 local SPOTS = { x = 'y', y = 'x', notice_x = 'notice_y', notice_y = 'notice_x', native_x = 'native_y', native_y = 'native_x',
     detached_x = 'detached_y', detached_y = 'detached_x' };
-local WHOLE = { 'anchor' };
+local WHOLE = { anchor = true, notice_anchor = true };
 
 -- Puts each of data's values in target where target still has fresh's value, or first's, the first frame's, when given.
--- A number is compared to the 14 digits a saved file keeps, so a color read back from one is still fresh's.
-local function fill_unchanged(target, data, fresh, first)
+-- A number is compared to the 14 digits a saved file keeps, so a color read back from one is still fresh's. name is the
+-- key that holds target, or the display's id, so Party list's groups go one by one, each with its own spot.
+local function fill_unchanged(target, data, fresh, first, name)
     local same = require('core.profiles').same;
+    local by_group = require('core.profiles').by_group;
     -- Each spot is judged before either of its numbers changes.
     local spot = {};
     for key, other in pairs(SPOTS) do
@@ -488,13 +556,31 @@ local function fill_unchanged(target, data, fresh, first)
         if type(first) == 'table' then placed = first[key]; end
         if spot[key] ~= nil then
             if spot[key] then target[key] = copy(value); end
-        elseif key == WHOLE[1] and record(value) then
-            if type(fresh) == 'table' and untouched(target, fresh, WHOLE, first) then target[key] = copy(value); end
+        elseif WHOLE[key] and record(value) then
+            if type(fresh) == 'table' and untouched(target, fresh, { key }, first) then target[key] = copy(value); end
         elseif record(value) and record(target[key]) and type(fresh) == 'table' and record(fresh[key]) then
             fill_unchanged(target[key], value, fresh[key], placed);
+        elseif by_group(name, key) and type(value) == 'table' and type(target[key]) == 'table' and type(fresh) == 'table'
+            and type(fresh[key]) == 'table' then
+            for index, group in ipairs(value) do
+                if record(group) and record(target[key][index]) and record(fresh[key][index]) then
+                    fill_unchanged(target[key][index], group, fresh[key][index]);
+                end
+            end
         elseif type(fresh) == 'table' and (same(target[key], fresh[key]) or placed ~= nil and same(target[key], placed)) then
             target[key] = copy(value);
         end
+    end
+end
+
+-- Puts in fresh each of former's values that settings still have, so Add counts a value 1.3.0 started with
+-- (defaults.former) as one you never changed.
+local function with_former(fresh, settings, former)
+    local same = require('core.profiles').same;
+    for key, value in pairs(former) do
+        if record(value) then
+            if type(fresh[key]) == 'table' and type(settings[key]) == 'table' then with_former(fresh[key], settings[key], value); end
+        elseif same(settings[key], value) then fresh[key] = copy(value); end
     end
 end
 
@@ -524,10 +610,12 @@ local function keep_own(candidate, settings)
         if type(candidate[key]) == 'table' and type(settings[key]) == 'table' then candidate[key].preview = settings[key].preview; end
     end
     for id, panel in pairs(candidate.panels or {}) do
-        if type(panel) == 'table' and type(settings.panels[id]) == 'table' then panel.members = copy(settings.panels[id].members); end
+        if type(panel) == 'table' and type(settings.panels[id]) == 'table' then
+            panel.members, panel.preview = copy(settings.panels[id].members), settings.panels[id].preview;
+        end
     end
     for _, key in ipairs({ 'window', 'watch_ids', 'job_profiles', 'active_profile', 'profile_job', 'shared_layout', 'shared_scope',
-        'diagnostics', 'chat_colors', 'replace_game_buffs' }) do
+        'diagnostics', 'chat_colors', 'replace_game_buffs', 'replace_game_pet_bar' }) do
         candidate[key] = copy(settings[key]);
     end
     if type(candidate.durations) == 'table' then candidate.durations.learned = copy(settings.durations.learned); end
@@ -559,32 +647,29 @@ local function element_apply(candidate, payload, mode, fresh, first)
     if id == 'notices' then root = candidate.alerts; end
     local fresh_root = id == 'notices' and fresh.alerts or element_root(fresh, id);
     if mode == 'replace' then merge_into(root, data, fresh_root);
-    else fill_unchanged(root, data, fresh_root, first and (id == 'notices' and first.alerts or element_root(first, id))); end
+    else fill_unchanged(root, data, fresh_root, first and (id == 'notices' and first.alerts or element_root(first, id)), id); end
 end
 
+-- Add judges a display's spot, size and fill each on its own, and Party list's groups one by one, as it does for a
+-- whole profile.
 local function layout_apply(candidate, data, mode, fresh, first)
     local profiles = require('core.profiles');
     local add = mode == 'add';
     first = add and first or {};
-    local fields = {};
-    for field in pairs(profiles.positions) do fields[#fields + 1] = field; end
-    for id, panel in pairs(data.panels or {}) do
-        local into = candidate.panels[id];
-        if type(into) == 'table' and (not add or untouched(into, fresh.panels[id], fields, first.panels and first.panels[id])) then
-            merge_into(into, panel);
-        end
+    local function place(into, from, fresh_into, first_into)
+        if type(into) ~= 'table' or type(from) ~= 'table' then return; end
+        if add then fill_unchanged(into, from, fresh_into, first_into); else merge_into(into, from); end
     end
-    local function place(into, from, fresh_into, keys, first_into)
-        if type(from) == 'table' and (not add or untouched(into, fresh_into, keys, first_into)) then merge_into(into, from); end
+    for id, panel in pairs(data.panels or {}) do place(candidate.panels[id], panel, fresh.panels[id], first.panels and first.panels[id]); end
+    place(candidate.alerts, data.notices, fresh.alerts, first.alerts);
+    place(candidate.party_cooldowns.list, data.cooldown_list, fresh.party_cooldowns.list);
+    place(candidate.rolls, data.rolls, fresh.rolls, first.rolls);
+    place(candidate.pet, data.pet, fresh.pet, first.pet);
+    place(candidate.ready_pulse, data.pulse, fresh.ready_pulse);
+    if type(data.party_ui) == 'table' then
+        if add then fill_unchanged(candidate.party_ui, data.party_ui, fresh.party_ui, nil, 'party_ui');
+        else profiles.apply_party_placement(candidate.party_ui, data.party_ui); end
     end
-    place(candidate.alerts, data.notices, fresh.alerts, { 'notice_x', 'notice_y', 'notice_width', 'notice_height', 'notice_anchor' },
-        first.alerts);
-    place(candidate.party_cooldowns.list, data.cooldown_list, fresh.party_cooldowns.list, box_keys);
-    place(candidate.rolls, data.rolls, fresh.rolls, box_keys, first.rolls);
-    place(candidate.pet, data.pet, fresh.pet, box_keys, first.pet);
-    place(candidate.ready_pulse, data.pulse, fresh.ready_pulse, { 'x', 'y', 'spot', 'size', 'anchor' });
-    if type(data.party_ui) == 'table' and (not add or profiles.same(profiles.party_placement(candidate.party_ui),
-        profiles.party_placement(fresh.party_ui))) then profiles.apply_party_placement(candidate.party_ui, data.party_ui); end
     if type(data.edit_mode) == 'table' then
         if add then fill_unchanged(candidate.edit_mode, data.edit_mode, fresh.edit_mode); else merge_into(candidate.edit_mode, data.edit_mode); end
     end
@@ -593,23 +678,73 @@ end
 
 local NOT_VALID = 'That export holds settings that are not valid.';
 
+-- Lists of values every string writes as a list with no gap, by the key that holds them: a panel's fixed order and its
+-- parts' order, a party group's order and the displays ticked to snap. Written any other way, tidy reads them as
+-- none, as the default or out of order. Party list's shown, hidden and pinned effects are lists too, though a
+-- panel's lists with those names are maps, so they go by the key above as well.
+local ordered_lists = { order = true, field_order = true, grid_displays = true };
+local ordered_effects = { include = true, exclude = true, pinned = true };
+
+-- Whether a table is a list with no gap: keys 1 to its count and nothing else. JSON's null leaves a gap.
+local function listed(data)
+    local count = 0;
+    for _ in pairs(data) do count = count + 1; end
+    for index = 1, count do if data[index] == nil then return false; end end
+    return true;
+end
+
+-- The first place in data, beside template as walk goes, that tidy would read as none or as the default, so Replace
+-- would wipe what you made there. That's a number, true, false or text where template has a table, or a table that
+-- isn't a list with no gap where tidy reads a list in order: a list of records, such as rules, overrides or the
+-- party's groups, or one of the lists of values above. A key the string doesn't hold is skipped. Returns nil when
+-- there's no such place.
+local function misshapen(data, template, path, parent)
+    if type(template) ~= 'table' or data == nil then return nil; end
+    if type(data) ~= 'table' then return path; end
+    if record(template) then
+        for key, value in pairs(data) do
+            local found = template[key] ~= nil and misshapen(value, template[key], path .. tostring(key) .. '.', tostring(key));
+            if found then return found; end
+        end
+        return nil;
+    end
+    local above = path:match('([%w_]*)%.[%w_]+%.$') or '';
+    local item = type(template[1]) == 'table' and template[1] or item_template(parent, above);
+    local ordered = type(item) == 'table' or ordered_lists[parent] or above == 'effects' and ordered_effects[parent];
+    if ordered and not listed(data) then return path; end
+    if type(item) == 'table' then
+        for key, value in pairs(data) do
+            local found = misshapen(value, item, path .. tostring(key) .. '.', nil);
+            if found then return found; end
+        end
+    end
+    return nil;
+end
+
 local function make_candidate(settings, payload, mode)
     local defaults = require('ui.defaults');
     local candidate, fresh, data = copy(settings), defaults.make(), payload.data;
     local kind = payload.kind;
+    -- A string that would wipe what you made is refused, in either mode.
+    if type(data) ~= 'table' or misshapen(data, template_of(kind, payload.element), '', nil) then return nil, NOT_VALID; end
     local first = mode == 'add' and (kind == 'element' or kind == 'layout' or kind == 'profile') and first_frame(settings) or nil;
+    if mode == 'add' then with_former(fresh, settings, defaults.former); end
     if kind == 'element' then element_apply(candidate, payload, mode, fresh, first);
     elseif kind == 'layout' then layout_apply(candidate, data, mode, fresh, first);
     elseif kind == 'filters' then
-        local from = type(data.effect_filters) == 'table' and data.effect_filters or {};
+        local from = data.effect_filters or {};
         if mode == 'replace' then candidate.effect_filters = copy(from);
         else append_rules(candidate.effect_filters.rules, from.rules, { 'enabled', 'effect', 'kind', 'name', 'job', 'scope' }); end
     elseif kind == 'alerts' then
-        if mode == 'replace' then candidate.alerts.rules = copy(data.rules or {});
+        local rules = data.rules or {};
+        if mode == 'replace' then candidate.alerts.rules = copy(rules);
         else
             local fields = {};
             for key in pairs(defaults.rule('rule_1')) do if key ~= 'id' then fields[#fields + 1] = key; end end
-            append_rules(candidate.alerts.rules, data.rules, fields);
+            -- The string's rules are tidied as yours are before they're compared, so a rule you have counts as the
+            -- same: a string writes the jobs of one kept to WHM alone as text ("3"), and one made by 1.3.0 has no
+            -- notice colors in its rules.
+            append_rules(candidate.alerts.rules, defaults.tidy({ alerts = { rules = copy(rules) } }).alerts.rules, fields);
         end
     elseif kind == 'profile' then
         if mode == 'replace' then
@@ -619,7 +754,7 @@ local function make_candidate(settings, payload, mode)
         else
             local same = require('core.profiles').same;
             for key, value in pairs(data) do
-                if record(value) and record(candidate[key]) then fill_unchanged(candidate[key], value, fresh[key], first and first[key]);
+                if record(value) and record(candidate[key]) then fill_unchanged(candidate[key], value, fresh[key], first and first[key], key);
                 elseif same(candidate[key], fresh[key]) then candidate[key] = copy(value); end
             end
         end
@@ -675,7 +810,7 @@ function share.changes(settings, candidate)
     end
     local seen = { panels = true, alerts = true, effect_filters = true, window = true, watch_ids = true, job_profiles = true,
         active_profile = true, profile_job = true, shared_layout = true, shared_scope = true, preview = true,
-        replace_game_buffs = true };
+        replace_game_buffs = true, replace_game_pet_bar = true };
     for _, element in ipairs(elements.list) do
         if element.panel then line(element.label, leaves(settings.panels[element.id], candidate.panels[element.id]), 'setting'); end
     end
@@ -686,14 +821,15 @@ function share.changes(settings, candidate)
     for key, value in pairs(settings.alerts) do
         if key ~= 'rules' and not tostring(key):find('^notice_') and key ~= 'max_notices' then other = other + leaves(value, candidate.alerts[key]); end
     end
+    for _, key in ipairs(notice_look_keys) do other = other + leaves(settings.alerts[key], candidate.alerts[key]); end
     line('Alerts', other, 'setting');
     rules('Alert rules', settings.alerts.rules, candidate.alerts.rules);
-    rules('Hidden everywhere list', settings.effect_filters.rules, candidate.effect_filters.rules);
-    if settings.effect_filters.enabled ~= candidate.effect_filters.enabled then lines[#lines + 1] = 'Hidden everywhere list: turned ' .. (candidate.effect_filters.enabled and 'on.' or 'off.'); end
-    local names = { style = 'Timer look', window_style = 'Settings window look', party_ui = 'Party list buffs', overhead = 'Overhead icons',
+    rules('Hide list', settings.effect_filters.rules, candidate.effect_filters.rules);
+    if settings.effect_filters.enabled ~= candidate.effect_filters.enabled then lines[#lines + 1] = 'Hide list: turned ' .. (candidate.effect_filters.enabled and 'on.' or 'off.'); end
+    local names = { style = 'Timer look', window_style = 'Settings window look', party_ui = 'Party list', overhead = 'Overhead icons',
         party_cooldowns = 'Party cooldowns', ready_pulse = 'Ready pulse', rolls = 'Phantom Roll', pet = 'Pet', durations = 'Timer durations',
-        recast_tints = 'Recast marks', visibility = 'When Vantage hides', chat_colors = 'Chat colors',
-        edit_mode = 'Edit mode grid and snapping', tracking = 'Tracking', diagnostics = 'Diagnostics', placement_screen = 'Screen size placed for',
+        recast_tints = 'Recast tints', visibility = 'When Vantage hides', chat_colors = 'Chat colors',
+        edit_mode = 'Snapping', tracking = 'Tracking', diagnostics = 'Diagnostics', placement_screen = 'Screen size placed for',
         recast_display = 'Recasts shown as', enabled = 'Timer panels on or off' };
     local keys = {};
     for key in pairs(candidate) do if not seen[key] then keys[#keys + 1] = key; end end
@@ -736,9 +872,17 @@ function share.file_name(name, names)
     return base;
 end
 
--- Writes text to a new .txt file in folder, which is made when it is missing, named after a profile with any name of
--- yours, the Windows user's or another character's on this PC left out: the first of "Raid.txt", "Raid 2.txt",
--- "Raid 3.txt" and so on that isn't there yet, so no file is ever replaced. Returns the file's name, or nil and why.
+-- The name a file of your current settings is saved under: the display's name for one display, or the kind's name,
+-- such as "Hide list". save_file makes it a file name the same way as a profile's.
+function share.settings_file_name(kind, id)
+    if kind == 'element' then return require('ui.elements').label(id); end
+    return share.kind_names[kind];
+end
+
+-- Writes text to a new .txt file in folder, which is made when it is missing, named after a profile or what it holds
+-- with any name of yours, the Windows user's or another character's on this PC left out: the first of "Raid.txt",
+-- "Raid 2.txt", "Raid 3.txt" and so on that isn't there yet, so no file is ever replaced. Returns the file's name, or
+-- nil and why.
 function share.save_file(folder, name, text, character)
     local base = share.file_name(name, all_names(character));
     for count = 1, 99 do
@@ -747,7 +891,7 @@ function share.save_file(folder, name, text, character)
         if ok then return file; end
         if code ~= 'exists' then return nil, why; end
     end
-    return nil, 'The shared folder already has 99 files named after this profile.';
+    return nil, 'The shared folder already has 99 files with this name.';
 end
 
 -- A file Import from a file reads: a .txt name in the shared folder, never a path.

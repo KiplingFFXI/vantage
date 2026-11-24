@@ -1,14 +1,9 @@
 -- Commands that change nothing say why, and nothing a command can't keep is changed without a word: /vg font
--- with no name, /vg after a page error stopped the window, a change before a character loads, and a profile
--- whose name reads as a number linked with the no-job form.
+-- with no name or a name no font has, /vg after a page error stopped the window, a change before a character loads,
+-- and a profile whose name reads as a number linked with the no-job form.
 local store=require('core.store');
 local SNAP={valid=true,id=1001,name='Tester',zone=102,job=1,self_known=true,self_effects={},party={},entities={}};
-package.loaded['core.client']={load=function()end,read=function()return store.copy(SNAP);end};
-package.loaded['core.observer']={read=function()return {};end};
-local hud=require('ui.hud');
-hud.draw,hud.draw_notices=function()end,function()end;
-require('ui.party_hud').draw=function()return 0,{};end;
-require('ui.native_party_hud').draw=function()return 0,{};end;
+require('app_fixture')(SNAP);
 package.loaded['core.native_party_ui']={treasure_open=function()return false;end,update=function()end,
     status=function()return {active=false};end,restore=function()return true;end,suspend=function()return true;end};
 local page;
@@ -43,6 +38,33 @@ command('/vg font');frames(10);
 assert(settings().style.font==font and disk().style.font==font,'/vg font with no name keeps the font: '..string.format('%q',settings().style.font));
 assert(printed_since(count):find('Usage',1,true),'And shows how to use it.');
 
+-- /vg font finds a font without regard to case, by its name or by the name the main page's list shows for it, so it
+-- never saves a name no font has. One that matches nothing keeps the font and lists the choices.
+command('/vg font segoe ui');frames(2);
+assert(settings().style.font=='Segoe UI' and disk().style.font=='Segoe UI' and app.state.history[#app.state.history].label=='Font',
+    '/vg font segoe ui picks Segoe UI, as one Undo step: '..string.format('%q',settings().style.font));
+for _,case in ipairs({{'"Ashita (Agave)"','Agave'},{'original ffxi','Original FFXI'},{'ashita','Agave'},{'xi VIEW','XI View'}})do
+    command('/vg font '..case[1]);frames(2);
+    assert(settings().style.font==case[2] and disk().style.font==case[2],
+        '/vg font '..case[1]..' picks '..case[2]..': '..string.format('%q',settings().style.font));
+end;
+-- A custom font can have the name the list shows for another. The first match in the list still wins.
+local names=require('ui.fonts').names();
+names[#names+1]='Ashita (Agave)';
+for _,typed in ipairs({'"Ashita (Agave)"','agave'})do
+    command('/vg font Segoe UI');command('/vg font '..typed);frames(2);
+    assert(settings().style.font=='Agave','/vg font '..typed..' still picks Agave: '..string.format('%q',settings().style.font));
+end;
+names[#names]=nil;
+font,count=settings().style.font,#MOCK.printed;
+local steps=#app.state.history;
+command('/vg font Nope');frames(2);
+local choices=printed_since(count);
+assert(settings().style.font==font and disk().style.font==font and #app.state.history==steps,
+    '/vg font with a name no font has keeps the font: '..string.format('%q',settings().style.font));
+assert(choices:find('Choose Ashita (Agave), Segoe UI, Arial, ',1,true) and choices:find(', Original FFXI or XI View.',1,true),
+    'And lists the choices as the main page shows them: '..choices);
+
 -- /vg after a page error.
 command('/vg');frames(2);
 assert(settings().window.open and app.callbacks.settings_blocks_input(200,200,false,false),'Fixture: the window is drawn.');
@@ -68,7 +90,7 @@ assert(settings().job_profiles['3']=='5' and settings().job_profiles['5']=='Mele
 command('/vg profile link 5');
 assert(settings().job_profiles['5']==nil,'A job ID with no name still unlinks that job.');
 
--- /vg minimal names its switch the way More look does, in chat and in Undo.
+-- /vg minimal names its switch the way Boxes does, in chat and in Undo.
 assert(not settings().style.minimal,'Fixture: No boxes or headings starts off.');
 count=#MOCK.printed;
 command('/vg minimal on');frames(2);

@@ -11,7 +11,7 @@ local no_rules = {};
 local rule_fields = {'enabled','effect','kind','name','job','scope'};
 -- Copy Image (66) shows its shadows as icons 444, 445 and 446, and every copy leaves the tracker as 66, so a rule for
 -- one of them is a rule for 66, or it would never match.
-local copy_image = {[444]=66, [445]=66, [446]=66};
+local copy_image = require('data.shared_ids').copy_image;
 -- What subject and subjects worked out, by the subject or map they were given. The same rules, unit and effects
 -- give back the same tables, so a display that keeps its rows from frame to frame keeps them under rules too.
 local kept_subjects = setmetatable({}, {__mode='k'});
@@ -34,7 +34,7 @@ local function name(value)
     return value:match('^%s*(.-)%s*$');
 end;
 
--- A rule that hides this one effect for everyone. While it is on it shows on the Hidden everywhere list, and any other
+-- A rule that hides this one effect for everyone. While it is on it shows on the Hide list, and any other
 -- rule shows in the Hide only for some players or jobs fold.
 function filters.global_rule(rule, effect)
     return rule.effect == effect and rule.kind == 'all' and rule.scope == 'all'
@@ -160,29 +160,41 @@ local function recipient(value, id, self_id, into)
     return into;
 end;
 
-function filters.recipients(snapshot, roster)
-    local out={};
-    if snapshot and snapshot.valid==false then return out; end;
-    local self_id=snapshot and integer(snapshot.id,4294967295,1)
-        or roster and roster.valid~=false and integer(roster.id,4294967295,1);
-    if snapshot then
-        if self_id then out[self_id]=recipient(snapshot,self_id,self_id); end;
-        for id, entity in pairs(snapshot.entities or {}) do
-            if entity.kind=='player' and not out[id] then out[id]=recipient(entity,id,self_id); end;
+-- The units a call has written, so the rows into kept from the call before for units gone come out.
+local written={};
+local function put(out, id, value, self_id)
+    out[id]=recipient(value,id,self_id,out[id]);
+    written[id]=true;
+end;
+
+-- into, when given, is the table the call before returned: each unit's row is filled again in place and a unit gone
+-- comes out, so a refresh makes no tables.
+function filters.recipients(snapshot, roster, into)
+    local out=into or {};
+    for id in pairs(written) do written[id]=nil; end;
+    if not (snapshot and snapshot.valid==false) then
+        local self_id=snapshot and integer(snapshot.id,4294967295,1)
+            or roster and roster.valid~=false and integer(roster.id,4294967295,1);
+        if snapshot then
+            if self_id then put(out,self_id,snapshot,self_id); end;
+            for id, entity in pairs(snapshot.entities or {}) do
+                if entity.kind=='player' and not written[id] then put(out,id,entity,self_id); end;
+            end;
+            for _, member in ipairs(snapshot.party or {}) do
+                local id=integer(member.id,4294967295,1);
+                if id then put(out,id,member,self_id); end;
+            end;
         end;
-        for _, member in ipairs(snapshot.party or {}) do
-            local id=integer(member.id,4294967295,1);
-            if id then out[id]=recipient(member,id,self_id); end;
+        local current=roster and roster.valid~=false and (not snapshot
+            or roster.id==snapshot.id and roster.zone==snapshot.zone);
+        if current then
+            for _, member in ipairs(roster.members or {}) do
+                local id=integer(member.id,4294967295,1);
+                if id then put(out,id,member,self_id); end;
+            end;
         end;
     end;
-    local current=roster and roster.valid~=false and (not snapshot
-        or roster.id==snapshot.id and roster.zone==snapshot.zone);
-    if current then
-        for _, member in ipairs(roster.members or {}) do
-            local id=integer(member.id,4294967295,1);
-            if id then out[id]=recipient(member,id,self_id); end;
-        end;
-    end;
+    for id in pairs(out) do if not written[id] then out[id]=nil; end; end;
     return out;
 end;
 

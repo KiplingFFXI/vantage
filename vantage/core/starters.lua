@@ -5,16 +5,18 @@ local party_defaults = require('ui.party_defaults');
 local starters = {};
 
 -- Every starter sets these, with its own changes over them, so one applied after another turns off what the last one
--- turned on. Item recasts, party list Countdowns and the overhead Other players, Other players' pets and You ticks
--- aren't here, as they're the player's own picks whatever the role. Nor are the parts of the Pet display, the icon
--- lights or the party list's strip: a starter turns those on, and the next one leaves them. No starter turns on Only
--- effects from job abilities, but each turns it off, so the party displays show what the role's table says.
+-- turned on. Item recasts, the party list's Countdowns and distance, and the overhead Other players, Other players'
+-- pets and You ticks aren't here, as they're the player's own picks whatever the role. Nor are the parts of the Pet
+-- display, the icon lights or the party list's strip: a starter turns those on, and the next one leaves them. No
+-- starter turns on Only effects from job abilities, Include me or One row for a cast on several members, but each
+-- turns them off, so the party displays show what the role's table says.
 local BASE = {
     panels = {
         self_buffs = { enabled = true },
         self_debuffs = { enabled = true, dispel_light = false },
         target = { enabled = false, dispel_light = false },
-        party = { enabled = false, mine_only = false, dispel_light = false, abilities_only = false },
+        party = { enabled = false, mine_only = false, dispel_light = false, abilities_only = false, include_self = false,
+            fold_casts = false },
         watch = { enabled = false, mine_only = false, dispel_light = false, list_debuffed = false },
     },
     party_ui = { enabled = false, effects = { kind = 'all', cleanse_light = false, abilities_only = false } },
@@ -45,11 +47,11 @@ starters.list = {
         changes = { panels = { target = { enabled = true } } } },
     { id = 'tank', name = 'Tank', jobs = { 7, 13 }, rules = { starters.silenced },
         about = 'For PLD and NIN. Timers on your target, debuffs on the party list, icons over mobs, the party cooldown list'
-            .. ' for Provoke and two-hours, and a Silenced alert.',
+            .. ' for Provoke, two-hours and Utsusemi, and a Silenced alert.',
         changes = { panels = { target = { enabled = true } }, party_ui = { enabled = true, effects = { kind = 'debuff' } },
             party_cooldowns = { enabled = true, list = { enabled = true } } } },
     { id = 'healer', name = 'Healer', jobs = { 3 }, rules = { starters.silenced },
-        about = 'For WHM. Timers for what you cast on the party, party list buffs, icons over your party with the Protect'
+        about = 'For WHM. Timers for what you cast on the party, buffs beside the party list, icons over your party with the Protect'
             .. ' and Shell you cast, debuffs you can remove light up, and a Silenced alert.',
         changes = {
             panels = { self_debuffs = { dispel_light = true }, party = { enabled = true, mine_only = true } },
@@ -62,7 +64,7 @@ starters.list = {
             },
         } },
     { id = 'support', name = 'Support', jobs = { 10, 17 }, rules = { starters.silenced },
-        about = 'For BRD and COR. Party list buffs, icons over your party and your target, the Phantom Roll display, and a'
+        about = 'For BRD and COR. Buffs beside the party list, icons over your party and your target, the Phantom Roll display, and a'
             .. ' Silenced alert.',
         changes = { party_ui = { enabled = true },
             overhead = { units = { claimed = false, watched = false, debuffed = false, party = true } },
@@ -76,8 +78,8 @@ starters.list = {
             party_ui = { enabled = true, effects = { kind = 'debuff' } },
         } },
     { id = 'pet', name = 'Pet', jobs = { 9, 14, 15, 18 }, rules = { starters.silenced },
-        about = 'For BST, SMN, PUP and DRG. Timers on your target, icons over mobs and your pet, all of the Pet display, and a'
-            .. ' Silenced alert.',
+        about = 'For BST, SMN, PUP and DRG. Timers on your target, icons over mobs and your pet, a Silenced alert, and the Pet'
+            .. ' display with HP, MP and TP, charm and jug time, effects with their countdowns, maneuvers and recasts.',
         changes = {
             panels = { target = { enabled = true } },
             overhead = { units = { pet = true },
@@ -105,6 +107,8 @@ local function holds(target, wanted)
 end
 
 local names, by_job = {}, {};
+-- What a starter that turns Party list off sets while the list shows the distance: the list stays on with no effects.
+local beside_distance = {};
 starters.ids, starters.by_id = {}, {};
 for index, entry in ipairs(starters.list) do
     names[index], starters.ids[index], starters.by_id[entry.id] = entry.name, entry.id, entry;
@@ -112,6 +116,11 @@ for index, entry in ipairs(starters.list) do
     entry.full = {};
     put(entry.full, BASE);
     put(entry.full, entry.changes);
+    if not entry.full.party_ui.enabled then
+        local kept = defaults.copy(entry.full);
+        kept.party_ui.enabled, kept.party_ui.effects.kind = true, 'none';
+        beside_distance[entry.id] = kept;
+    end
 end
 local CHOOSE = 'Choose ' .. table.concat(names, ', ', 1, #names - 1) .. ' or ' .. names[#names] .. '.';
 
@@ -122,7 +131,11 @@ function starters.for_job(job) return by_job[job] or 'melee'; end
 -- away.
 function starters.matching(settings)
     if not holds(settings, RECASTS[settings.recast_display] or RECASTS.separate) then return nil; end
-    for _, entry in ipairs(starters.list) do if holds(settings, entry.full) then return entry.id; end end
+    local p = settings.party_ui;
+    local distance = p.enabled and p.distance and p.effects.kind == 'none';
+    for _, entry in ipairs(starters.list) do
+        if holds(settings, distance and beside_distance[entry.id] or entry.full) then return entry.id; end
+    end
     return nil;
 end
 
@@ -151,6 +164,12 @@ function starters.apply(settings, name, samples)
     put(result, RECASTS[result.recast_display] or RECASTS.separate);
     -- Turning a timer panel on resumes them, as it does on the main page.
     result.enabled = true;
+    -- The distance is the player's own pick, so a starter that turns Party list off leaves it on with no effects while
+    -- it shows the distance, as ui/party_defaults.lua show_beside does. Party cooldowns never keep it on here, as every
+    -- starter that turns Party list off turns them off too.
+    if not result.party_ui.enabled and settings.party_ui.enabled and result.party_ui.distance then
+        result.party_ui.enabled, result.party_ui.effects.kind = true, 'none';
+    end
     if result.party_ui.enabled then party_defaults.ensure_strip(result.party_ui); end
     add_rules(result, entry.rules);
     -- A rule does nothing while Alerts is off.

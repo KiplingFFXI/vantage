@@ -4,6 +4,7 @@ local theme = require('ui.party_theme');
 local countdown = require('ui.countdown_text');
 local effect_blink = require('ui.effect_blink');
 local icons = require('ui.icons');
+local catalog = require('core.catalog');
 -- How the party list strips paint each member's buff and debuff icons, their tooltip and the sample members.
 local hud = {};
 -- Icons share these. The binding copies them when it is called, and theme.u32 reads the tint without keeping it.
@@ -132,6 +133,9 @@ local function tooltip(imgui, effect, member, subject)
         imgui.TextUnformatted(effect.reason);
     else
         imgui.TextUnformatted(effect.name .. ' - ' .. (member.name or 'Member'));
+        -- What it does (core/catalog.lua).
+        local about = catalog.description(tonumber(effect.effect));
+        if about then imgui.TextUnformatted(about); end
         if countdown.indefinite(effect) then
             imgui.TextUnformatted('Level Sync is active without a fixed countdown.');
         else
@@ -150,7 +154,7 @@ hud.paint_effects = paint_effects;
 hud.effect_tooltip = tooltip;
 
 -- A member's party cooldown estimates (core/party_cooldowns.lua) in cells, the soonest ready nearest the game's
--- window: each the ability's icon, as the recast panels draw it, with its estimated time left at its bottom, also while
+-- window: each the ability's or spell's icon, as the recast panels draw it, with its time left at its bottom, also while
 -- the strip's buffs show no countdowns. cells is where they go (ui/native_party_hud.lua); scroll moves a detached
 -- strip's rows.
 -- Returns the estimate under the mouse.

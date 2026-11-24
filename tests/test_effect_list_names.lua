@@ -1,6 +1,7 @@
--- The client names debuffs in lowercase and gives ids 119 to 125 the names of 80 to 86, as ROM/180/102.DAT has them. So
--- every list a player picks from sorts without regard to case, on its id when two read the same, and no two rows of an
--- effect list share a name. Each sort runs only when its list is rebuilt.
+-- The client names debuffs in lowercase and gives ids 119 to 125 the names of 80 to 86, as ROM/180/102.DAT has them.
+-- Vantage shows a lowercase name with capitals, so it reads like the rest. Every list a player picks from sorts
+-- without regard to case, on its id when two read the same, and no two rows of an effect list share a name. Each sort
+-- runs only when its list is rebuilt.
 local store = require('core.store');
 local SNAP = { valid = true, id = 1001, name = 'Tester', zone = 102, job = 3, self_known = true, self_effects = {}, party = {}, entities = {} };
 package.loaded['core.client'] = { load = function() end, read = function() return store.copy(SNAP); end };
@@ -91,8 +92,9 @@ for index, row in ipairs(list) do
 end;
 in_order(names, 'catalog.list');
 assert(place(names, 'Accuracy Boost') < place(names, 'AGI Boost'), 'Case doesn\'t put AGI Boost first.');
-assert(place(names, 'poison') < place(names, 'Protect') and place(names, 'sleep') < place(names, 'slow'), 'A lowercase debuff sits among the others.');
-assert(place(names, 'Haste') < place(names, 'poison'), 'A lowercase debuff is not sorted past the capitals.');
+assert(place(names, 'Poison') < place(names, 'Protect') and place(names, 'Sleep') < place(names, 'Slow'),
+    'A debuff the client spells in lowercase has its capital and sits among the others.');
+assert(place(names, 'Haste') < place(names, 'Poison'), 'And it comes after what is before it in the alphabet.');
 
 -- A name in two cases, or twice, goes by id.
 local recast_rows = require('core.recasts').catalog('spell');
@@ -145,7 +147,7 @@ frame({ combo = '##Override applies to', click = 'A spell##spell' });
 frame({ combo = '##What to override' });
 local actions = {};
 for _, call in ipairs(MOCK.imgui_calls) do
-    if call[1] == 'Selectable' and tostring(call[2]):find('##%d+$') then actions[#actions + 1] = call[2]:match('^(.-)##'); end;
+    if call[1] == 'Selectable' and tostring(call[2]):find('##effect_%d+$') then actions[#actions + 1] = call[2]:match('^(.-)##'); end;
 end;
 assert(#actions >= 4, 'Fixture: the spell picker has rows: ' .. #actions);
 in_order(actions, 'Timer durations');

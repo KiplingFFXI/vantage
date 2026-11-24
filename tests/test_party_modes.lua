@@ -52,8 +52,25 @@ draw_error = false; frame(); assert(events[1] == 'native');
 local invalid_before = store.copy(app.state.settings.party_ui);
 command('/vg party show extra');
 assert(equal(invalid_before, app.state.settings.party_ui), 'Unexpected arguments cannot partially apply show.');
-assert(MOCK.printed[#MOCK.printed]:find('Usage: /vg party [config|show|hide|preview|live|lock|unlock]', 1, true),
-    'The usage line says what to type.');
+assert(MOCK.printed[#MOCK.printed]:find('Usage: /vg party [show|hide|preview|lock|unlock]', 1, true),
+    'The usage line says what to type, one word for each action: ' .. MOCK.printed[#MOCK.printed]);
+command('/vg recasts bogus');
+assert(MOCK.printed[#MOCK.printed]:find('Usage: /vg recasts [combine|separate|show|hide]', 1, true),
+    'The recasts usage line lists one word for each action: ' .. MOCK.printed[#MOCK.printed]);
+command('/vg bogus');
+local listed = MOCK.printed[#MOCK.printed];
+assert(listed:find(' party, recasts,', 1, true) and not listed:find('alliance', 1, true), 'The command list names /vg party once: ' .. listed);
+-- The words the lists leave out still work, so macros keep working.
+command('/vg party hide'); command('/vg party live');
+assert(app.state.settings.party_ui.enabled and not app.state.settings.party_ui.preview, '/vg party live still turns the strips on.');
+for text, tab in pairs({ ['/vg party config'] = 'Party & alliance', ['/vg party settings'] = 'Party & alliance', ['/vg alliance'] = 'Party & alliance',
+    ['/vg recasts config'] = 'Recasts', ['/vg settings'] = 'Home' }) do
+    app.state.settings.window.open, app.state.settings.window.tab = false, 'Home';
+    if tab == 'Home' then app.state.settings.window.tab = 'Recasts'; end
+    command(text);
+    assert(app.state.settings.window.open and app.state.settings.window.tab == tab, text .. ' still opens ' .. tab .. '.');
+end
+app.state.settings.window.open = false;
 command('/vg party hide'); command('/vg alliance show');
 assert(app.state.settings.party_ui.enabled, '/vg alliance show turns the strips on too.');
 MOCK.fire('unload');

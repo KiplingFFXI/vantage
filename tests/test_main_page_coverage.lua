@@ -42,7 +42,7 @@ end;
 local function begin(row)
     local s=defaults.tidy(defaults.make());
     s.window.open,s.window.tab=true,row.page or 'Home';
-    s.window.sections['Home/More look']=true;
+    for _,fold in ipairs({'Artwork','Sizes','Boxes','Text effects','Colors'})do s.window.sections['Home/'..fold]=true;end;
     app.state.settings=s;
     if row[2] then row[2](s);end;
     if row.panel then require('ui.panel_frame').open(row.panel,row.tab or 'show');end;
@@ -56,7 +56,7 @@ local function click(label) return {{click=label}};end;
 local function flipped(get) return function(s,b) return get(s)~=get(b);end;end;
 local function profiles() local names=app.callbacks.profile_list();return names or {};end;
 local function has(list,name) for _,entry in ipairs(list)do if entry==name then return true;end;end;return false;end;
--- The party list buffs wear the timer panels' look, so the party rows below read it there.
+-- Party list wears the timer panels' look, so the party rows below read it there.
 local function party_look(s) return require('ui.party_theme').party(s.party_ui,s.style);end;
 
 local rows={
@@ -64,12 +64,12 @@ local rows={
     {'Skin, with this window',nil,pick('##main_skin','Lavender','Lavender'),function(s) return party_look(s).theme=='Lavender' and theme.window(s).theme=='Lavender';end,'Skin: Lavender'},
     -- A fresh install is at 1x, so the Size row picks another size.
     {'Size',nil,click('1.5x##main_size'),function(s) return s.style.scale==1.5;end,'Size 1.5x'},
-    {'Hidden everywhere: Signet',nil,{{typed={'##frame_Find an effect','Signet'}},{click='Hide it everywhere##frame'}},function(s) local r=s.effect_filters.rules[1];return r and r.effect==253 and r.enabled;end,'Hide effect everywhere',page='Display',panel='hidden'},
-    {'Hidden everywhere: Hide it everywhere',nil,{{typed={'##frame_Find an effect','Haste'}},{click='Hide it everywhere##frame'}},function(s) local r=s.effect_filters.rules[1];return r and r.effect==33 and r.enabled;end,'Hide effect everywhere',page='Display',panel='hidden'},
+    {'Hide list: Signet',nil,{{combo='##Effect',click='Signet##effect_253'},{click='Hide it everywhere##frame'}},function(s) local r=s.effect_filters.rules[1];return r and r.effect==253 and r.enabled;end,'Hide effect everywhere',page='Display',panel='hidden'},
+    {'Hide list: Hide it everywhere',nil,{{combo='##Effect',click='Haste##effect_33'},{click='Hide it everywhere##frame'}},function(s) local r=s.effect_filters.rules[1];return r and r.effect==33 and r.enabled;end,'Hide effect everywhere',page='Display',panel='hidden'},
     {'Status timers: Status and recast icon size',nil,{{slider={'##main_icon_size',40}}},function(s) return s.style.icon_size==40;end,'Icon size'},
     -- Your own row is one pick over what were two ticks.
-    {'Party: Show my own row',party_on,pick('##frame_Your own row','Never','never'),flipped(function(s) return s.party_ui.include_self;end),'Your own row',page='Display',panel='party_ui'},
-    {'Party: Show when solo',party_on,pick('##frame_Your own row','Only in a party','party'),flipped(function(s) return s.party_ui.show_solo;end),'Your own row',page='Display',panel='party_ui'},
+    {'Party: Show my own row',party_on,pick('##frame_Include me','Never','never'),flipped(function(s) return s.party_ui.include_self;end),'Include me',page='Display',panel='party_ui'},
+    {'Party: Show when solo',party_on,pick('##frame_Include me','Only in a party','party'),flipped(function(s) return s.party_ui.show_solo;end),'Include me',page='Display',panel='party_ui'},
     {'Party: Buff side',function(s) party_on(s);s.party_ui.locked=false;end,pick('##frame_Buff side','Right','right'),function(s) return s.party_ui.native.side=='right';end,'Buff side',page='Display',panel='party_ui',tab='place'},
     {'Party: Your party',party_on,click('Your party##frame_strip'),flipped(function(s) return s.party_ui.strips.party;end),'Your party',page='Display',panel='party_ui'},
     {'Party: Alliance 1',party_on,click('Alliance 1##frame_strip'),flipped(function(s) return s.party_ui.strips.alliance1;end),'Alliance 1',page='Display',panel='party_ui'},
@@ -78,13 +78,13 @@ local rows={
     {'Party: Party font',nil,pick('##main_font','Ashita (Agave)','Agave'),function(s) return party_look(s).font=='Agave';end,'Font'},
     -- The party list has no size of its own, so Text size is the one that changes it.
     {'Party: Party font size',nil,{{slider={'##main_text_size',30}}},function(s) return party_look(s).font_size==30;end,'Text size'},
-    -- Show member effects is Party list buffs.
-    {'Party: Show member effects',nil,click('Party list buffs##main_party_ui'),flipped(function(s) return s.party_ui.enabled;end),'Party list buffs'},
+    -- Show member effects is Party buffs beside the party list.
+    {'Party: Show member effects',nil,click('Beside the party list##main_party_ui'),flipped(function(s) return s.party_ui.enabled;end),'Party list'},
     -- The icon size is for a panel of its own, so the party is in one.
     {'Party: Buff and debuff icon size',function(s) party_on(s);s.party_ui.groups[1].native_detached=true;end,{{slider={'##frame_Icon size in a panel of its own',40}}},function(s) return s.party_ui.effects.icon_size==40;end,'Icon size in a panel of its own',page='Display',panel='party_ui',tab='place'},
     {'Party: Show effect countdowns',party_on,click('Countdowns##frame'),flipped(function(s) return s.party_ui.effects.timers;end),'Countdowns',page='Display',panel='party_ui'},
     {'Alerts: Sound volume',nil,{{slider={'##frame_Sound volume',35}}},function(s) return s.alerts.volume==35;end,'Sound volume',page='Display',panel='notices'},
-    {'Alerts: Haste reminder / Sleep reminder / Silence notice',nil,click('Silence notice##frame'),function(s) return #s.alerts.rules==1 and s.alerts.rules[1].name=='Silenced';end,1,page='Display',panel='notices'},
+    {'Alerts: Haste ending / Sleep ending / Silenced',nil,click('Silenced##frame'),function(s) return #s.alerts.rules==1 and s.alerts.rules[1].name=='Silenced';end,1,page='Display',panel='notices'},
     {'Themes & fonts: Panel font',nil,pick('##main_font','Segoe UI','Segoe UI'),function(s) return s.style.font=='Segoe UI';end,'Font'},
     {'Themes & fonts: Theme',nil,pick('##main_skin','Colorblind safe','Colorblind safe'),function(s) return s.style.theme=='Colorblind safe';end,'Skin: Colorblind safe'},
     {'Themes & fonts: Overall scale',nil,{{slider={'##main_scale',1.25}}},function(s) return s.style.scale==1.25;end,'Size'},
@@ -93,8 +93,8 @@ local rows={
     {'Profiles: Save as new',nil,{{typed={'##profile_name','Healer'}},{click='Save as new'}},function(s) return s.active_profile=='Healer' and has(profiles(),'Healer');end,0,page='Profiles'},
     {'Profiles: Load profile',function(s)
         s.style.scale=2;app.callbacks.profile_save('Tank',false);s.style.scale=1;
-    end,{{combo='##profiles',click='Tank'},{click='Load##profile_load'}},function(s) return s.style.scale==2 and s.active_profile=='Tank';end,1,page='Profiles'},
-    {'Profiles: Job profile',nil,{{combo='##profiles',click='Healer'},{click='Link##profile_link'}},
+    end,{{click='Load##profile_load_Tank'}},function(s) return s.style.scale==2 and s.active_profile=='Tank';end,1,page='Profiles'},
+    {'Profiles: Job profile',nil,{{click='Healer##profile_pick'},{click='Link##profile_link'}},
         function(s) return (s.job_profiles[3] or s.job_profiles['3'])=='Healer';end,1,page='Profiles'},
 };
 

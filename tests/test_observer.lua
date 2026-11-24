@@ -10,31 +10,8 @@ ashita.bits.unpack_be = function (raw, offset, start, width)
     assert(start + width <= raw.n * 8, 'A native bit read crossed the packet boundary.');
     return native(raw, offset, start, width);
 end;
-local function putbits(bytes, offset, length, value)
-    for i = 0, length - 1 do
-        local at = offset + i;
-        if math.floor(value / 2 ^ i) % 2 == 1 then bytes[math.floor(at / 8)] = bytes[math.floor(at / 8)] + 2 ^ (at % 8); end
-    end
-end
 local function action(category, id, targets, actor)
-    local bytes, at = MOCK.bytes(2048), 150;
-    putbits(bytes, 40, 32, actor or self_id); putbits(bytes, 72, 6, #targets);
-    putbits(bytes, 82, 4, category); putbits(bytes, 86, 32, id);
-    for _, target in ipairs(targets) do
-        putbits(bytes, at, 32, target.id); putbits(bytes, at + 32, 4, #target.rows); at = at + 36;
-        for _, row in ipairs(target.rows) do
-            putbits(bytes, at + 27, 17, row.param or 0); putbits(bytes, at + 44, 10, row.message or 0); at = at + 85;
-            putbits(bytes, at, 1, row.added and 1 or 0); at = at + 1;
-            if row.added then putbits(bytes, at + 10, 17, row.added_param or 0); putbits(bytes, at + 27, 10, row.added); at = at + 37; end
-            putbits(bytes, at, 1, row.reaction and 1 or 0); at = at + 1;
-            if row.reaction then
-                putbits(bytes, at + 10, 14, row.reaction_param or 0);
-                putbits(bytes, at + 24, 10, type(row.reaction) == 'number' and row.reaction or 0); at = at + 34;
-            end
-        end
-    end
-    bytes.n = math.ceil(at / 8);
-    return MOCK.packet(0x028, bytes);
+    return MOCK.packet(0x028, MOCK.action_bytes(actor or self_id, category, id, targets));
 end
 local packet = action(4, 58, {
     { id = mob, rows = { { message = 236, param = 4, reaction = true } } },

@@ -1,7 +1,7 @@
 -- A setup, as /vg commands run it, and the Size buttons keep each timer and recast panel's Panel heading switch and Panel
 -- title as the player set them, beside its Panel box. A setup does at every size, skin and font choice, and in its preview,
 -- and the rest of each panel still takes its defaults; a Size button leaves the rest alone too. Fresh installs show
--- every heading with the panel's own name, and Reset this display puts both back on its panel only.
+-- every heading with the panel's own name, and Reset all of this display puts both back on its panel only.
 local defaults, store, custom = require('ui.defaults'), require('core.store'), require('core.customization')
 local presets, appearance = require('setup_fixture'), require('ui.appearance')
 local imgui = require('imgui')
@@ -99,18 +99,18 @@ assert(applied('Size 2x') and app.state.settings.style.scale == 2, 'Fixture: the
 assert(equal(kept(app.state.settings), before), 'A Size button keeps every panel\'s heading, title and box.')
 assert(app.state.settings.panels.self_buffs.show_icon == false, 'A Size button resets nothing else of a panel.')
 
--- Reset this display puts the heading on and the panel's own name back on its panel only.
+-- Reset all of this display puts the heading on and the panel's own name back on its panel only.
 require('ui.panel_frame').open('self_buffs', 'show')
 before = open('Display')
-frame('Reset this display##frame')
+frame('Reset all of this display##frame')
 frame('Reset##look_frame_reset_self_buffs')
 local id = 'self_buffs'
 local panel = app.state.settings.panels[id]
 assert(app.callbacks.history_status().undo_label == 'Reset Self buffs', 'Undo says it by the name the player knows.')
 assert(panel and panel.show_heading == true and panel.title == defaults.panel_names[id] and panel.box == 'shared',
-    'Reset this display shows its heading with its own name again.')
+    'Reset all of this display shows its heading with its own name again.')
 local after = kept(app.state.settings)
 after[id], before[id] = nil, nil
-assert(equal(after, before), 'Reset this display leaves the other panels\' heading, title and box.')
+assert(equal(after, before), 'Reset all of this display leaves the other panels\' heading, title and box.')
 MOCK.fire('unload')
-return 'A setup and the Size buttons keep each panel\'s heading and title; Reset this display resets them'
+return 'A setup and the Size buttons keep each panel\'s heading and title; Reset all of this display resets them'

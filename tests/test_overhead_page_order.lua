@@ -82,31 +82,34 @@ local function joined(...)
     return out;
 end;
 local KIND='Change the settings for';
-local WHO={'Show icons over','Your target','Your subtarget','Mobs your party claimed','Watched mobs','Mobs your party debuffed','Party members',
-    'Alliance members','Other players','Your pet','Other players\' pets','You','No mobs are watched now.','Watch my target','Most units at once','Farthest away','Fade starts at',
+local WHO={'Show icons over','Your target','Your subtarget','Mobs your party claimed','Watched mobs','Mobs your party debuffed','Your party',
+    'Your alliance','Other players','Your pet','Other players\' pets','You','No mobs are watched now.','Watch my target','Most units at once','Farthest away','Fade starts at',
     'Faded opacity','Only your target and party in towns'};
 local function show_tab(light)
-    local out=joined(WHO,{KIND,'Layout','Icons shown','Show countdowns','Show'});
+    local out=joined(WHO,{KIND,'Layout','Icons shown','Countdowns','Show'});
     if light then out[#out+1]=light;end;
     return out;
 end;
 local PLACE={'Icons follow how big the unit is on screen: its distance from the camera, and its size from Phoenix hitboxes. Size on the main page scales them too.',
-    'Icon size','Smallest','Largest','Bigger on your target','Shrink with distance','Bigger units get bigger icons',
+    'Icon size','Smallest','Largest','Bigger on your target','Fine-tune scaling',
     'Countdowns go inside icons under',KIND,'Icon size for this kind','Where the icons sit','Gap above the name','Space between icons',FOLD,
     'Head height offset','Across','Down',
     'For one unit, by its exact name. /vg overhead calibrate prints your target\'s head height and where it comes from.','Unit name',
     'Use my target\'s name','Add head offset','No head offsets yet.'};
-local LOOK={'Countdown color','Lit icons','Glow around lit icons','Light color'};
+local LOOK={"Its icons are the main page's Icons",'Open Icons','Countdown color','Lit icons','Glow around lit icons','Light color'};
 local SWITCHES={'Show these effects:','Corsair rolls','Bard songs','Protect and Shell','Food','Barspells','Stances','Signet and similar'};
 local ALWAYS={'Always show','Copy Image','Third Eye'};
 -- A kind on Debuffs only has no switches, and no buffs to narrow. Always show stays, on the kinds that have it.
 local function filter_tab(switches,always)
-    return joined({KIND,'Use the Hidden everywhere list','Edit the list','Only effects I cast'},switches and {'Only buffs I cast'} or {},{'Only debuffs from my party'},
-        switches and SWITCHES or {},always and ALWAYS or {},{'Find an effect','Effect','Show only','Hide here','Clear this kind\'s filters'});
+    return joined({KIND,'Use the Hide list','Edit the list','Only effects I cast'},switches and {'Only buffs I cast'} or {},{'Only debuffs from my party'},
+        switches and SWITCHES or {},always and ALWAYS or {},{'Effect'});
 end;
+-- Where a tab's rows for the kind start, a line says which kind they are for.
+local KIND_NAMES={mob='Mobs',party='Party',alliance='Alliance',other='Other players',pet='Your pet',other_pet='Other players\' pets',self='You'};
 local function same_order(kind,tab,wanted)
     local got=tab_labels();
-    wanted=joined(wanted,{'Reset this display'});
+    wanted=joined(wanted,{'Reset this tab','Reset all of this display'});
+    for index,label in ipairs(wanted)do if label==KIND then wanted[index]='For '..KIND_NAMES[kind]..', as picked above:';end;end;
     assert(table.concat(got,'\n')==table.concat(wanted,'\n'),kind..' '..tab..' drew:\n'..table.concat(got,'\n'));
 end;
 
@@ -120,6 +123,29 @@ for _,entry in ipairs({{'mob','Light up buffs you can remove',true},{'party','Li
         frame();
         same_order(entry[1],tab,wanted);
     end;
+end;
+
+-- Fine-tune scaling holds the two scaling sliders and the sizes they give, in pixels.
+begin({['Fine-tune scaling']=true},'place');
+do
+    local labels,at=tab_labels(),{};
+    for index,label in ipairs(labels)do at[label]=at[label] or index;end;
+    local fold=at['Fine-tune scaling'];
+    assert(fold and at['Shrink with distance']==fold+1 and at['Bigger units get bigger icons']==fold+2,'The fold holds the scaling sliders.');
+    local line=labels[fold+3] or '';
+    -- On the screen's own height, at Size 1, with the icons off.
+    local ui=require('imgui').GetIO().DisplaySize.y/1080;
+    assert(line:find('^10 yalms from the camera, a medium unit gets '..math.floor(22*ui+0.5)..' px icons, a Tarutaru %d+ px and a Galka %d+ px%. A medium unit gets %d+ px at 5 yalms and %d+ px at 20%.$'),
+        'And the sizes in pixels: '..line);
+    -- The kind picker sits in a box, drawn round it once it is drawn, as it picks what every tab changes.
+    local group,ended,box,mobs;
+    for index,call in ipairs(MOCK.imgui_calls)do
+        if call[1]=='BeginGroup' and not group then group=index;end;
+        if group and not ended and type(call[2])=='string' and call[2]:find('^Mobs##') then mobs=true;end;
+        if call[1]=='EndGroup' and group and not ended then ended=index;end;
+        if call[1]=='draw:AddRect' and ended and not box then box=index;end;
+    end;
+    assert(group and mobs and ended and box and box<=ended+6,'The kind picker sits in a box.');
 end;
 
 -- Rows wait for what they change: any kind on Two lines or Split, and mobs on Split with Crowd control icon on its own.
@@ -137,7 +163,7 @@ assert(row_shown('place','Space between the two sides',function(o) o.types.party
 assert(not row_shown('place','Crowd control icon size',function(o) o.types.mob.layout,o.types.mob.cc_slot='split',false;end),'Mobs on Split with no icon of its own has no size to set.');
 assert(row_shown('place','Crowd control icon size',function(o) o.types.mob.layout,o.types.mob.cc_slot='split',true;end),'With its own icon it has.');
 
--- The 11 ticks in one table of two columns, 6 and 5, with no Trusts.
+-- The 11 ticks in one table of two columns, 6 and 5.
 begin(ALL);
 frame();
 local in_table,columns,first,count=false,0,0,0;
@@ -152,7 +178,6 @@ for _,call in ipairs(MOCK.imgui_calls)do
     end;
 end;
 assert(opened_at==2 and columns==2 and count==11 and first==6,('Show icons over fills two columns: %s %d %d %d'):format(tostring(opened_at),columns,count,first));
-assert(not has(tab_labels(),'Trusts'),'There is no Trusts tick.');
 
 -- What isn't on the panel: an Editing line, a second line in the intro and the five sliders, on every kind, layout and tab.
 local SLIDERS={'Name size in the world','Largest name','Target cursor size in the world','Largest target cursor','Name height above the head'};
@@ -270,9 +295,9 @@ imgui.IsItemHovered=function() return true;end;
 begin(ALL,'look');
 imgui.IsItemHovered=hovered;
 local told=0;
-for _,label in ipairs(tab_labels())do if label=='The party list icons use this too.' then told=told+1;end;end;
+for _,label in ipairs(tab_labels())do if label=='Lit icons, on the main page, sets this on every display at once.' then told=told+1;end;end;
 assert(told==2,'Both rows say so: '..told);
-assert(found('The party list icons use this too','Glow around lit icons'),'The search reads the help on the glow row.');
+assert(found('sets this on every display at once','Glow around lit icons'),'The search reads the help on the glow row.');
 assert(not found('For every unit type, and the party list icons','Glow around lit icons'),'The search reads only the help the row has.');
 
 -- Each section's open state stays when a save loads.

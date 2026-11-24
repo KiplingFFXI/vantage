@@ -1,6 +1,7 @@
-lupa>=2.2
+lupa==2.8
 imgui-bundle==1.92.3
-numpy
-pillow
-pefile
+numpy==2.5.3
+pillow==12.3.0
+# Only the client decoder in research/native-solo-research uses pefile, and its vendor folder has its own copy.
+pefile==2024.8.26
 capstone==5.0.9

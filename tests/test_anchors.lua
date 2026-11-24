@@ -151,6 +151,47 @@ s.rolls.anchor = { to = 'element', element = 'pet', side = 'below', align = 'sta
 frame(s); frame(s);
 assert(elements.drawn('rolls').x == 300 and elements.drawn('pet').x == 700, 'A circle of anchors leaves both at their fallback spots.');
 s.rolls.anchor, s.pet.anchor = anchors.make(), anchors.make();
+-- A side of the chat log with no room puts any display at its own Across and Down, as it does a timer panel, and its
+-- anchor doesn't count as placing it, so Size and place says why: Left with the log at the screen's left edge, Below
+-- with the log at the bottom, and Above where another of the log's windows sits. A gap below 0 asks to overlap the
+-- log, so the display stays on it.
+local function beside_chat(side, gap)
+    return { to = 'chat', side = side, align = 'start', gap = gap or 4, offset = 0, element = '', point = 'top_left', dx = 0, dy = 0 };
+end;
+local alerts_were, pulse_were = require('core.store').copy(s.alerts), require('core.store').copy(s.ready_pulse);
+local showing = { { visual = true, ends = 200, message = 'Haste wore off' } };
+s.alerts.enabled, s.alerts.muted, s.alerts.notice_x, s.alerts.notice_y, s.alerts.notice_height = true, false, 100, 100, 120;
+s.ready_pulse.enabled, s.ready_pulse.spot, s.ready_pulse.x, s.ready_pulse.y = true, 'screen', -1, 260;
+local own_spots = {
+    { 'pet', s.pet, 'anchor', 700, 40 }, { 'rolls', s.rolls, 'anchor', 300, 40 },
+    { 'cooldown_list', s.party_cooldowns.list, 'anchor', 1100, 40 }, { 'notices', s.alerts, 'notice_anchor', 100, 100 },
+    { 'pulse', s.ready_pulse, 'anchor', (1600 - 64) / 2, 260 },
+};
+for _, display in ipairs(own_spots) do
+    local id, config, key, own_x, own_y = display[1], display[2], display[3], display[4], display[5];
+    for _, side in ipairs({ 'left', 'below', 'above' }) do
+        MOCK.chat.windows = side == 'above' and { { x = 12, y = 400, width = 900, height = 110 } } or {};
+        config[key] = beside_chat(side);
+        frame(s, nil, showing);
+        local drawn = elements.drawn(id);
+        assert(drawn.x == own_x and drawn.y == own_y and not elements.anchored(id),
+            id .. ' with no room ' .. side .. ' the chat log is at its own Across and Down: ' .. drawn.x .. ', ' .. drawn.y);
+    end;
+    MOCK.chat.windows = {};
+    config[key] = beside_chat('left', -5);
+    frame(s, nil, showing);
+    local drawn = elements.drawn(id);
+    assert(drawn.x == 0 and drawn.y == MOCK.chat.y and elements.anchored(id),
+        id .. ' with a gap below 0 stays on the chat log: ' .. drawn.x .. ', ' .. drawn.y);
+    config[key] = anchors.make();
+end;
+-- The notices' empty box in edit mode too, here at Across Centered.
+s.alerts.notice_x, s.alerts.notice_anchor = -1, beside_chat('left');
+frame(s, { editing = true });
+local empty_box = elements.drawn('notices');
+assert(empty_box.x == (1600 - empty_box.width) / 2 and empty_box.y == 100 and not elements.anchored('notices'),
+    'The notices\' empty box with no room beside the chat log is at its own Across and Down: ' .. empty_box.x .. ', ' .. empty_box.y);
+s.alerts, s.ready_pulse = alerts_were, pulse_were;
 
 -- A panel beside a panel drawn the same frame.
 s.panels.self_buffs.enabled, s.panels.target.enabled, s.preview = true, true, true;
@@ -244,7 +285,25 @@ held = shift_drag('##vantage_notices', drawn.x + drawn.width / 2, drawn.y + draw
 assert(held and held[1] == start_x and held[2] == start_y, 'A Shift click leaves the notices where their anchor drew them: ' .. tostring(held and held[1]));
 assert(s.alerts.notice_anchor.to == 'none' and s.alerts.notice_x == start_x + 50 and s.alerts.notice_y == start_y - 40 and changes > 0,
     'The drag detaches the notices and moves them from there: ' .. s.alerts.notice_x .. ', ' .. s.alerts.notice_y);
+-- A drag straight up detaches it too, and it stays across where its anchor drew it, not at its own Across.
+s.alerts.notice_x, s.alerts.notice_y, s.alerts.notice_anchor = 100, 100, require('core.store').copy(corner);
+frame(s, callbacks, up);
+drawn = elements.drawn('notices');
+start_x, start_y = drawn.x, drawn.y;
+shift_drag('##vantage_notices', drawn.x + drawn.width / 2, drawn.y + drawn.height / 2, 0, -40, up);
+assert(s.alerts.notice_anchor.to == 'none' and s.alerts.notice_x == start_x and s.alerts.notice_y == start_y - 40,
+    'A drag straight up detaches the notices and keeps them across where they were drawn: ' .. s.alerts.notice_x .. ', ' .. s.alerts.notice_y);
 s.alerts.notice_locked = true;
+s.ready_pulse.enabled, s.ready_pulse.spot, s.ready_pulse.locked, s.ready_pulse.x, s.ready_pulse.y = true, 'screen', false, -1, 100;
+s.ready_pulse.anchor = require('core.store').copy(corner);
+frame(s, callbacks);
+drawn = elements.drawn('pulse');
+start_x, start_y = drawn.x, drawn.y;
+assert(start_x == 5 and elements.anchored('pulse'), 'Fixture: the ready pulse is at its anchor\'s corner.');
+shift_drag('##vantage_pulse', drawn.x + drawn.width / 2, drawn.y + drawn.height / 2, 0, -40);
+assert(s.ready_pulse.anchor.to == 'none' and s.ready_pulse.x == start_x and s.ready_pulse.y == start_y - 40,
+    'A drag straight up detaches the ready pulse and keeps it across where it was drawn: ' .. s.ready_pulse.x .. ', ' .. s.ready_pulse.y);
+s.ready_pulse.enabled, s.ready_pulse.locked = false, true;
 -- In edit mode the display's own drag waits: edit mode moves it.
 s.party_cooldowns.list.anchor = { to = 'screen', point = 'top_right', dx = -20, dy = 20, element = '', side = 'below', align = 'start', gap = 4, offset = 0 };
 frame(s);

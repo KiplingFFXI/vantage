@@ -36,7 +36,7 @@ local function alliance(count, buffs, width, shift)
     return roster, subjects, { available = true, groups = groups };
 end;
 local roster, subjects, game;
--- The timer panels' look, which the party list buffs wear, as fresh settings have it.
+-- The timer panels' look, which Party list wears, as fresh settings have it.
 local style = defaults.make().style;
 -- The strips and panels as the game draws them now, each recorded where it is drawn.
 local function drawn(p)
@@ -66,7 +66,7 @@ local function apart(plans, what)
     end;
 end;
 -- One line of 37 px icons for each of six members, with the countdown under each icon, in the timer panels' font,
--- which the party list buffs wear.
+-- which Party list wears.
 local sample = require('ui.party_defaults').make();
 local look = require('ui.party_theme').party(sample, style);
 local timer = math.ceil(require('ui.countdown_text').icon_metrics(look.font, '57', 37, sample.effects).height);
@@ -134,7 +134,7 @@ local steps;
 s = fresh();
 p = s.party_ui;
 strips = drawn(p);
-draw('Display', 'place', { ['Your party in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Your party in a panel of its own##frame'] = true });
 steps = history();
 panels = drawn(p);
 assert(#panels == 3 and panels[1].detached and not panels[2].detached and not panels[3].detached, 'Fixture: only the party moved.');
@@ -143,7 +143,7 @@ assert(panels[1].x + panels[1].width + 26 == strips[2].x and panels[1].y + panel
     'The party\'s panel moved by an alliance strip\'s width and the gap.');
 assert(steps.undo == 1 and steps.undo_label == 'Your party in a panel of its own' and p.locked == true, 'One Undo step, still locked.');
 -- Then Alliance 1 on its own: clear of the party's panel and the Alliance 2 strip.
-draw('Display', 'place', { ['Alliance 1 in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Alliance 1 in a panel of its own##frame'] = true });
 panels = drawn(p);
 assert(#panels == 3 and panels[1].detached and panels[2].detached and not panels[3].detached, 'Fixture: Alliance 1 moved too.');
 apart(panels, 'Alliance 1 after the party');
@@ -193,7 +193,7 @@ in_turn(p);
 p.groups[1].native_detached, p.groups[3].native_detached, p.groups[2].detached_x = false, false, 263;
 strips = drawn(p);
 assert(not strips[1].detached and strips[2].detached and not strips[3].detached, 'Fixture: the party and Alliance 2 beside the rows.');
-draw('Display', 'place', { ['Alliance 2 in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Alliance 2 in a panel of its own##frame'] = true });
 panels = drawn(p);
 apart(panels, 'Alliance 2 on again');
 assert(panels[3].detached and panels[3].x + panels[3].width == strips[1].x + strips[1].width and panels[3].height == least
@@ -208,7 +208,7 @@ local mine, theirs = p.groups[1], p.groups[2];
 mine.native_detached, mine.detached_x, mine.detached_y, mine.detached_width, mine.detached_height = true, 709, 300, 420, 300;
 theirs.native_detached, theirs.detached_x, theirs.detached_y, theirs.detached_width, theirs.detached_height = true, 263, 570, 420, 510;
 drawn(p);
-draw('Display', 'place', { ['Alliance 2 in a panel of its own##frame'] = true });
+draw('Display', 'show', { ['Alliance 2 in a panel of its own##frame'] = true });
 panels = drawn(p);
 apart(panels, 'A panel placed by hand');
 assert(panels[1].x == 709 and panels[1].width == 420 and panels[1].height == 300 and panels[1].y + 300 == 1080,

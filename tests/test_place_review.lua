@@ -104,6 +104,11 @@ fresh(function(s) local kept = s.panels.self_buffs.anchor; kept.to, kept.side = 
 assert(says('There\'s no room on that side of the chat log, so it is at Across and Down.'), 'No room below the log says so.');
 fresh(function(s) local kept = s.panels.self_buffs.anchor; kept.to, kept.side = 'chat', 'above'; end);
 assert(not says('There\'s no room'), 'With room it says nothing.');
+-- So does a display that isn't a timer panel, here the Pet, which goes to its own Across and Down.
+fresh(function(s) s.pet.enabled, s.pet.preview = true, true; s.pet.anchor.to, s.pet.anchor.side = 'chat', 'below'; end, 'pet');
+drawn = elements.drawn('pet');
+assert(drawn.x == w.s().pet.x and drawn.y == w.s().pet.y and says('There\'s no room on that side of the chat log, so it is at Across and Down.'),
+    'No room below the log puts the Pet at Across and Down and says so: ' .. drawn.x .. ', ' .. drawn.y);
 
 -- Across and Down read what's on the screen. What was typed stays, for a bigger screen.
 fresh();
@@ -180,8 +185,25 @@ local function no_room(side)
 end;
 assert(no_room('right'), 'The list at the screen\'s edge has no room to its right.');
 assert(not no_room('left'), 'To its left it has.');
+-- The line goes by the strips drawn now. While they aren't drawn, with On off or hidden by /vg hide, it says nothing
+-- of a side picked meanwhile. Drawn again with no room, it says so again.
+local note = 'There\'s no room on that side of the game\'s list, so these buffs aren\'t showing.';
+assert(no_room('right'), 'Fixture: no room on the right.');
+w.s().party_ui.enabled, w.s().party_ui.preview = false, false;
+w.frame();
+w.s().party_ui.native.side = 'left';
+assert(not says(note), 'With On off, the line says nothing of the left side, which has room.');
+w.s().party_ui.enabled, w.s().party_ui.preview, w.s().party_ui.native.side = true, true, 'right';
+w.frame();
+assert(says(note), 'Drawn again on the right, it says so again.');
+MOCK.fire('command', { command = '/vg hide' });
+w.frame();
+w.s().party_ui.native.side = 'left';
+assert(not says(note), 'Hidden by /vg hide, it says nothing of the left side either.');
+MOCK.fire('command', { command = '/vg show' });
+w.frame();
 
--- Put it back, Reset this display and /vg reset panels all go where a fresh install's first frame goes.
+-- Put it back, Reset all of this display and /vg reset panels all go where a fresh install's first frame goes.
 local function at_first(id)
     local element, config = elements.by_id[id], elements.config(w.s(), id);
     local first_x, first_y = setup.first_spot(id, screen);
@@ -195,9 +217,9 @@ assert(not at_first('self_buffs'), 'Fixture: it has moved.');
 click('Put it back where it started##frame');
 assert(at_first('self_buffs'), 'Put it back goes to the first spot.');
 fresh(moved);
-click('Reset this display##frame');
+click('Reset all of this display##frame');
 click('Reset##look_frame_reset_self_buffs');
-assert(at_first('self_buffs'), 'So does Reset this display.');
+assert(at_first('self_buffs'), 'So does Reset all of this display.');
 fresh(moved);
 MOCK.fire('command', { command = '/vg reset panels' });
 for _, id in ipairs(defaults.panel_order) do assert(at_first(id), '/vg reset panels puts it back: ' .. id); end;

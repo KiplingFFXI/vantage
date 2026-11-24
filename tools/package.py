@@ -4,9 +4,13 @@ usage: python tools/package.py [--out FOLDER]
 
 The archive holds addons/vantage/ (the addon's runtime files, as listed in tools/release_files.py) and
 LICENSE, README.md, CHANGELOG.md, docs/GUIDE.md and docs/INSTALL.md. Caches, tests, tools, fonts made at run time
-and game data are left out. It refuses to build when a file holds a private marker: a line of
-tools/private_markers.txt, a temporary or scratch path or an absolute user path, in plain bytes or UTF-16LE, in any
-case. The member order and times are fixed, so the same sources give the same archive.
+and game data are left out. It refuses to build when a runtime file is missing or unexpected, when a module
+vantage.lua loads would be left out, when a file is linked, or when a document link points outside the archive. It
+also refuses when a file holds a private marker: a line of tools/private_markers.txt, a temporary or scratch path or
+an absolute user path, in plain bytes or UTF-16LE, in any case. private_markers.txt lists your own Windows user name,
+email and character names, one per line. .gitignore keeps it out of the repository, so a build without it checks
+only the paths. The member order and times are fixed, so the same sources give the same archive. --out picks another
+output folder.
 """
 from pathlib import Path
 import argparse
@@ -17,64 +21,22 @@ import tempfile
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from release_files import ADDON, REQUIRED, ROOT, addon_version, check_archive_links, linked, required_modules
+from release_files import (ADDON, OWN_MARKERS, REQUIRED, ROOT, addon_files, addon_version, check_archive_links,
+                           holds_marker, linked, own_markers, required_modules)
 
 DOCUMENTS = ('LICENSE', 'README.md', 'CHANGELOG.md', 'docs/GUIDE.md', 'docs/INSTALL.md')
-# Left out of the addon folder: caches, tests, tools, fonts Vantage makes at run time, game data and settings.
-SKIP_FOLDERS = {'__pycache__', '.git', 'tests', 'tools', 'fonts', 'config'}
-SKIP_SUFFIXES = {'.pyc', '.pyo', '.ttf', '.otf', '.dat', '.tmp', '.log', '.bak'}
-# Your own private text, one per line: your Windows user name, email and character names. .gitignore keeps this file
-# out of the repository, so a build without it still checks the paths.
-OWN_MARKERS = Path(__file__).resolve().parent / 'private_markers.txt'
 PATH_MARKERS = ('AppData', 'C:/Users', 'C:\\Users', 'C:\\\\Users')
-
-
-def own_markers(path=OWN_MARKERS):
-    """The lines of the local marker file, or none when there's no such file."""
-    if not Path(path).is_file():
-        return ()
-    return tuple(line.strip() for line in Path(path).read_text(encoding='ascii').splitlines() if line.strip())
-
-
 MARKERS = own_markers() + PATH_MARKERS
 
 
 def private_marker(data):
     """The first marker data holds, plain or UTF-16LE, ignoring case, or None."""
-    lowered = data.lower()
-    for marker in MARKERS:
-        text = marker.lower()
-        if text.encode('ascii') in lowered or text.encode('utf-16-le') in lowered:
-            return marker
-    return None
+    return holds_marker(data, MARKERS)
 
 
 def addon_contents(addon=ADDON):
     """[(path, archived name)] of the addon's runtime files, with caches, fonts and game data left out."""
-    addon = Path(addon)
-    if linked(addon):
-        raise RuntimeError('The addon folder must not be linked.')
-    found = {}
-    for folder, subfolders, filenames in os.walk(addon):
-        subfolders[:] = sorted(name for name in subfolders if name not in SKIP_FOLDERS)
-        for name in subfolders:
-            if linked(Path(folder) / name):
-                raise RuntimeError('Linked runtime folder: ' + (Path(folder) / name).relative_to(addon).as_posix())
-        for name in filenames:
-            path = Path(folder) / name
-            if path.suffix.lower() in SKIP_SUFFIXES:
-                continue
-            relative = path.relative_to(addon).as_posix()
-            if linked(path) or relative not in REQUIRED:
-                raise RuntimeError('Unexpected or linked runtime file: ' + relative)
-            found[relative] = path
-    missing = REQUIRED - set(found)
-    if missing:
-        raise RuntimeError('Missing runtime files: ' + ', '.join(sorted(missing)))
-    left_out = required_modules(addon) - REQUIRED
-    if left_out:
-        raise RuntimeError('vantage.lua loads modules the archive leaves out: ' + ', '.join(sorted(left_out)))
-    return [(found[name], 'addons/vantage/' + name) for name in sorted(found)]
+    return [(path, 'addons/' + name) for path, name in addon_files(addon, leftovers=True)]
 
 
 def contents(root=ROOT, addon=None):

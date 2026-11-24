@@ -1,4 +1,4 @@
--- The Phantom Rolls in era (content tag TOAU, sql/abilities.sql :118-135) as Phoenix 730ac619c0 plays them, by ability
+-- The Phantom Rolls in era (content tag TOAU, sql/abilities.sql :118-135) as Phoenix 9785020970 plays them, by ability
 -- id: the power at each total from 1 to 11 (scripts/globals/job_utils/corsair.lua rollData :16-357, where the era tables
 -- of modules/era/lua/globals/job_utils/corsair.lua :25-96 replace them), the job whose main job in the party adds the
 -- bonus, the power of a bust, and the lucky and unlucky numbers, where the table spikes and dips. Phoenix has no code

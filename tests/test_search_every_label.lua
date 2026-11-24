@@ -5,10 +5,14 @@ local window = h.window;
 
 local KIND = { Checkbox = true, Button = true, SmallButton = true, RadioButton = true, SliderFloat = true, InputText = true, BeginCombo = true, ColorEdit4 = true, CollapsingHeader = true };
 -- Each page's own way back, which is no setting.
-local PLAIN = { ['< Back'] = true };
+-- The Help page's guide links aren't settings, so the search leaves them out (tests/test_help_links.lua).
+local PLAIN = { ['< Back'] = true, ['Copy the guide link'] = true };
 
--- What the control says: ##frame_Name and Name##id are both Name, and a name's tag tail isn't part of it.
+-- What the control says: ##frame_Name and Name##id are both Name, and a name's tag tail isn't part of it. A fold whose
+-- title says what it holds now, as Name: what, is Name.
 local function shown(label)
+    local title, key = label:match('^(.-)##(.+)$');
+    if title and title:sub(1, #key + 1) == key .. ':' then return key; end;
     local text = label:match('^##frame_(.+)$') or label:match('^(.-)##') or label;
     return text:gsub('_%l[%l_]*$', '');
 end;

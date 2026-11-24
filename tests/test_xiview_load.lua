@@ -3,18 +3,8 @@
 -- pointer, its status icons and its action icons, so neither its first frame nor its first buff waits for them. A
 -- settings read inside a frame loads nothing more, and a character not using XI View, or using it only on a display
 -- that is off, still leaves it for its first use.
-local function u16(value) return string.char(value % 256, math.floor(value / 256) % 256) end
-local function u32(value) return u16(value % 65536) .. u16(math.floor(value / 65536)) end
-local function chunk(kind, payload)
-    local length = math.ceil((16 + #payload) / 16) * 16
-    return 'TEST' .. u32(length / 16 * 128 + kind) .. string.rep('\0', 8) .. payload .. string.rep('\0', length - 16 - #payload)
-end
-local function texture(name, width, height)
-    local block = string.rep('\255', 8) .. '\255\255\0\0\0\0\0\0'
-    local data = string.rep(block, math.ceil(width / 4) * math.ceil(height / 4))
-    return chunk(0x20, string.char(0xA1) .. name .. u32(40) .. u32(width) .. u32(height)
-        .. string.rep('\0', 28) .. '3TXD' .. u32(#data) .. u32(0) .. data)
-end
+local dat = require('dat_fixture')
+local u16, chunk, texture, upvalue = dat.u16, dat.chunk, dat.texture, dat.upvalue
 local parts = {}
 for code = 32, 126 do
     local width = code == 32 and 4 or 9
@@ -48,13 +38,6 @@ local function view_reads()
     for filename, count in pairs(reads) do if filename:sub(1, #view_root) == view_root then total = total + count end end
     return total
 end
-local function upvalue(fn, wanted)
-    for index = 1, 200 do
-        local name, value = debug.getupvalue(fn, index)
-        if name == wanted then return value end
-        if not name then break end
-    end
-end
 -- What of XI View is loaded: its fonts (deferred until read), its status icons and its action icons.
 local function loaded()
     local state = upvalue(assets.clear, 'state')
@@ -73,13 +56,13 @@ assert(store.write(folder .. 'Tester_1001/settings.json', plain))
 local view = defaults.make()
 assert(appearance.apply(view, 'XI View', { matching = true }) and appearance.uses_xiview(view), 'The XI View look uses it.')
 assert(store.write(folder .. 'Viewer_1002/settings.json', view))
--- One XI View piece anywhere that is on is enough, such as the party list buffs' own icons. A display that is off
+-- One XI View piece anywhere that is on is enough, such as Party list's own icons. A display that is off
 -- draws nothing.
 local piece = defaults.make(); piece.party_ui.style.icon_art = 'XI View'
 piece.party_ui.enabled = false
-assert(not appearance.uses_xiview(piece), 'Party list buffs that are off do not use their XI View icons.')
+assert(not appearance.uses_xiview(piece), 'Party list that are off do not use their XI View icons.')
 piece.party_ui.enabled = true
-assert(appearance.uses_xiview(piece), 'Party list buffs with XI View icons use it.')
+assert(appearance.uses_xiview(piece), 'Party list with XI View icons use it.')
 
 -- /load while Tester is in the game: XI View is left for its first use. (Its menu font is still made at load from
 -- the XI View font file, as before.)

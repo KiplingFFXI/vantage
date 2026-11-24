@@ -426,7 +426,7 @@ local spots = {};
 for _, entry in ipairs(sample_view.rows) do if entry.kind == 'debuff' and cleansable[entry.effect] then spots[entry.scope] = true; end; end;
 assert(spots.self and spots.party, 'The panel samples hold a debuff that lights.');
 
--- The party list icons: off at first, in the overhead icons' glow and color, and Erase doesn't reach the alliance.
+-- The party list icons: off at first, in a glow and color of their own, and Erase doesn't reach the alliance.
 local overlay = require('ui.native_party_hud');
 local strip = settings();
 assert(strip.party_ui.effects.cleanse_light == false, 'The party list icons start with the light off.');
@@ -452,7 +452,7 @@ local function strips(config_now)
     calls = {};
     now = now + 1;
     overlay.draw(roster, strip_subjects, strip.party_ui, config_now or now, { native_geometry = game, global_style = strip.style, settings = strip });
-    local look = strip.overhead.dispel_color;
+    local look = strip.party_ui.effects.dispel_color;
     local opacity = strip.party_ui.style.opacity;
     local ink = require('ui.party_theme').u32(look, opacity);
     local soft = require('ui.party_theme').u32({ look[1], look[2], look[3], look[4] * 0.35 }, opacity);
@@ -467,9 +467,13 @@ edges, glows = strips();
 assert(edges == 18 and glows == 18, 'Twelve on the party strip and six on the alliance strip: ' .. edges .. ', ' .. glows);
 strip.overhead.dispel_glow = false;
 edges, glows = strips();
-assert(edges == 18 and glows == 0, 'The Overhead page\'s glow switch goes here too.');
+assert(edges == 18 and glows == 18, 'The Overhead page\'s glow switch doesn\'t change it.');
 strip.overhead.dispel_glow = true;
-strip.overhead.dispel_color = { 0.2, 0.9, 1, 1 };
+strip.party_ui.effects.dispel_glow = false;
+edges, glows = strips();
+assert(edges == 18 and glows == 0, 'Its own glow switch does.');
+strip.party_ui.effects.dispel_glow = true;
+strip.party_ui.effects.dispel_color = { 0.2, 0.9, 1, 1 };
 edges, glows = strips();
 assert(edges == 18 and glows == 18, 'And its color.');
 strip.party_ui.style.opacity = 0.5;

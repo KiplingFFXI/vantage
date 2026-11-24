@@ -1,5 +1,5 @@
--- Where the party list buffs draw and how big: the step they fill beside the game's rows, and a panel of its own for a
--- group, with the words the Party list buffs panel says about them.
+-- Where Party list draws and how big: the step it fills beside the game's rows, and a panel of its own for a
+-- group, with the words the Party list panel says about them.
 local hud = require('ui.native_party_hud');
 local countdown = require('ui.countdown_text');
 local elements = require('ui.elements');
@@ -36,11 +36,35 @@ function widget.rooms(settings, callbacks)
 end
 
 -- The line about the icons beside the game's rows, with the size they draw at once the game's step from one row to the
--- next is measured.
+-- next is measured. With a size picked for them, it says what that size does instead, and when the last draw had no
+-- room on the screen for the stacks.
 function widget.step(p, rooms)
     local numbers = span(rooms);
+    if (p.native.icon_size or 0) > 0 then
+        local wanted, any = hud.stacks(p.native.icon_size);
+        return (numbers and "The game's party list is " .. numbers .. ' px from one row to the next here. ' or '')
+            .. "Icons smaller than the step between its rows sit in the middle of each row, and bigger ones go in a stack with each member's name."
+            .. (wanted and not any and " There's no room on the screen for the stacks now, so the icons fill the rows." or '');
+    end;
     return "Beside the game's party list the icons fill the step from one row to the next"
         .. (numbers and ' (' .. numbers .. ' px here)' or '') .. ', with no space between them.';
+end
+
+-- Whether a group beside the game's list stacks its icons: as the last draw at this size had it, or before one,
+-- Icon size beside the game's list is bigger than its rows, or is set at all before the game's list has been read.
+function widget.stacked(p, rooms)
+    local size = p.native.icon_size or 0;
+    if size <= 0 then return false; end;
+    local wanted, any = hud.stacks(size);
+    if wanted ~= nil then return any; end;
+    local read = false;
+    for _, entry in ipairs(rooms) do
+        if entry.attached and entry.members > 0 then
+            read = true;
+            if size > entry.room then return true; end;
+        end;
+    end;
+    return not read;
 end
 
 -- Whether any group whose strip is shown is in a panel of its own.
@@ -73,7 +97,7 @@ end
 
 -- A panel's height for members, one line of effects each: the panel's top padding, then per member a name line, its
 -- gap, the icons with a countdown under each, and the space under them (ui/native_party_hud.lua detached_rows).
--- global_style is the timer panels' look, which the party list buffs wear.
+-- global_style is the timer panels' look, which Party list wears.
 local function panel_height(p, saved, members, global_style)
     local e = p.effects;
     local look = party_theme.party(p, global_style);
@@ -109,7 +133,7 @@ end
 -- next to that list. It is as tall as its members' effects shown now need at that width, and never less than a line
 -- each. Where the screen has no room under it, it goes up, so its saved place is where it draws. A strip not drawn now
 -- keeps the panel's saved place and width, and a group the game's list doesn't have keeps its saved height. The lock
--- is left as it is. global_style is the timer panels' style, which the party list buffs wear.
+-- is left as it is. global_style is the timer panels' style, which Party list wears.
 -- A panel over another shown group's strip or panel moves sideways away from the game's list past it, the strip gap
 -- clear, and stays on the screen. With no room sideways it goes back beside the list and up past what it covers. With no
 -- room above either, the panels there share the height the strips there leave, the first lowest as in the game's

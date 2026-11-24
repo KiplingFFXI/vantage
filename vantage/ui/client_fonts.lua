@@ -13,6 +13,29 @@ local function rgb565(value)
     return { math.floor(value / 2048) * 255 / 31, math.floor(value / 32) % 64 * 255 / 63, value % 32 * 255 / 31 }
 end
 
+-- The texel at x, y of a DXT3 texture: its alpha, 0 to 15, then, when that is least or more, its color, three channels
+-- from 0 to 255. blocks keeps each block's four colors once they are worked out.
+local function texel(raw, blocks, x, y, least)
+    local block = math.floor(y / 4) * (raw.width / 4) + math.floor(x / 4)
+    local index = y % 4 * 4 + x % 4
+    local byte = raw.dds:byte(129 + block * 16 + math.floor(index / 2))
+    local alpha = index % 2 == 0 and byte % 16 or math.floor(byte / 16)
+    if alpha < least then return alpha end
+    local colors = blocks[block]
+    if not colors then
+        local a, b, c, d = raw.dds:byte(137 + block * 16, 140 + block * 16)
+        colors = { rgb565(a + b * 256), rgb565(c + d * 256), {}, {} }
+        for channel = 1, 3 do
+            colors[3][channel] = (2 * colors[1][channel] + colors[2][channel]) / 3
+            colors[4][channel] = (colors[1][channel] + 2 * colors[2][channel]) / 3
+        end
+        blocks[block] = colors
+    end
+    local indices = raw.dds:byte(141 + block * 16 + math.floor(index / 4))
+    return alpha, colors[math.floor(indices / 4 ^ (index % 4)) % 4 + 1]
+end
+client_fonts.texel = texel
+
 local function le32(value)
     return string.char(value%256,math.floor(value/256)%256,math.floor(value/65536)%256,math.floor(value/16777216)%256)
 end
@@ -69,24 +92,8 @@ function client_fonts.parse(raw, image)
         for y = 0, 15 do
             local row = {}
             for x = 0, 15 do
-                local px, py = u + x, v + y
-                local block = math.floor(py / 4) * (raw.width / 4) + math.floor(px / 4)
-                local index_in_block = py % 4 * 4 + px % 4
-                local byte = raw.dds:byte(129 + block * 16 + math.floor(index_in_block / 2))
-                local alpha = index_in_block % 2 == 0 and byte % 16 or math.floor(byte / 16)
+                local alpha, color = texel(raw, blocks, u + x, v + y, 1)
                 if alpha > 0 then
-                    local colors = blocks[block]
-                    if not colors then
-                        local a, b, c, d = raw.dds:byte(137 + block * 16, 140 + block * 16)
-                        colors = { rgb565(a + b * 256), rgb565(c + d * 256), {}, {} }
-                        for channel = 1, 3 do
-                            colors[3][channel] = (2 * colors[1][channel] + colors[2][channel]) / 3
-                            colors[4][channel] = (colors[1][channel] + 2 * colors[2][channel]) / 3
-                        end
-                        blocks[block] = colors
-                    end
-                    local indices = raw.dds:byte(141 + block * 16 + math.floor(index_in_block / 4))
-                    local color = colors[math.floor(indices / 4 ^ (index_in_block % 4)) % 4 + 1]
                     -- Black shadow from the next cell is not part of this glyph's advance.
                     if alpha >= 8 and math.max(color[1], color[2], color[3]) >= 128 then right = math.max(right, x) end
                     row[x + 1] = string.char(pixel(color[3]), pixel(color[2]), pixel(color[1]), alpha * 17)
@@ -292,39 +299,6 @@ function client_fonts.measure_countdown(name,text,size,compact)
     return walk(face,text,size)
 end
 
--- A countdown glyph is an upright box, so AddImage draws it as AddImageQuad would, from two corners instead of four.
-local function draw_foreground_glyph(glyph,dx,dy,factor,list,atlas,x,y,color,compact)
-    local code=glyph.code
-    local u,v=(code-32)%16*16,math.floor((code-32)/16)*16
-    if compact then
-        local ink=glyph.countdown_ink
-        if not ink then return end
-        local x1,y1=x+dx+pixel(ink[1]*factor),y+dy+pixel(ink[2]*factor)
-        local x2,y2=x+dx+pixel(ink[3]*factor),y+dy+pixel(ink[4]*factor)
-        if x2<=x1 or y2<=y1 then return end
-        q1[1],q1[2],q3[1],q3[2]=x1,y1,x2,y2
-        t1[1],t1[2],t3[1],t3[2]=(u+ink[1])/atlas.width,(v+ink[2])/atlas.height,(u+ink[3])/atlas.width,(v+ink[4])/atlas.height
-        list:AddImage(atlas.image.id,q1,q3,t1,t3,color)
-        return
-    end
-    local width,height=pixel(glyph.advance*factor),pixel(16*factor)
-    q1[1],q1[2],q3[1],q3[2]=x+dx,y+dy,x+dx+width,y+dy+height
-    t1[1],t1[2],t3[1],t3[2]=u/atlas.width,v/atlas.height,(u+glyph.advance)/atlas.width,(v+16)/atlas.height
-    list:AddImage(atlas.image.id,q1,q3,t1,t3,color)
-end
-
-local function draw_foreground(face,list,text,x,y,size,color,compact)
-    local atlas=face.foreground
-    text=tostring(text or '')
-    x,y=pixel(x),pixel(y)
-    if compact then
-        local left,top=compact_bounds(face,text,size)
-        x,y=x-left,y-top
-    end
-    walk(face,text,size,draw_foreground_glyph,list,atlas,x,y,color,compact)
-    return true
-end
-
 -- One walk of a countdown's glyphs, kept for its passes. Positions here are whole pixels, so a pass offset
 -- added after the walk gives the same corners as walking again at that offset.
 local gx1,gy1,gx2,gy2,gu1,gv1,gu2,gv2,glyphs={},{},{},{},{},{},{},{},0
@@ -351,6 +325,7 @@ local function collect_foreground_glyph(glyph,dx,dy,factor,atlas,x,y,compact)
 end
 
 -- Draws the text once per pass, at each pass offset in its color, in the order the passes are given.
+-- A countdown glyph is an upright box, so AddImage draws it as AddImageQuad would, from two corners instead of four.
 local function replay_foreground(face,list,text,x,y,size,compact,count,dxs,dys,colors)
     local atlas=face.foreground
     text=tostring(text or '')
@@ -373,24 +348,16 @@ local function replay_foreground(face,list,text,x,y,size,compact,count,dxs,dys,c
     return true
 end
 
--- The second result draws every pass of one countdown from a single walk.
+-- Draws every pass of one countdown from a single walk, or nil while the font's countdown atlas isn't up.
 function client_fonts.countdown_renderer(name)
     local face=countdown_face(name)
     if not face then return nil end
-    if not face.countdown_renderer then
-        face.countdown_renderer=function(list,text,x,y,size,color,compact) return draw_foreground(face,list,text,x,y,size,color,compact) end
+    if not face.countdown_replay then
         face.countdown_replay=function(list,text,x,y,size,compact,count,dxs,dys,colors)
             return replay_foreground(face,list,text,x,y,size,compact,count,dxs,dys,colors)
         end
     end
-    return face.countdown_renderer,face.countdown_replay
-end
-
-if VANTAGE_TEST_MODE then
-    function client_fonts.draw_countdown(list,name,text,x,y,size,color,compact)
-        local renderer=client_fonts.countdown_renderer(name)
-        return renderer and renderer(list,text,x,y,size,color,compact) or false
-    end
+    return face.countdown_replay
 end
 
 return client_fonts

@@ -2,12 +2,7 @@
 -- and closing the settings window with /vg is saved.
 local store=require('core.store');
 local snapshot={valid=true,id=1001,name='Tester',zone=102,job=3,self_known=true,self_effects={},party={},entities={}};
-package.loaded['core.client']={load=function()end,read=function()return store.copy(snapshot);end};
-package.loaded['core.observer']={read=function()return {};end};
-local hud=require('ui.hud');
-hud.draw,hud.draw_notices=function()end,function()end;
-require('ui.party_hud').draw=function()return 0,{};end;
-require('ui.native_party_hud').draw=function()return 0,{};end;
+require('app_fixture')(snapshot);
 package.loaded['core.native_party_ui']={treasure_open=function()return false;end,update=function()end,
     status=function()return {active=false};end,restore=function()return true;end};
 local app=dofile(ADDON_DIR..'/vantage.lua');
@@ -31,8 +26,8 @@ command('/vg profile link 1 "Healer"');
 assert(settings().job_profiles['1']=='Healer' and settings().job_profiles['3']=='Melee','link <job> "Name" links that job.');
 MOCK.printed={};
 command('/vg profile link WAR "Healer"');
-assert(said('That profile was not found.') and settings().job_profiles['3']=='Melee' and settings().job_profiles['1']=='Healer',
-    'A job given by name is read as the profile name, so nothing is linked by mistake.');
+assert(said('Usage: /vg profile link [job] "Name"') and settings().job_profiles['3']=='Melee' and settings().job_profiles['1']=='Healer',
+    'A job given by name is not a job ID, so the name after it is a word too many. It shows the usage line and nothing is linked by mistake.');
 command('/vg profile link 1');
 assert(settings().job_profiles['1']==nil and disk().job_profiles['1']==nil,'link <job> with no name unlinks that job.');
 MOCK.printed={};command('/vg profile');

@@ -198,7 +198,7 @@ beside('Home', 'Skin')
 app.state.settings.shared_layout = true
 beside('Profiles', 'What to share')
 app.state.settings.shared_layout = false
-beside('Profiles', 'Saved profiles')
+-- Saved profiles is a list of rows, each with its own buttons.
 beside('Profiles', 'Load this profile when I change to')
 require('ui.panel_frame').open('self_buffs', 'filters')
 beside('Display', 'Show only names containing')

@@ -96,7 +96,7 @@ local released = c.profile_summary();
 c.changed('before', 'Timer scale'); state.settings.style.scale = state.settings.style.scale + 0.01; c.changed('after');
 assert(c.profile_summary() ~= released, 'With the mouse up an edit refreshes the status at once.');
 
--- The display decodes the profile file again only when its text changed. Confirmations read it fresh.
+-- The profile file is decoded again only when its text changed. Confirmations read it fresh.
 local json = require('core.json');
 local decode, decodes = json.decode, 0;
 json.decode = function(...) decodes = decodes + 1; return decode(...); end;
@@ -105,7 +105,7 @@ local seen, read_before = decodes, reads;
 reread(); reread();
 assert(reads == read_before + 2 and decodes == seen, 'The unchanged file is read but not decoded again.');
 c.profile_status('Support');
-assert(decodes == seen + 1, 'A confirmation decodes the file itself.');
+assert(reads == read_before + 3 and decodes == seen, 'A confirmation reads the file itself, and an unchanged one is not decoded again.');
 local edited = defaults.make(); edited.style.font_size = 31;
 assert(peer:overwrite('Support', edited, peer:source('Support').token));
 local after_edit = decodes;

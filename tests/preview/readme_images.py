@@ -45,9 +45,9 @@ PICTURES = {
     'skins': {'scene': 'skins.lua', 'size': (760, 600)},
     'countdown-styles': {'scene': 'countdown_styles.lua', 'size': (820, 140)},
     'main-page': {'page': 'main', 'window': (960, 680)},
-    'display-editor': {'page': 'editor', 'window': (960, 510)},
+    'display-editor': {'page': 'editor', 'window': (960, 560)},
     'hidden-everywhere': {'page': 'hidden', 'window': (960, 700)},
-    'alerts': {'page': 'alerts', 'size': (1280, 1050), 'window': (960, 910)},
+    'alerts': {'page': 'alerts', 'size': (1280, 1050), 'window': (960, 936)},
     # A Shift drag of Target timers, which shows the grid.
     'edit-mode': {'page': 'edit', 'hud': True, 'size': (1080, 600), 'frames': 12, 'crop': (0, 0, 1080, 540), 'input': [
         {'frame': 4, 'mouse': [420, 318], 'shift': True, 'down': True},

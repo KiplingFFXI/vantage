@@ -1,9 +1,9 @@
--- Party list buffs has no hidden count switch and no no-timer color, the main page's Colors has no color for untimed
+-- Party list has no hidden count switch and no no-timer color, the main page's Colors has no color for untimed
 -- effects, and the field editor no switch to hide a field with no value.
 local defaults, hud = require('ui.defaults'), require('ui.hud');
 local window, imgui = require('ui.settings_window'), require('imgui');
 
--- Colors, under More look on the main page.
+-- Colors, on the main page.
 local s, view = defaults.make(), hud.sample(100);
 s.window.open, s.window.tab = true, 'Home';
 local cb = { now = function() return 100; end, save = function() return true; end, changed = function() end,
@@ -30,7 +30,7 @@ for _, name in ipairs({ 'Unknown time', 'Untimed effects' }) do
     end;
 end;
 
--- Party list buffs.
+-- Party list.
 local panels = require('ui.panel_frame');
 local labels = {};
 s.party_ui.groups[1].style = { colors = {} };
@@ -42,7 +42,7 @@ for _, tab in ipairs(panels.tabs) do
         if type(call[2]) == 'string' then labels[call[2]:match('^##frame_(.+)$') or call[2]:match('^(.-)##') or call[2]] = true; end;
     end;
 end;
--- The party list buffs wear the timer panels' colors, so the panel has no colors of its own either.
+-- Party list wears the timer panels' colors, so the panel has no colors of its own either.
 assert(labels['Countdowns'] and labels['Party buff icons'], 'Fixture: the panel draws its controls.');
 for _, label in ipairs({ 'Show hidden effect count', 'Party no-timer color', 'Group no-timer color', 'Party unknown color',
     'Party buff color', 'Party debuff color' }) do

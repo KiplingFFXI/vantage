@@ -21,7 +21,8 @@ local function frame(snap,now,observations)
     local view,events=tracker:view(now,{},snap),tracker:drain_events();
     alerts:update(view,events,rules,now,{});
     notices={};for _,n in ipairs(alerts:drain(now)) do notices[#notices+1]=n.message;end;
-    return view,events;
+    -- The drained list is emptied at the next drain, so a copy is kept to look at later.
+    return view,{unpack(events)};
 end;
 local function mine(view,id)
     local out={};for _,r in ipairs(view.rows) do if r.entity_id==(id or SELF) then out[#out+1]=r;end;end;return out;

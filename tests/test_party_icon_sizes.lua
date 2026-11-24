@@ -2,7 +2,7 @@
 -- icon is shrunk from its 32 px record once, at exactly the size it draws, into a texture of its own the next power of
 -- two across with the rest transparent, and drawn 1:1 from that texture's top left corner. Up to 4 are made in a
 -- Present, a new size waits 0.25 s, and each art keeps 4 sizes, letting go of the one asked for least recently at the
--- start of a later Present. Client art, 32 px and any failure draw the 32 px texture whole.
+-- start of a later Present. 32 px and any failure draw the 32 px texture whole.
 local assets, icons = require('ui.client_assets'), require('ui.icons');
 local function le16(value) return string.char(value % 256, math.floor(value / 256) % 256); end;
 local function le32(value) return le16(value % 65536) .. le16(math.floor(value / 65536)); end;
@@ -49,7 +49,7 @@ local api = {
         return { id = id, release = function() released[id] = (released[id] or 0) + 1; end };
     end,
 };
--- Client art comes from the game, here a loader that hands out ids.
+-- Ashita's own pictures, which an icon falls back on, come from a loader here that hands out ids.
 local client_ids = 0;
 icons._set_loader_for_tests(function() client_ids = client_ids + 1; return 9000 + client_ids, function() end; end);
 -- Fresh art each time, its 32 px textures made already, so every upload after is one made at a size. A Present makes
@@ -59,7 +59,7 @@ local function fresh()
     assets._set_platform_for_tests(api);
     assets.prepare_icons();
     for id = 0, 9 do
-        for _, artwork in ipairs({ 'Original FFXI', 'XI View', 'Client' }) do
+        for _, artwork in ipairs({ 'Original FFXI', 'XI View' }) do
             local waited = 0;
             while not icons.status(id, artwork) do
                 assert(waited == 0, 'Fixture: a 32 px icon is made by the next Present.');
@@ -257,16 +257,51 @@ assert(own == uploads[1].id and uploads[1].label == 'xiview.status' and uploads[
 assert(lacking == uploads[2].id and uploads[2].label == 'original.status' and uploads[2].data:sub(129) == reference(stock.records[7].dds, 20)
     and lacking_corner[1] == 20 / 32, 'An id XI View lacks is the stock one at 20 px.');
 
--- Client art and 32 px draw today's texture whole, and nothing is made; neither do sizes past 128 or between pixels.
+-- An icon's 32 px pixels go once its texture is made. A size made from them makes them again for that build alone, and
+-- asking for a size already made reads no pixels and makes nothing, frame after frame.
+local function upvalue(fn, wanted)
+    for index = 1, 200 do
+        local name, value = debug.getupvalue(fn, index);
+        if name == wanted then return value; end;
+        if not name then break; end;
+    end;
+    error('Missing upvalue: ' .. wanted);
+end;
+fresh();
+local packs = upvalue(assets.icons_prepared, 'icon_sources');
+local stock_records, view_records = packs.original.data.records, packs.xiview.data.records;
+for id = 0, 9 do assert(rawget(stock_records, id) == nil, 'A stock icon keeps no pixels once its texture is made: ' .. id); end;
+for id = 0, 4 do assert(rawget(view_records, id) == nil, 'Nor does an XI View one: ' .. id); end;
+present();
+icons.status_at(5, 'Original FFXI', 20);
+present(0.25);
+local sized = icons.status_at(5, 'Original FFXI', 20);
+assert(sized == uploads[1].id and uploads[1].data:sub(129) == reference(stock.records[5].dds, 20) and rawget(stock_records, 5) == nil,
+    'Made at 20 px from its pixels, which go again after.');
+jit.off(); jit.flush();
+for _ = 1, 60 do present(); icons.status_at(5, 'Original FFXI', 20); end;
+collectgarbage('collect'); collectgarbage('collect');
+collectgarbage('stop');
+local before = collectgarbage('count');
+for _ = 1, 100 do present(); assert(icons.status_at(5, 'Original FFXI', 20) == sized, 'The same texture each frame.'); end;
+local asked = collectgarbage('count') - before;
+collectgarbage('restart');
+jit.on();
+assert(asked < 0.01 and rawget(stock_records, 5) == nil and #uploads == 1,
+    ('Asking for a size already made makes %.3f KB over 100 frames and reads no pixels; nothing expected'):format(asked));
+
+-- 32 px draws today's texture whole, and nothing is made; neither do sizes past 128 or between pixels. A Client saved
+-- before it stopped being a choice draws as Original FFXI.
 fresh();
 present();
-for _, case in ipairs({ { 'Client', 20 }, { 'Original FFXI', 32 }, { 'XI View', 32 }, { 'Original FFXI', 129 }, { 'Original FFXI', 19.5 },
+assert(whole(6, 'Client') == whole(6, 'Original FFXI'), 'A saved Client draws as Original FFXI.');
+for _, case in ipairs({ { 'Original FFXI', 32 }, { 'XI View', 32 }, { 'Original FFXI', 129 }, { 'Original FFXI', 19.5 },
     { 'Original FFXI', 0 } }) do
     texture, corner = icons.status_at(6, case[1], case[2]);
     assert(texture == whole(6, case[1]) and corner[1] == 1 and corner[2] == 1, 'Today\'s texture whole: ' .. case[1] .. ' at ' .. case[2]);
 end;
 present(1);
-for _, case in ipairs({ { 'Client', 20 }, { 'Original FFXI', 32 }, { 'XI View', 32 }, { 'Original FFXI', 129 }, { 'Original FFXI', 19.5 } }) do
+for _, case in ipairs({ { 'Original FFXI', 32 }, { 'XI View', 32 }, { 'Original FFXI', 129 }, { 'Original FFXI', 19.5 } }) do
     assert(icons.status_at(6, case[1], case[2]) == whole(6, case[1]), 'Still today\'s texture: ' .. case[1] .. ' at ' .. case[2]);
 end;
 assert(#uploads == 0, 'Nothing is made for them.');

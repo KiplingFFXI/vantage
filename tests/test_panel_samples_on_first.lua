@@ -1,4 +1,4 @@
--- Show samples turns samples on only for a display that is on. On Party list buffs, Overhead icons, Party cooldowns and
+-- Show samples turns samples on only for a display that is on. On Party list, Overhead icons, Party cooldowns and
 -- Phantom Roll, a tick while it is off leaves everything as it is and says why, with no Undo step. Show off ends them.
 -- Party cooldowns' samples show in its list, so the list has to be on as well.
 local h = require('panel_fixture')();
